@@ -1,0 +1,10 @@
+# WordPress Testing Tool - Potentially Dangerous XML-RPC Methods
+# XML-RPC methods that may pose security risks
+# This is a small default wordlist for quick testing.
+# For production use, refer to SecLists or add additional methods.
+
+wp.getUsersBlogs
+wp.getCategories
+metaWeblog.getUsersBlogs
+pingback.ping
+system.multicall

@@ -1,0 +1,10 @@
+# WordPress Testing Tool - WordPress Login Page Paths
+# WordPress login page paths to check
+# This is a small default wordlist for quick testing.
+# For production use, refer to SecLists or add additional paths.
+
+/wp-login.php
+/wp-admin/
+/wp-admin/login.php
+/login/
+/wp-login/

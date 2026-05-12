@@ -1,0 +1,12 @@
+# WordPress Testing Tool - HTTP Security Headers
+# Headers to check for in HTTP responses
+# This is a small default wordlist for quick testing.
+# For production use, refer to SecLists or add additional headers.
+
+X-Frame-Options
+X-Content-Type-Options
+X-XSS-Protection
+Strict-Transport-Security
+Content-Security-Policy
+Referrer-Policy
+Permissions-Policy

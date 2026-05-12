@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "wordpress-recon-tool"
+version = "2.1.0"
+description = "WordPress security reconnaissance and vulnerability scanning tool"
+requires-python = ">=3.9"
+dependencies = [
+    "httpx",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "typer>=0.12.0",
+    "packaging>=21.0",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["B905", "UP038"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
