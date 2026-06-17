@@ -1,0 +1,13 @@
+# WHOIS patterns for .com, .net, .org, .uk, .io, .info, .biz
+# Format: field_name:regex_pattern
+# Uses re.MULTILINE | re.IGNORECASE flags
+registrar:Registrar(?:\s+WHOIS\s+Server)?:\s*(.+)
+whois_server:Whois\s+Server:\s*(.+)
+name_server:Name\s+Server:\s*(.+)
+created:(?:Created|Creation\s+Date|Created\s+On):\s*(.+)
+expires:(?:Expires?|Expiry\s+Date|Expiration\s+Date|Registry\s+Expiry\s+Date):\s*(.+)
+updated:(?:Updated|Updated\s+Date|Last\s+Updated|Modified):\s*(.+)
+registrant:Registrant:\s*(.+)
+organization:(?:Organization|Org):\s*(.+)
+status:(?:Domain\s+)?Status:\s*(.+)
+dnssec:DNSSEC:\s*(.+)
