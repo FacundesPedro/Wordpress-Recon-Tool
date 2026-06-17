@@ -1,6 +1,7 @@
 # recon_wp/modules/__init__.py
 """Module registry and profiles."""
 
+from modules.access_module import AccessModule
 from modules.api_module import ApiModule
 from modules.discovery_module import DiscoveryModule
 from modules.fingerprint_module import FingerprintModule
@@ -13,6 +14,7 @@ from modules.users_module import UsersModule
 from modules.xmlrpc_module import XmlrpcModule
 
 MODULE_REGISTRY = {
+    "access": AccessModule,
     "passive": PassiveModule,
     "infrastructure": InfrastructureModule,
     "discovery": DiscoveryModule,

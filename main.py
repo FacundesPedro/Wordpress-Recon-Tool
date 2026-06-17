@@ -160,6 +160,14 @@ def main(
         bool,
         typer.Option("--verbose-version-check", help="Show detailed version information"),
     ] = False,
+    wp_user: Annotated[
+        Optional[str],
+        typer.Option("--wp-user", help="WordPress username for authenticated REST API scan"),
+    ] = None,
+    wp_app_password: Annotated[
+        Optional[str],
+        typer.Option("--wp-app-password", help="WordPress Application Password (WP >= 5.6)"),
+    ] = None,
 ):
     """Run WordPress reconnaissance scan."""
     config = ScanConfig()
@@ -193,6 +201,11 @@ def main(
     config.opendoor_timeout = opendoor_timeout
     config.opendoor_rate_limit = opendoor_rate_limit
     config.opendoor_mode = opendoor_mode
+
+    if wp_user:
+        config.wp_user = wp_user
+    if wp_app_password:
+        config.wp_application_password = wp_app_password
 
     config.skip_version_check = skip_version_check
     config.require_version = require_version

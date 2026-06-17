@@ -15,7 +15,7 @@ from utils.report import Report
 
 RISK_TIERS = {
     1: ["passive"],
-    2: ["infrastructure", "discovery", "fingerprint"],
+    2: ["infrastructure", "discovery", "fingerprint", "access"],
     3: ["users", "api", "xmlrpc", "secrets", "ssrf"],
     4: ["tools"],
 }

@@ -23,6 +23,8 @@ class ScanConfig(BaseSettings):
         WP_WPSCAN_API_TOKEN - WPScan API token
         WP_SHODAN_API_KEY - Shodan API key
         WP_NUCLEI_SEVERITY - nuclei severity filter
+        WP_USER - WordPress username for authenticated REST API
+        WP_APPLICATION_PASSWORD - WordPress Application Password
     """
 
     model_config = SettingsConfigDict(
@@ -75,6 +77,9 @@ class ScanConfig(BaseSettings):
     )
 
     shodan_api_key: str = Field(default="", description="Shodan API key")
+
+    wp_user: str = Field(default="", description="WordPress username for authenticated REST API scan")
+    wp_application_password: str = Field(default="", description="WordPress application password (WP >= 5.6)")
 
     skip_version_check: bool = Field(
         default=False, description="Skip version checking for external tools"

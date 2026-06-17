@@ -1,10 +1,42 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-05-12
+## Last Updated: 2026-06-17
 
 ---
 
 ## Recent Changes
+
+### P0 - Authenticated REST API Enumeration (2026-06-17)
+| File | Change | Notes |
+|------|--------|-------|
+| `core/auth.py` | **NEW** | Application Password auth header helper |
+| `steps/access/plugins_step.py` | **NEW** | Authenticated plugin inventory via /wp-json/wp/v2/plugins |
+| `steps/access/themes_step.py` | **NEW** | Authenticated theme inventory via /wp-json/wp/v2/themes |
+| `steps/access/users_step.py` | **NEW** | Authenticated user enumeration with emails/roles |
+| `modules/access_module.py` | **NEW** | AccessModule with 3 registered steps |
+| `steps/passive/shodan_step.py` | **NEW** | Shodan intelligence gathering (open ports, services, WordPress fingerprints) |
+| `config.py` | **MODIFIED** | Added wp_user, wp_application_password fields |
+| `main.py` | **MODIFIED** | Added --wp-user, --wp-app-password CLI flags |
+| `modules/__init__.py` | **MODIFIED** | Registered access module, added to full profile |
+| `base/runner.py` | **MODIFIED** | Added access to risk tier 2 |
+| `docs/MODULES.md` | **UPDATED** | Added access module section; step count 46→49 |
+| `core/logger.py` | **FIXED** | datetime.utcnow() → datetime.now(timezone.utc) |
+| `base/runner.py` | **FIXED** | datetime.utcnow() → datetime.now(timezone.utc) |
+| `core/finding.py` | **FIXED** | datetime.utcnow() → datetime.now(timezone.utc) |
+
+### P0 - Wordlist Pipeline Fix (2026-06-17)
+| File | Change | Notes |
+|------|--------|-------|
+| `base/dependencies.py` | **FIXED** | Added wordlist_file parameter so local wordlists are actually consumed |
+| 7 step callers | **FIXED** | Wired wordlist_file parameter to respective wordlist files |
+| `wordlists/` | **ADDED** | WHOIS TLD files (tld_com, tld_br, tld_eu) |
+| `wordlists/README.md` | **REWRITTEN** | Production wordlist guide with source URLs and examples |
+
+### P0 - Documentation Reorganization (2026-06-17)
+| File | Change | Notes |
+|------|--------|-------|
+| `MODULES.md`, `SECURITY.md`, etc. | **MOVED** | Root docs moved to docs/ directory |
+| `docs/code.md` | **NEW** | Code abstraction documentation |
 
 ### P0 - API Module Implementation (2026-05-12)
 | File | Change | Notes |

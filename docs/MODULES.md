@@ -2,22 +2,24 @@
 
 **Tool:** WordPress Security Reconnaissance Tool  
 **Version:** 2.1  
-**Last Updated:** 2026-04-10
+**Last Updated:** 2026-06-17
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Module: Passive](#module-passive)
-3. [Module: Infrastructure](#module-infrastructure)
-4. [Module: Discovery](#module-discovery)
-5. [Module: Fingerprint](#module-fingerprint)
-6. [Module: Users](#module-users)
-7. [Module: XML-RPC](#module-xml-rpc)
-8. [Module: Secrets](#module-secrets)
-9. [Module: SSRF](#module-ssrf)
-10. [Module: Tools](#module-tools)
+2. [Module: Access](#module-access)
+3. [Module: Passive](#module-passive)
+4. [Module: Infrastructure](#module-infrastructure)
+5. [Module: Discovery](#module-discovery)
+6. [Module: Fingerprint](#module-fingerprint)
+7. [Module: Users](#module-users)
+8. [Module: API](#module-api)
+9. [Module: XML-RPC](#module-xml-rpc)
+10. [Module: Secrets](#module-secrets)
+11. [Module: SSRF](#module-ssrf)
+12. [Module: Tools](#module-tools)
 11. [Module: API (Planned)](#module-api-planned)
 12. [Dependency Matrix](#dependency-matrix)
 13. [Severity Levels](#severity-levels)
@@ -27,10 +29,11 @@
 
 ## Overview
 
-The tool is organized into **10 modules** containing **46 steps** total:
+The tool is organized into **11 modules** containing **49 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|
+| [access](#module-access) | 3 | Authenticated REST API enumeration (plugins, themes, users) |
 | [passive](#module-passive) | 5 | External intelligence (WHOIS, DNS, certificates, Shodan) |
 | [infrastructure](#module-infrastructure) | 4 | Server configuration (headers, TLS, WAF) |
 | [discovery](#module-discovery) | 6 | File enumeration (readme, sitemap, uploads) |
@@ -41,6 +44,94 @@ The tool is organized into **10 modules** containing **46 steps** total:
 | [secrets](#module-secrets) | 5 | Sensitive file exposure (config, .env, .git) |
 | [ssrf](#module-ssrf) | 2 | SSRF vulnerability testing |
 | [tools](#module-tools) | 6 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor) |
+
+---
+
+## Module: Access
+
+**Profile:** `access` (included in `full` profile; requires `--wp-user` + `--wp-app-password`)  
+**Risk Level:** Low (authenticated REST API queries)  
+**Authentication:** WordPress Application Password (WP >= 5.6)
+
+### Steps
+
+#### WpJsonPluginsStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/plugins_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **API Endpoint** | `GET /wp-json/wp/v2/plugins` |
+| **Required Capability** | `install_plugins` |
+| **Severity** | Info |
+
+**What it does:**
+- Queries the REST API for an authoritative list of installed plugins
+- Returns both active and inactive plugins with exact version numbers
+- Detects inactive plugins that may still be accessible as an attack surface
+
+**Requirements:**
+- WordPress 5.5+ (endpoint introduced)
+- WordPress user account with `install_plugins` capability (typically admin)
+- Application Password generated from Users → Profile → Application Passwords
+
+**Output:**
+```
+Found 42 installed plugin(s) via /wp-json/wp/v2/plugins (authenticated)
+  akismet 4.2.5 [active] — Akismet Anti-spam
+  wordpress-seo 23.5 [active] — Yoast SEO
+  woocommerce 9.1.0 [inactive] — WooCommerce
+  ...
+```
+
+#### WpJsonThemesStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/themes_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **API Endpoint** | `GET /wp-json/wp/v2/themes` |
+| **Required Capability** | `switch_themes` |
+| **Severity** | Info |
+
+**What it does:**
+- Queries the REST API for an authoritative list of installed themes
+- Includes active/inactive status and exact versions
+
+**Requirements:**
+- WordPress 5.7+ (endpoint introduced)
+- WordPress user with `switch_themes` capability
+
+#### WpJsonUsersStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/users_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **API Endpoint** | `GET /wp-json/wp/v2/users` |
+| **Severity** | Info |
+
+**What it does:**
+- Enumerates WordPress users with full details via authenticated REST API
+- Reveals email addresses and roles (hidden from unauthenticated API)
+- Flags administrator emails as a separate medium-severity finding
+
+**Output:**
+```
+Found 5 user(s) via authenticated /wp-json/wp/v2/users
+  #1 admin (admin) — administrator — admin@example.com
+  #2 editor (editor) — editor — editor@example.com
+  #3 author (author) — author
+  ...
+```
+
+### Usage
+
+```bash
+python main.py main --target https://example.com --profile full \
+  --wp-user admin \
+  --wp-app-password 'xxxx xxxx xxxx xxxx xxxx xxxx'
+```
 
 ---
 
