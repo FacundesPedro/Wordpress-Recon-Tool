@@ -3,7 +3,8 @@
 
 from steps.passive.crt_sh_step import CrtShStep
 from steps.passive.dns_step import DnsStep
+from steps.passive.shodan_step import ShodanStep
 from steps.passive.wayback_step import WaymachineStep
 from steps.passive.whois_step import WhoisStep
 
-__all__ = ["WhoisStep", "DnsStep", "CrtShStep", "WaymachineStep"]
+__all__ = ["WhoisStep", "DnsStep", "CrtShStep", "WaymachineStep", "ShodanStep"]

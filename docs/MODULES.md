@@ -27,11 +27,11 @@
 
 ## Overview
 
-The tool is organized into **10 modules** containing **45 steps** total:
+The tool is organized into **10 modules** containing **46 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|
-| [passive](#module-passive) | 4 | External intelligence (WHOIS, DNS, certificates) |
+| [passive](#module-passive) | 5 | External intelligence (WHOIS, DNS, certificates, Shodan) |
 | [infrastructure](#module-infrastructure) | 4 | Server configuration (headers, TLS, WAF) |
 | [discovery](#module-discovery) | 6 | File enumeration (readme, sitemap, uploads) |
 | [fingerprint](#module-fingerprint) | 6 | Version detection (WP, themes, plugins, plugin versions) |
@@ -48,7 +48,7 @@ The tool is organized into **10 modules** containing **45 steps** total:
 
 **Profile:** `passive`  
 **Risk Level:** None (no direct target interaction)  
-**External Services:** WHOIS servers, DNS resolvers, crt.sh, Wayback Machine
+**External Services:** WHOIS servers, DNS resolvers, crt.sh, Wayback Machine, Shodan
 
 ### Steps
 
@@ -188,6 +188,42 @@ Evidence: Registrar: GoDaddy, Created: 2020-01-15, Expires: 2026-01-15
 | Dependency | Required | Fallback |
 |------------|----------|----------|
 | Wayback API | Yes | Error handling |
+
+#### ShodanStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/passive/shodan_step.py` |
+| **Base Class** | `BaseStep` |
+| **External API** | Shodan REST API (api.shodan.io) |
+| **API Key Required** | Yes (`WP_SHODAN_API_KEY`) |
+| **Severity** | Info |
+
+**What it does:**
+- Queries Shodan for open ports on the target IP
+- Discovers service banners and technology fingerprints
+- Identifies WordPress installations indexed by Shodan
+- Provides network information (ISP, ASN, location)
+
+**Findings emitted:**
+
+| Finding | Severity | Trigger |
+|---------|----------|---------|
+| Open Ports | Info | Ports detected on target IP |
+| Host Information | Info | ISP/ASN/location data available |
+| SSL/TLS Certificate | Info | Certificate data available |
+| WordPress Detection | Info | Shodan has WordPress fingerprints |
+| Service Fingerprints | Info | Service banners detected |
+
+**Dependencies:**
+
+| Dependency | Required | Fallback |
+|------------|----------|----------|
+| Shodan API key | Yes | Skip with warning |
+| IP resolution | Yes | Skip with warning |
+| HTTP client | Yes | Skip with warning |
+
+**Rate Limits:** Shodan API credit usage — 1 credit per search, 1 per host lookup. Monitor credits at https://account.shodan.io/
 
 ---
 

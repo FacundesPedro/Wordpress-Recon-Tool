@@ -5,13 +5,13 @@ Passive reconnaissance module.
 Gathers external intelligence without direct interaction with target.
 """
 
-# WHAT: Passive recon - WHOIS, DNS, certificate transparency, Wayback Machine
-# HOW: Uses external services (whois, dig, crt.sh, web.archive.org) - no direct target contact
-# WHY: Discovers subdomains, historical data, domain registration info
-# STEPS: WhoisStep, DnsStep, CrtShStep, WaymachineStep
+# WHAT: Passive recon - WHOIS, DNS, certificate transparency, Wayback Machine, Shodan
+# HOW: Uses external services (whois, dig, crt.sh, web.archive.org, api.shodan.io) - no direct target contact
+# WHY: Discovers subdomains, historical data, domain registration info, open ports
+# STEPS: WhoisStep, DnsStep, CrtShStep, WaymachineStep, ShodanStep
 
 from modules.module import Module
-from steps.passive import CrtShStep, DnsStep, WaymachineStep, WhoisStep
+from steps.passive import CrtShStep, DnsStep, ShodanStep, WaymachineStep, WhoisStep
 
 
 class PassiveModule(Module):
@@ -23,4 +23,5 @@ class PassiveModule(Module):
         self.add_step(WhoisStep)
         self.add_step(DnsStep)
         self.add_step(CrtShStep)
+        self.add_step(ShodanStep)
         self.add_step(WaymachineStep)
