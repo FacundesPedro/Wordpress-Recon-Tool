@@ -1,7 +1,7 @@
 # recon_wp/core/logger.py
 """Logger - Rich-powered timestamped logging with level control."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class Logger:
@@ -26,7 +26,7 @@ class Logger:
             self.level = "INFO"
 
     def _format(self, level: str, message: str) -> str:
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         return f"[{timestamp}] [{level:5}] [{self.name}] {message}"
 
     def _should_log(self, level: str) -> bool:

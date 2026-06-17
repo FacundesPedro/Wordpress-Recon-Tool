@@ -2,7 +2,7 @@
 """Runner - async orchestrator for modules and steps with risk tier parallelism."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import ScanConfig
@@ -112,7 +112,7 @@ class Runner:
 
     async def run_all(self) -> Report:
         """Run all modules in risk tier parallel order and aggregate findings."""
-        self.started_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
         self.logger.info(f"Starting scan with {len(self.modules)} modules")
 
         for module in self.modules:
@@ -156,7 +156,7 @@ class Runner:
             target=self.target.url,
             domain=self.target.domain,
             started_at=self.started_at,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
             findings=all_findings,
             modules_run=self.modules_run,
             errors=self.errors,
