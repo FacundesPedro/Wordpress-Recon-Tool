@@ -222,7 +222,7 @@ WP_NUCLEI_SEVERITY=critical,high
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for detailed security documentation.
+See [docs/SECURITY.md](docs/SECURITY.md) for detailed security documentation.
 
 ### Protected Ranges
 - RFC 1918 private ranges (10.x, 172.16-31.x, 192.168.x)
@@ -272,10 +272,11 @@ wordpress_testing_tool/
 
 ## Documentation
 
-- [Module Reference](MODULES.md) - Complete documentation of all steps across 10 modules
-- [Architecture Plan](architecture_plan.md) - Project architecture
-- [Security Documentation](SECURITY.md) - Security features
+- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 10 modules
+- [Architecture Plan](docs/architecture_plan.md) - Project architecture
+- [Security Documentation](docs/SECURITY.md) - Security features
 - [Changelog](CHANGELOG.md) - Change history
+- [Code Documentation](docs/code.md) - Code abstractions and execution flow
 - [WHOIS Wordlists](docs/WHOIS_WORDLIST.md) - Wordlist configuration
 
 ## License

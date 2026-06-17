@@ -18,7 +18,7 @@ The following steps require wordlists or external data that needs to be sourced.
 | `tld_com.txt` | .com, .net, .org | Standard TLD patterns | ✅ |
 | `tld_default.txt` | All | Default fallback patterns | ✅ |
 
-**Documentation**: See `docs/WHOIS_WORDLIST.md`
+**Documentation**: See `./WHOIS_WORDLIST.md`
 
 **Usage**:
 ```bash
@@ -84,7 +84,7 @@ The following steps require wordlists or external data that needs to be sourced.
 - **WPScan wordlists**: https://github.com/wpscanteam/wpscan/tree/master/data/wordlists
 - **SecLists**: https://github.com/danielmiessler/SecLists
 - **nmap-services**: typically in `/usr/share/nmap/nmap-services`
-- **WHOIS patterns**: See `docs/WHOIS_WORDLIST.md`
+- **WHOIS patterns**: See `./WHOIS_WORDLIST.md`
 
 ---
 

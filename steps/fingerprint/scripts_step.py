@@ -19,7 +19,7 @@ class ScriptsStep(BaseHttpStep):
     """
     Detect WordPress core scripts by parsing HTML for wp-includes/js/ links.
 
-    Note: For comprehensive enumeration, use wordlist-based brute force (see missing_wordlists.md).
+    Note: For comprehensive enumeration, use wordlist-based brute force (see docs/missing_wordlists.md).
     """
 
     name = "scripts"

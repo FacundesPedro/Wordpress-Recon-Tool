@@ -1172,5 +1172,6 @@ Quick scan configurations:
 
 - [Architecture Plan](./architecture_plan.md) - Technical design
 - [Security Documentation](./SECURITY.md) - Security features
-- [Changelog](./CHANGELOG.md) - Version history
+- [Code Documentation](./code.md) - Code abstractions and execution flow
+- [Changelog](../CHANGELOG.md) - Version history
 - [Missing Wordlists](./missing_wordlists.md) - Planned wordlist features

@@ -32,8 +32,8 @@
 ### P1 - Documentation (2026-05-12)
 | File | Change | Notes |
 |------|--------|-------|
-| `MODULES.md` | **UPDATED** | API module from "Planned" → "Implemented" with full docs; counts bumped from 37→45 steps |
-| `missing_wordlists.md` | **UPDATED** | Wordlist directory setup marked complete |
+| `docs/MODULES.md` | **UPDATED** | API module from "Planned" → "Implemented" with full docs; counts bumped from 37→45 steps |
+| `docs/missing_wordlists.md` | **UPDATED** | Wordlist directory setup marked complete |
 | `CHANGELOG.md` | **UPDATED** | This session |
 
 ### P0 - External Tool Version Checker (2026-05-07)
@@ -221,7 +221,7 @@ python main.py main --target https://example.com --nuclei --nuclei-severity crit
 | `steps/fingerprint/plugin_version_step.py` | **NEW** | Extracts version info for detected plugins |
 | `steps/fingerprint/__init__.py` | **MODIFIED** | Export PluginVersionStep |
 | `modules/fingerprint_module.py` | **MODIFIED** | Register PluginVersionStep after PluginStep |
-| `MODULES.md` | **MODIFIED** | Documented new step |
+| `docs/MODULES.md` | **MODIFIED** | Documented new step |
 | `CHANGELOG.md` | **MODIFIED** | Added change log entry |
 
 **PluginVersionStep Features:**
@@ -255,8 +255,8 @@ python main.py main --target https://example.com --nuclei --nuclei-severity crit
 #### P1 - Module Reference Documentation
 | File | Change | Notes |
 |------|--------|-------|
-| `MODULES.md` | **NEW** | Comprehensive documentation of all 37 steps across 10 modules |
-| `README.md` | **MODIFIED** | Added link to MODULES.md in documentation section |
+| `docs/MODULES.md` | **NEW** | Comprehensive documentation of all 37 steps across 10 modules |
+| `README.md` | **MODIFIED** | Added link to docs/MODULES.md in documentation section |
 
 **MODULES.md Contents:**
 - Overview table of all modules and steps
@@ -535,7 +535,7 @@ reports/
 | File | Change | Notes |
 |------|--------|-------|
 | `docs/WHOIS_WORDLIST.md` | **NEW** | Wordlist configuration guide |
-| `missing_wordlists.md` | **MODIFIED** | Updated status, WHOIS section marked complete |
+| `docs/missing_wordlists.md` | **MODIFIED** | Updated status, WHOIS section marked complete |
 
 #### Usage
 ```bash
@@ -620,7 +620,7 @@ python main.py --modules passive --target https://website.cfo.org.br/ --debug
 #### Documentation
 | File | Change | Notes |
 |------|--------|-------|
-| `SECURITY.md` | **NEW** | Comprehensive security documentation with architecture, risks, dependencies |
+| `docs/SECURITY.md` | **NEW** | Comprehensive security documentation with architecture, risks, dependencies |
 
 ---
 
@@ -643,14 +643,14 @@ python main.py --modules passive --target https://website.cfo.org.br/ --debug
 - [x] Typer CLI migration - 2026-04-10
 
 ### P2 - Medium Priority
-- [ ] Add wordlists directory and placeholder files (`missing_wordlists.md` references this)
-- [ ] Implement `PortsStep` with configurable wordlist (`missing_wordlists.md`)
+- [ ] Add wordlists directory and placeholder files (`docs/missing_wordlists.md` references this)
+- [ ] Implement `PortsStep` with configurable wordlist (`docs/missing_wordlists.md`)
 - [ ] Add `PluginStep` wordlist-based brute force
 - [ ] Add `ThemeStep` wordlist-based enumeration
 - [ ] Implement `ScriptsStep` with path enumeration
 
 ### P3 - Nice to Have
-- [ ] Add authenticated scan mode (Phase 6 per architecture_plan.md)
+- [ ] Add authenticated scan mode (Phase 6 per docs/architecture_plan.md)
 - [x] Add report generation (JSON, Markdown) - 2026-04-06
 - [ ] Add logging to file with rotation
 - [ ] Add configuration file (config.yaml) support
@@ -659,7 +659,7 @@ python main.py --modules passive --target https://website.cfo.org.br/ --debug
 
 ## Architecture Status
 
-### Completed Phases (per `architecture_plan.md`)
+### Completed Phases (per `docs/architecture_plan.md`)
 - [x] Phase 1: Atoms + Molecules + passive/discovery/fingerprint steps (partial)
 - [ ] Phase 2: Users + API + XMLRPC steps (partial - XMLRPC done)
 - [ ] Phase 3: Secrets + SSRF steps (partial - SSRF protection added)
