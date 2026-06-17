@@ -37,6 +37,7 @@ class LoginPageStep(BaseHttpStep, WordlistDependencyMixin):
             config_key="login_pages",
             defaults=self.DEFAULT_LOGIN_PATHS,
             name="login pages wordlist",
+            wordlist_file="discovery/login_pages.txt",
         )
         if not login_paths:
             return self.findings

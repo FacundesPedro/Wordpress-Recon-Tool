@@ -41,6 +41,7 @@ class WpConfigBackupStep(BaseHttpStep, WordlistDependencyMixin):
             config_key="wp_config_backups",
             defaults=self.DEFAULT_BACKUP_PATTERNS,
             name="WP-config backup patterns wordlist",
+            wordlist_file="secrets/wp_config_backups.txt",
         )
         if not backup_patterns:
             return self.findings

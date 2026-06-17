@@ -39,6 +39,7 @@ class HeadersStep(BaseHttpStep, WordlistDependencyMixin):
             config_key="security_headers",
             defaults=self.DEFAULT_SECURITY_HEADERS,
             name="security headers wordlist",
+            wordlist_file="headers/security_headers.txt",
         )
         if not security_headers:
             return self.findings

@@ -38,6 +38,7 @@ class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
             config_key="env_files",
             defaults=self.DEFAULT_ENV_PATHS,
             name="environment files wordlist",
+            wordlist_file="secrets/env_files.txt",
         )
         if not env_paths:
             return self.findings

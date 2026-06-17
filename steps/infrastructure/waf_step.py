@@ -55,6 +55,7 @@ class WafStep(BaseHttpStep, WordlistDependencyMixin):
             defaults=self.DEFAULT_WAF_SIGNATURES,
             name="WAF signatures wordlist",
             loader=self.load_waf_signatures_from_file,
+            wordlist_file="infrastructure/waf_signatures.json",
         )
         if not waf_signatures:
             return self.findings

@@ -43,6 +43,7 @@ class XmlrpcMethodsStep(BaseHttpStep, WordlistDependencyMixin):
             config_key="xmlrpc_dangerous_methods",
             defaults=self.DEFAULT_DANGEROUS_METHODS,
             name="XML-RPC dangerous methods wordlist",
+            wordlist_file="xmlrpc/dangerous_methods.txt",
         )
         if not dangerous_methods:
             return self.findings

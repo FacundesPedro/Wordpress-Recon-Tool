@@ -84,6 +84,7 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
             defaults=self.DEFAULT_COMMON_PORTS,
             name="common ports wordlist",
             loader=self.load_ports_from_file,
+            wordlist_file="ports/common.txt",
         )
         if not common_ports:
             return self.findings
