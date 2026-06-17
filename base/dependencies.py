@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
 
 from base.step import BaseStep, BaseToolStep
-from utils.wordlist_loader import load_lines
+from utils.wordlist_loader import get_wordlist_path, load_lines
 
 T = TypeVar("T")
 
@@ -76,15 +76,18 @@ class WordlistDependencyMixin:
         name: str = "wordlist",
         loader: Optional[Callable[[Path], list[Any]]] = None,
         custom_path: Optional[str] = None,
+        wordlist_file: Optional[str] = None,
     ) -> Optional[list[Any]]:
         """
         Resolve wordlist from config with fallback and standardized warnings.
 
         Checks for wordlist in the following order:
-        1. Config value for config_key
-        2. Default wordlist path (~/.config/recon-wp/wordlists/)
-        3. Fallback defaults (if provided)
-        4. Disabled (return None)
+        1. Custom path (if provided)
+        2. Config value for config_key
+        3. Local wordlist file (./wordlists/<wordlist_file>)
+        4. User wordlist directory (~/.config/recon-wp/wordlists/<wordlist_file>)
+        5. Fallback defaults (if provided)
+        6. Disabled (return None)
 
         Args:
             self: Step instance (must be BaseStep or subclass)
@@ -93,6 +96,7 @@ class WordlistDependencyMixin:
             name: Human-readable name for logging messages
             loader: Custom loader function that takes Path and returns list
             custom_path: Override path instead of checking config
+            wordlist_file: Relative path under wordlists/ directory
 
         Returns:
             List of loaded items, defaults, or None if step should be disabled
@@ -122,6 +126,21 @@ class WordlistDependencyMixin:
                         self.logger.warning(f"Error loading {name}: {e}")
                 else:
                     return list(load_lines(path))
+
+        if wordlist_file:
+            local_path = get_wordlist_path(wordlist_file)
+            if local_path and local_path.exists() and local_path.is_file():
+                if loader:
+                    try:
+                        items = loader(local_path)
+                        self.logger.debug(
+                            f"Loaded {len(items)} {name} items from {local_path}"
+                        )
+                        return items
+                    except Exception as e:
+                        self.logger.warning(f"Error loading {name} from {local_path}: {e}")
+                else:
+                    return list(load_lines(local_path))
 
         if defaults:
             self.logger.warning(
@@ -230,6 +249,7 @@ class WordlistDependencyMixin:
             defaults=default_credentials,
             name="credential wordlist",
             loader=self.load_credentials_from_wordlist,
+            wordlist_file="credentials/common_wp.txt",
         )
 
 
