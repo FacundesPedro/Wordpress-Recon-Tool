@@ -1,10 +1,23 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-06-17
+## Last Updated: 2026-07-08
 
 ---
 
 ## Recent Changes
+
+### P0 - Plugin/Theme Brute-Force (2026-07-08)
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/discovery/plugin_bruteforce_step.py` | **NEW** | Response-code oracle for `/wp-content/plugins/{slug}/` — probes wordlist, extracts version from `readme.txt`/`readme.md` |
+| `steps/discovery/theme_bruteforce_step.py` | **NEW** | Same oracle for `/wp-content/themes/{slug}/` — extracts version from `style.css` |
+| `steps/discovery/__init__.py` | **MODIFIED** | Export `PluginBruteforceStep`, `ThemeBruteforceStep` |
+| `modules/discovery_module.py` | **MODIFIED** | Registered both brute-force steps (51 total steps) |
+| `wordlists/plugins/plugin_fallback.txt` | **NEW** | 30-entry default plugin wordlist (warns to use SecLists for production) |
+| `wordlists/plugins/theme_fallback.txt` | **NEW** | 15-entry default theme wordlist |
+| `AGENTS.md` | **NEW** | Session anchor file for AI agents |
+| `docs/next_steps.md` | **UPDATED** | Tier 1 item 2 marked done; HEAD updated |
+| `docs/references.md` | **UPDATED** | Added SecLists raw download URL |
 
 ### P0 - Authenticated REST API Enumeration (2026-06-17)
 | File | Change | Notes |

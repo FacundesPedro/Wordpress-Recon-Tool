@@ -1,8 +1,8 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-06-17  
+**Last Updated:** 2026-07-08  
 **Current Branch:** `main`  
-**HEAD:** `4571726` — Add authenticated REST API enumeration module (Phase 6)
+**HEAD:** `c646dd3` — Plugin/Theme brute-force — response-code oracle with fallback wordlists
 
 ---
 
@@ -18,8 +18,9 @@
 | 6 | `b7491fd` | Fix `datetime.utcnow()` deprecation warnings (4 occurrences) |
 | 7 | `836b50e` | Add Shodan intelligence gathering step |
 | 8 | `4571726` | Add authenticated REST API enumeration (plugins, themes, users via App Passwords) |
+| 9 | `c646dd3` | Add plugin/theme brute-force — response-code oracle with SecLists fallback wordlists |
 
-**Current state:** 11 modules, 49 steps, 143 tests passing (1 pre-existing warning).
+**Current state:** 11 modules, 51 steps, 143 tests passing (1 pre-existing warning).
 
 ---
 
@@ -83,9 +84,11 @@ GET https://wpscan.com/api/v3/wordpresses/{version_no_dots}/
 
 ---
 
-### 2. Plugin/Theme Brute-Force Detection
+### 2. Plugin/Theme Brute-Force Detection ✅ (commit `c646dd3`)
 
-**Why:** Current fingerprinting (commit `836b50e` and prior) only detects plugins/themes that appear in HTML (CSS/JS references, meta tags). Inactive plugins and themes hidden from the page source are invisible. A 403/200 response-code oracle catches them.
+**Why:** Current fingerprinting only detects plugins/themes that appear in HTML (CSS/JS references, meta tags). Inactive plugins and themes hidden from the page source are invisible. A 403/200 response-code oracle catches them.
+
+**Status:** Implemented. `PluginBruteforceStep` and `ThemeBruteforceStep` probe `/wp-content/plugins/{slug}/` and `/wp-content/themes/{slug}/` with wordlist fallbacks (30 plugins / 15 themes). Steps log a WARNING when using the small fallback list and advise downloading SecLists for production use.
 
 #### Detection Methods
 
