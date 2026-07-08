@@ -6,6 +6,13 @@
 
 ## Recent Changes
 
+### P0 - Inactive Plugin File Accessibility Check (2026-07-08)
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/access/inactive_plugin_check_step.py` | **NEW** | Probes readme.txt for deactivated plugins — medium severity if accessible |
+| `modules/access_module.py` | **MODIFIED** | Registered InactivePluginCheckStep (55 total steps) |
+| `steps/access/__init__.py` | **MODIFIED** | Export InactivePluginCheckStep |
+
 ### P0 - CVE Correlation Module (2026-07-08)
 | File | Change | Notes |
 |------|--------|-------|

@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 54 steps, 143 tests passing.
+**Current state:** 12 modules, 55 steps, 143 tests passing.
 
 ## Key Design Decisions
 
@@ -34,6 +34,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 | 10 | — | Add `docs/references.md` — indexed external URLs |
 | 11 | `c646dd3` | **Plugin/Theme brute-force** — response-code oracle with fallback wordlists |
 | 12 | `f1520dd` | **CVE correlation** — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
+| 13 | `f5c4d85` | **Inactive plugin file accessibility** — probe readme.txt for deactivated plugins |
 
 ## Next Steps by Tier
 
@@ -43,7 +44,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 |---|---------|-----------|---------|
 | 1 | **CVE Correlation** | `core/vulndb.py`, `steps/vuln/` (3 steps), `modules/vuln_module.py` | ✅ Done — commit `f1520dd` |
 | 2 | **Plugin/Theme Brute-Force** | `steps/discovery/plugin_bruteforce_step.py`, `theme_bruteforce_step.py` | ✅ Done — commit `c646dd3` |
-| 3 | **Inactive Plugin File Accessibility** | `steps/access/inactive_plugin_check_step.py`, `modules/access_module.py` | Auth step already lists inactive plugins — check if files readable |
+| 3 | **Inactive Plugin File Accessibility** | `steps/access/inactive_plugin_check_step.py`, `modules/access_module.py` | ✅ Done — commit `f5c4d85` |
 
 ### Tier 2 — Moderate Impact
 

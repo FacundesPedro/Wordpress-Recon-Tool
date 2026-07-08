@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-07-08  
 **Current Branch:** `main`  
-**HEAD:** `f1520dd` — CVE correlation — VulnDB client + 3 vuln lookup steps (core, plugin, theme)
+**HEAD:** `f5c4d85` — Inactive plugin file accessibility — probe readme.txt for deactivated plugins
 
 ---
 
@@ -20,8 +20,9 @@
 | 8 | `4571726` | Add authenticated REST API enumeration (plugins, themes, users via App Passwords) |
 | 9 | `c646dd3` | Add plugin/theme brute-force — response-code oracle with SecLists fallback wordlists |
 | 10 | `f1520dd` | Add CVE correlation — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
+| 11 | `f5c4d85` | Add inactive plugin file accessibility check — probe readme.txt for deactivated plugins |
 
-**Current state:** 12 modules, 54 steps, 143 tests passing (1 pre-existing warning).
+**Current state:** 12 modules, 55 steps, 143 tests passing (1 pre-existing warning).
 
 ---
 
@@ -133,9 +134,11 @@ GET https://wpscan.com/api/v3/wordpresses/{version_no_dots}/
 
 ---
 
-### 3. Inactive Plugin File Accessibility Check
+### 3. Inactive Plugin File Accessibility Check ✅ (commit `f5c4d85`)
 
-**Why:** The authenticated `WpJsonPluginsStep` (commit `4571726`) already lists inactive plugins. The next step checks whether their files are still accessible on disk — they often are, even when deactivated. Accessible inactive plugins can still be exploited.
+**Why:** The authenticated `WpJsonPluginsStep` (commit `4571726`) already lists inactive plugins. This step checks whether their files are still accessible on disk — they often are, even when deactivated. Accessible inactive plugins can still be exploited.
+
+**Status:** Implemented. `InactivePluginCheckStep` queries `/wp-json/wp/v2/plugins` with auth, filters to inactive plugins, probes `/wp-content/plugins/{slug}/readme.txt` for each, and emits a medium-severity finding if files are publicly readable.
 
 **Implementation:**
 | File | Action | Notes |
