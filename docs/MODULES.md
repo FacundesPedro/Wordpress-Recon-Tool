@@ -488,7 +488,7 @@ Evidence: X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security
 | **Severity** | Info |
 
 **WAFs detected:**
-- Cloudflare, Sucuri, Wordfence, Incapsula, Akamai, AWS WAF, Azure WAF, Google WAF, ModSecurity, BigIP, Cloudfront
+- Cloudflare, Sucuri, Wordfence, Incapsula, Akamai, AWS WAF, Azure WAF, Cloud Armor, ModSecurity, BigIP, Fortinet, Palo Alto, Cisco
 
 ---
 

@@ -54,9 +54,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 | # | Area | Details |
 |---|------|---------|
 | 1 | **Tests** | 6 new steps lack tests: LoginBruteforceStep, SiteHealthStep, RestHardeningStep, HostingStep, SarifFormatter, SpiderStep |
-| 2 | **waf_step.py WIP** | Uncommitted TODO comments for Fortinet, Palo Alto, Cisco, Cloud Armor, Azure signatures |
-| 3 | **main.py CLI** | Wire `--wp-auth-method cookie` flag |
-| 4 | **Wordlists** | Download/generate production wordlists (SecLists) |
-| 5 | **Beyond roadmap** | Stealth, HTML reporting, Docker, PyPI package, plugin architecture |
+| 2 | **Wordlists** | Download/generate production wordlists (SecLists) |
+| 3 | **Beyond roadmap** | Stealth, HTML reporting, Docker, PyPI package, plugin architecture |
 
 See `docs/next_steps.md` for implementation details and `docs/references.md` for external API/tool URLs.

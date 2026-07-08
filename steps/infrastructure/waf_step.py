@@ -36,6 +36,11 @@ class WafStep(BaseHttpStep, WordlistDependencyMixin):
         "imperva": ["imperva", "incapsula"],
         "modsecurity": ["mod_security", "modsecurity"],
         "f5": ["f5/", "bigip"],
+        "fortinet": ["fortiweb", "fortigate", "x-request-id", "fweb"],
+        "paloalto": ["x-palo-alto", "x-request-uid", "globalprotect", "pan_"],
+        "cisco": ["x-cisco-waas", "x-ace", "x-via: cisco", "cisco"],
+        "cloudarmor": ["x-cloud-trace-context", "x-goog-", "google cloud armor"],
+        "azure": ["x-azure-ref", "x-waf-action", "x-ms-waf", "azure_applicationgateway"],
     }
 
     @staticmethod

@@ -20,7 +20,7 @@ This guide covers which steps need them and how to set them up.
 | `XmlrpcMulticallStep` | **Optional** — same defaults as above | Batch creds testing — same as above |
 | `WhoisStep` (TLD patterns) | **Optional** — 22 hardcoded fallback patterns | TLD-specific parsing — only needed for uncommon TLDs |
 | `HeadersStep` | **No** — 7 headers is exhaustive | Finite set of relevant headers |
-| `WafStep` | **No** — 10 signatures is exhaustive | Finite set of major WAF products |
+| `WafStep` | **No** — 15 signatures is exhaustive | Finite set of major WAF products |
 | `PortsStep` | **No** — 24 ports is exhaustive | Finite set of interesting service ports |
 | `LoginPageStep` | **No** — 5 paths is exhaustive | Finite set of standard WP login URLs |
 | `WpConfigBackupStep` | **No** — 9 patterns is exhaustive | Finite set of common backup extensions |
