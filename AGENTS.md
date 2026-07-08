@@ -18,7 +18,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (14 on main)
+## Commit History (15 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -48,5 +48,15 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 | T3 | 7 | **Host Platform Fingerprinting** | `steps/infrastructure/hosting_step.py` |
 | T3 | 8 | **SARIF Output Format** | `utils/report.py` |
 | T3 | 9 | **Content Crawling / Spider** | `steps/discovery/spider_step.py` |
+
+## Remaining Work
+
+| # | Area | Details |
+|---|------|---------|
+| 1 | **Tests** | 6 new steps lack tests: LoginBruteforceStep, SiteHealthStep, RestHardeningStep, HostingStep, SarifFormatter, SpiderStep |
+| 2 | **waf_step.py WIP** | Uncommitted TODO comments for Fortinet, Palo Alto, Cisco, Cloud Armor, Azure signatures |
+| 3 | **main.py CLI** | Wire `--wp-auth-method cookie` flag |
+| 4 | **Wordlists** | Download/generate production wordlists (SecLists) |
+| 5 | **Beyond roadmap** | Stealth, HTML reporting, Docker, PyPI package, plugin architecture |
 
 See `docs/next_steps.md` for implementation details and `docs/references.md` for external API/tool URLs.
