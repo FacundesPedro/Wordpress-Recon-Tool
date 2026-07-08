@@ -81,6 +81,11 @@ class ScanConfig(BaseSettings):
     wp_user: str = Field(default="", description="WordPress username for authenticated REST API scan")
     wp_application_password: str = Field(default="", description="WordPress application password (WP >= 5.6)")
 
+    vulndb_cache_ttl: int = Field(
+        default=300, ge=0,
+        description="Vulnerability DB cache TTL in seconds (0 = no cache)",
+    )
+
     skip_version_check: bool = Field(
         default=False, description="Skip version checking for external tools"
     )

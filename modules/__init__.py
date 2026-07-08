@@ -11,6 +11,7 @@ from modules.secrets_module import SecretsModule
 from modules.ssrf_module import SsrfModule
 from modules.tools_module import ToolsModule
 from modules.users_module import UsersModule
+from modules.vuln_module import VulnModule
 from modules.xmlrpc_module import XmlrpcModule
 
 MODULE_REGISTRY = {
@@ -21,6 +22,7 @@ MODULE_REGISTRY = {
     "fingerprint": FingerprintModule,
     "users": UsersModule,
     "api": ApiModule,
+    "vuln": VulnModule,
     "xmlrpc": XmlrpcModule,
     "secrets": SecretsModule,
     "ssrf": SsrfModule,
