@@ -1,8 +1,8 @@
 # WordPress Testing Tool - Module Reference
 
 **Tool:** WordPress Security Reconnaissance Tool  
-**Version:** 2.1  
-**Last Updated:** 2026-06-17
+**Version:** 2.2  
+**Last Updated:** 2026-07-08
 
 ---
 
@@ -16,28 +16,29 @@
 6. [Module: Fingerprint](#module-fingerprint)
 7. [Module: Users](#module-users)
 8. [Module: API](#module-api)
-9. [Module: XML-RPC](#module-xml-rpc)
-10. [Module: Secrets](#module-secrets)
-11. [Module: SSRF](#module-ssrf)
-12. [Module: Tools](#module-tools)
-11. [Module: API (Planned)](#module-api-planned)
-12. [Dependency Matrix](#dependency-matrix)
-13. [Severity Levels](#severity-levels)
-14. [Common Patterns](#common-patterns)
+9. [Module: Vuln](#module-vuln)
+10. [Module: XML-RPC](#module-xml-rpc)
+11. [Module: Secrets](#module-secrets)
+12. [Module: SSRF](#module-ssrf)
+13. [Module: Tools](#module-tools)
+14. [Dependency Matrix](#dependency-matrix)
+15. [Severity Levels](#severity-levels)
+16. [Common Patterns](#common-patterns)
 
 ---
 
 ## Overview
 
-The tool is organized into **11 modules** containing **49 steps** total:
+The tool is organized into **12 modules** containing **61 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|
-| [access](#module-access) | 3 | Authenticated REST API enumeration (plugins, themes, users) |
+| [access](#module-access) | 7 | Authenticated REST API enumeration + login brute-force + REST hardening |
 | [passive](#module-passive) | 5 | External intelligence (WHOIS, DNS, certificates, Shodan) |
-| [infrastructure](#module-infrastructure) | 4 | Server configuration (headers, TLS, WAF) |
-| [discovery](#module-discovery) | 6 | File enumeration (readme, sitemap, uploads) |
+| [infrastructure](#module-infrastructure) | 5 | Server configuration (headers, TLS, WAF, ports, hosting) |
+| [discovery](#module-discovery) | 9 | File enumeration + brute-force plugin/theme detection + content spider |
 | [fingerprint](#module-fingerprint) | 6 | Version detection (WP, themes, plugins, plugin versions) |
+| [vuln](#module-vuln) | 3 | CVE correlation (core, plugin, theme vulnerability lookup) |
 | [users](#module-users) | 4 | User enumeration (REST, oEmbed, author IDs) |
 | [api](#module-api) | 3 | REST API surface discovery |
 | [xmlrpc](#module-xml-rpc) | 5 | XML-RPC testing (methods, SSRF, brute force) |
@@ -125,12 +126,120 @@ Found 5 user(s) via authenticated /wp-json/wp/v2/users
   ...
 ```
 
+---
+
+#### InactivePluginCheckStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/inactive_plugin_check_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **API Endpoint** | `GET /wp-json/wp/v2/plugins` (auth) + `GET /wp-content/plugins/{slug}/readme.txt` |
+| **Severity** | Medium |
+| **Auth Required** | Yes (Application Password) |
+
+**What it does:**
+- Queries the REST API for an authoritative list of installed plugins
+- Filters to inactive plugins (`status != "active"`)
+- Probes each inactive plugin's `readme.txt` on the filesystem
+- If files return HTTP 200 → they are publicly accessible even though deactivated
+
+**Why it matters:** Inactive plugins can still be exploited if they contain known vulnerabilities and their files remain readable.
+
+**Finding output:**
+```
+Title: Inactive plugin files are publicly accessible
+Severity: Medium
+Evidence: /wp-content/plugins/woocommerce/readme.txt (HTTP 200)
+```
+
+---
+
+#### LoginBruteforceStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/login_bruteforce_step.py` |
+| **Base Class** | `BaseHttpStep`, `WordlistDependencyMixin` |
+| **Endpoint** | `POST /wp-login.php` |
+| **Severity** | High |
+| **Rate Limit** | 1.5s delay between attempts |
+
+**What it does:**
+- Tests credential pairs against the WordPress login form
+- Uses `resolve_credentials_with_fallback()` for wordlist resolution
+- Detects success via 302 redirect to `/wp-admin/`
+- 20 built-in fallback credentials when no wordlist is configured
+
+**Finding output:**
+```
+Title: Valid WordPress credentials found on wp-login.php
+Severity: High
+Evidence: admin:password
+```
+
+---
+
+#### SiteHealthStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/site_health_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Endpoint** | `GET /wp-admin/site-health-info.php?tab=debug` |
+| **Severity** | Info |
+| **Auth Required** | Yes (Cookie-based via `AdminSession`) |
+
+**What it does:**
+- Uses cookie-based admin login (`AdminSession` in `core/auth.py`)
+- Fetches the Site Health debug info page
+- Extracts: WP version, active plugins/themes, PHP version, server software, document root, PHP extensions
+- Only runs when `wp_auth_method = "cookie"`
+
+**Security note:** Cookie auth is more invasive than Application Passwords and may trigger security plugins (Wordfence, etc.).
+
+---
+
+#### RestHardeningStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/access/rest_hardening_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Medium |
+| **Auth Required** | No |
+
+**Checks performed:**
+
+| Check | Method | Detection |
+|-------|--------|-----------|
+| CORS wildcard | GET with `Origin: https://evil.com` | `Access-Control-Allow-Origin: *` |
+| User endpoint exposure | GET `/wp-json/wp/v2/users` unauthenticated | Returns 200 with user list |
+| Route leakage | GET `/wp-json/` → parse `routes` | Non-core namespaces exposed |
+| Plugin endpoint audit | Probe common plugin endpoints without auth | Endpoints return 200 |
+
+**Finding output:**
+```
+Title: REST API CORS allows any origin
+Severity: High
+Evidence: Origin: https://evil.com, Access-Control-Allow-Origin: *
+```
+
+---
+
 ### Usage
 
 ```bash
+# Application Password auth (default)
 python main.py main --target https://example.com --profile full \
   --wp-user admin \
   --wp-app-password 'xxxx xxxx xxxx xxxx xxxx xxxx'
+
+# Cookie-based auth (for admin-area steps)
+python main.py main --target https://example.com --profile full \
+  --wp-user admin \
+  --wp-app-password 'xxxx xxxx xxxx xxxx xxxx xxxx' \
+  --wp-auth-method cookie
 ```
 
 ---
@@ -405,6 +514,37 @@ Evidence: X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security
 
 ---
 
+#### HostingStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/infrastructure/hosting_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Info |
+
+**What it does:**
+- Inspects HTTP response headers for hosting provider signatures
+- Detects 12 hosting platforms from known header patterns
+- Falls back to path-structure detection for roots.io Bedrock
+
+**Platforms detected:**
+
+| Platform | Detection Signal |
+|----------|-----------------|
+| WP Engine | `X-WP-Engine` header |
+| Kinsta | `X-Kinsta` header |
+| Pantheon | `X-Pantheon-Styx-Hostname` header |
+| Cloudways | `X-Cloudways` header |
+| Flywheel | `X-Flywheel` header |
+| WordPress.com | `x-hacker` header |
+| wpX | `x-wpx-token` header |
+| Pressable | `x-pressable` header |
+| SiteGround | `x-sg-origin` / `x-sg-nginx` headers |
+| GoDaddy | `X-Proxy-Scheme` header |
+| Bedrock | `web/app/` path in page source |
+
+---
+
 ## Module: Discovery
 
 **Profile:** `discovery`  
@@ -500,6 +640,37 @@ Evidence: X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security
 **Path:** `/wp-content/uploads/`
 
 **Risk:** Directory listing enabled allows file enumeration.
+
+---
+
+#### SpiderStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/discovery/spider_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Info (Medium for upload dirs) |
+| **Configurable** | `spider_max_depth` (default 2), `spider_max_pages` (default 50) |
+
+**What it does:**
+- Crawls same-origin links from the homepage up to configurable depth
+- Respects `robots.txt` disallow rules
+- Extracts: form actions, upload directories, admin-like paths, comment sections
+
+**Data extracted:**
+
+| Artifact | Method | Severity |
+|----------|--------|----------|
+| Form actions | `<form action="...">` regex | Info |
+| Upload directories | `/wp-content/uploads/`, `/uploads/`, `/files/` | Medium |
+| Admin-like paths | `/wp-admin/`, `/admin/`, `/dashboard/` | Info |
+| Comment sections | `<div id="comments">` | Info |
+
+**Configuration:**
+```bash
+python main.py main --target https://example.com --profile full
+# Uses defaults: max_depth=2, max_pages=50
+```
 
 ---
 
@@ -712,6 +883,79 @@ Evidence: john.doe (johndoe), jane.smith (janesmith)
 
 **Vulnerable pattern:**
 - "Invalid username" vs generic "Invalid username or password"
+
+---
+
+## Module: Vuln
+
+**Profile:** `vuln` (included in `full` profile; runs in Tier 2)  
+**Risk Level:** Low (passive API queries to WPVulnerability.net)  
+**External Services:** WPVulnerability.net (primary, free, no key), WPScan API (optional secondary)
+
+### Steps
+
+#### CoreVulnStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/vuln/core_vuln_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Varies (CVSS-based) |
+| **Source** | WPVulnerability.net + WPScan API |
+
+**What it does:**
+- Detects WordPress core version from `<meta generator>` tag or `/readme.html`
+- Queries `VulnDB` facade for known CVEs affecting that version
+- Emits per-CVE findings with CVSS score and severity mapping
+
+**CVSS → Severity mapping:**
+| CVSS Range | Severity |
+|------------|----------|
+| 0.0-3.9 | Low |
+| 4.0-6.9 | Medium |
+| 7.0-8.9 | High |
+| 9.0-10.0 | Critical |
+
+---
+
+#### PluginVulnStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/vuln/plugin_vuln_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Varies (CVSS-based) |
+| **Detection** | Auth REST API → HTML regex fallback |
+
+**What it does:**
+- Detects installed plugins and their versions (auth API primary, HTML fallback)
+- For each plugin slug+version, queries VulnDB for matching CVEs
+- Deduplicates findings across WPVulnerability.net and WPScan sources
+- Emits per-CVE findings
+
+---
+
+#### ThemeVulnStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/vuln/theme_vuln_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Varies (CVSS-based) |
+| **Detection** | Auth REST API → HTML regex fallback |
+
+**What it does:**
+- Same pattern as PluginVulnStep but for themes
+- Detects installed themes + versions
+- Queries VulnDB for known theme CVEs
+
+**Dependencies:**
+
+| Dependency | Required | Fallback |
+|------------|----------|----------|
+| WPVulnerability.net API | Yes | Error handling |
+| WPScan API token (optional) | No | Skip secondary source |
+| WP auth (for API detection mode) | No | HTML fallback mode |
 
 ---
 
@@ -1185,13 +1429,18 @@ export WP_NUCLEI_SEVERITY=critical,high
 |---------|-------|------------|
 | crt.sh API | CrtShStep | 60s timeout |
 | Wayback Machine CDX | WaymachineStep | None |
+| WPVulnerability.net API | CoreVulnStep, PluginVulnStep, ThemeVulnStep | Reasonable use |
+| WPScan API (optional) | CoreVulnStep, PluginVulnStep, ThemeVulnStep | 25 req/day (free tier) |
+| Shodan API | ShodanStep | Credit-based |
 
 ### Wordlists
 
 | Wordlist | Steps | Location |
 |----------|-------|----------|
 | WHOIS patterns | WhoisStep | `~/.config/recon-wp/wordlists/whois/` |
-| Credentials | XmlrpcCredsStep, XmlrpcMulticallStep | Config or fallback |
+| Credentials | XmlrpcCredsStep, XmlrpcMulticallStep, LoginBruteforceStep | Config or fallback |
+| Plugin slugs | PluginBruteforceStep | Config or fallback (30 built-in) |
+| Theme slugs | ThemeBruteforceStep | Config or fallback (15 built-in) |
 
 ---
 
@@ -1200,8 +1449,8 @@ export WP_NUCLEI_SEVERITY=critical,high
 | Level | Color | Steps |
 |-------|-------|-------|
 | **Critical** | 🔴 | WpConfigBackupStep, EnvFileStep (if exposed) |
-| **High** | 🟠 | XmlrpcCredsStep, XmlrpcMulticallStep |
-| **Medium** | 🟡 | WpCronStep, UploadsListingStep, XmlrpcSsrfStep, PingbackSsrfStep |
+| **High** | 🟠 | XmlrpcCredsStep, XmlrpcMulticallStep, LoginBruteforceStep |
+| **Medium** | 🟡 | InactivePluginCheckStep, RestHardeningStep, WpCronStep, UploadsListingStep, XmlrpcSsrfStep, PingbackSsrfStep, SpiderStep (upload dirs) |
 | **Low** | 🔵 | ReadmeStep, LicenseStep, PortsStep |
 | **Info** | ⚪ | Most steps |
 
