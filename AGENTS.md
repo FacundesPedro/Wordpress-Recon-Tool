@@ -18,7 +18,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (12 on main)
+## Commit History (13 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
