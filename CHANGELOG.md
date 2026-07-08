@@ -6,6 +6,19 @@
 
 ## Recent Changes
 
+### P0 - CVE Correlation Module (2026-07-08)
+| File | Change | Notes |
+|------|--------|-------|
+| `core/vulndb.py` | **NEW** | WPVulnerability.net primary client + WPScan secondary + VulnDB facade with TTL cache, CVSS→severity, deduplication |
+| `steps/vuln/core_vuln_step.py` | **NEW** | Detects WP version, queries VulnDB, emits findings grouped by severity |
+| `steps/vuln/plugin_vuln_step.py` | **NEW** | Two-mode plugin detection (auth API → HTML fallback), CVE lookup per slug |
+| `steps/vuln/theme_vuln_step.py` | **NEW** | Same pattern for themes |
+| `steps/vuln/__init__.py` | **NEW** | Step exports |
+| `modules/vuln_module.py` | **NEW** | VulnModule with 3 registered steps (54 total steps) |
+| `modules/__init__.py` | **MODIFIED** | Added VulnModule to MODULE_REGISTRY and `full` profile |
+| `base/runner.py` | **MODIFIED** | Added vuln to risk tier 2 |
+| `config.py` | **MODIFIED** | Added vulndb_cache_ttl field (default 300s) |
+
 ### P0 - Plugin/Theme Brute-Force (2026-07-08)
 | File | Change | Notes |
 |------|--------|-------|

@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-07-08  
 **Current Branch:** `main`  
-**HEAD:** `c646dd3` — Plugin/Theme brute-force — response-code oracle with fallback wordlists
+**HEAD:** `f1520dd` — CVE correlation — VulnDB client + 3 vuln lookup steps (core, plugin, theme)
 
 ---
 
@@ -19,16 +19,19 @@
 | 7 | `836b50e` | Add Shodan intelligence gathering step |
 | 8 | `4571726` | Add authenticated REST API enumeration (plugins, themes, users via App Passwords) |
 | 9 | `c646dd3` | Add plugin/theme brute-force — response-code oracle with SecLists fallback wordlists |
+| 10 | `f1520dd` | Add CVE correlation — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 
-**Current state:** 11 modules, 51 steps, 143 tests passing (1 pre-existing warning).
+**Current state:** 12 modules, 54 steps, 143 tests passing (1 pre-existing warning).
 
 ---
 
 ## Tier 1 — High Impact
 
-### 1. CVE Correlation (Vulnerability Lookup)
+### 1. CVE Correlation ✅ (commit `f1520dd`)
 
 **Why:** The tool enumerates plugin/theme/core versions but does not map them to known CVEs. Every major scanner (WPScan, WPSecScan, WPProbe, WPHunter) does this — without it, version numbers are data without findings.
+
+**Status:** Implemented. `VulnDB` facade queries WPVulnerability.net (primary, free, no key) and optionally WPScan API (when `wpscan_api_token` configured). Three steps — `CoreVulnStep`, `PluginVulnStep`, `ThemeVulnStep` — each detect their components (auth API → HTML fallback) and emit per-CVE findings with CVSS-based severity.
 
 #### Vulnerability Data Sources
 

@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 11 modules, 51 steps, 143 tests passing.
+**Current state:** 12 modules, 54 steps, 143 tests passing.
 
 ## Key Design Decisions
 
@@ -15,10 +15,10 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 | Wordlist resolution | CLI → config → `wordlists/` → `~/.config/recon-wp/` → hardcoded | Graceful degradation, no file required |
 | Auth mechanism | Application Passwords (HTTP Basic) | WP >= 5.6, no 2FA bypass, cookie-free |
 | Shodan integration | Raw REST API via httpx | No extra `shodan` package dependency |
-| CVE source (planned) | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
+| CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (11 on main)
+## Commit History (12 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -33,16 +33,17 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 | 9 | — | Add `docs/next_steps.md` — prioritized roadmap |
 | 10 | — | Add `docs/references.md` — indexed external URLs |
 | 11 | `c646dd3` | **Plugin/Theme brute-force** — response-code oracle with fallback wordlists |
+| 12 | `f1520dd` | **CVE correlation** — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 
 ## Next Steps by Tier
 
-### Tier 1 — High Impact (start here next session)
+### Tier 1 — High Impact
 
 | # | Feature | Key Files | Why Now |
 |---|---------|-----------|---------|
-| 1 | **CVE Correlation** | `core/vulndb.py` (new), `steps/vuln/` (3 new), `modules/vuln_module.py` (new) | Maps versions to CVE findings — core value proposition |
+| 1 | **CVE Correlation** | `core/vulndb.py`, `steps/vuln/` (3 steps), `modules/vuln_module.py` | ✅ Done — commit `f1520dd` |
 | 2 | **Plugin/Theme Brute-Force** | `steps/discovery/plugin_bruteforce_step.py`, `theme_bruteforce_step.py` | ✅ Done — commit `c646dd3` |
-| 3 | **Inactive Plugin File Accessibility** | `steps/access/inactive_plugin_check_step.py` | Auth step already lists inactive plugins — check if files readable |
+| 3 | **Inactive Plugin File Accessibility** | `steps/access/inactive_plugin_check_step.py`, `modules/access_module.py` | Auth step already lists inactive plugins — check if files readable |
 
 ### Tier 2 — Moderate Impact
 
