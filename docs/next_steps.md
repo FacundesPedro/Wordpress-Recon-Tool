@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-07-08  
 **Current Branch:** `main`  
-**HEAD:** `f5c4d85` — Inactive plugin file accessibility — probe readme.txt for deactivated plugins
+**HEAD:** `(current)` — Tiers 2-3 full implementation (login brute-force, cookie admin, REST hardening, hosting fingerprint, SARIF, content spider)
 
 ---
 
@@ -21,8 +21,9 @@
 | 9 | `c646dd3` | Add plugin/theme brute-force — response-code oracle with SecLists fallback wordlists |
 | 10 | `f1520dd` | Add CVE correlation — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 | 11 | `f5c4d85` | Add inactive plugin file accessibility check — probe readme.txt for deactivated plugins |
+| 12 | (current) | Tiers 2-3: Login brute-force, cookie admin, REST hardening, hosting fingerprint, SARIF, spider |
 
-**Current state:** 12 modules, 55 steps, 143 tests passing (1 pre-existing warning).
+**Current state:** 12 modules, 61 steps, 143 tests passing (1 pre-existing warning).
 
 ---
 
@@ -154,104 +155,51 @@ GET https://wpscan.com/api/v3/wordpresses/{version_no_dots}/
 
 ---
 
-## Tier 2 — Moderate Impact
+## Tier 2 — Moderate Impact ✅
 
-### 4. Login Brute-Force Step
+### 4. Login Brute-Force Step ✅
 
-**Why:** Standard WordPress attack vector. The tool already has credential wordlists and `XmlrpcCredsStep` for XML-RPC brute-force, but no dedicated `wp-login.php` form brute-force step.
+**Status:** Implemented. `LoginBruteforceStep` probes `POST /wp-login.php` with credential pairs via `resolve_credentials_with_fallback()`, detects success via 302 redirect to `/wp-admin/`, and emits high-severity findings for valid credentials.
 
-| File | Action | Notes |
-|------|--------|-------|
-| `steps/access/login_bruteforce_step.py` | **NEW** | Bypass wp-login.php with credential pairs |
-| `modules/access_module.py` | **MODIFY** | Register new step |
-
-**Implementation:**
-- Uses `resolve_credentials_with_fallback()` (already built in commit `c1ba72b`)
-- Probes `POST /wp-login.php` with `log={user}&pwd={pass}&wp-submit=Log+In`
-- Detects success vs failure: redirect to `/wp-admin/` = success, back to login page with error = failure
-- Uses existing `RetryLimiter` for rate-limit awareness
-- Built-in default credentials from `credentials/common_wp.txt` (commit `c1ba72b`)
+Key files: `steps/access/login_bruteforce_step.py`, registered in `AccessModule`.
 
 ---
 
-### 5. Cookie-Based Admin Session
+### 5. Cookie-Based Admin Session ✅
 
-**Why:** Application Passwords (commit `4571726`) only work for REST API (`/wp-json/`). The WordPress admin area (`/wp-admin/`) requires cookie-based auth. This unlocks additional attack surface.
+**Status:** Implemented. `AdminSession` class in `core/auth.py` handles cookie-based wp-login.php POST + session cookie management. `SiteHealthStep` uses it to extract debug info from `/wp-admin/site-health-info.php`. Config field `wp_auth_method` added (default: `app_password`).
 
-**Endpoints unlocked by cookie auth:**
-- `/wp-admin/site-health-info.php` — server config, active PHP extensions, file paths
-- `/wp-admin/options.php` — all WordPress options (some may leak sensitive info)
-- `/wp-admin/update-core.php` — core version and update status
-- `/wp-admin/export.php` — content export functionality
-
-**Implementation:**
-
-| File | Action | Notes |
-|------|--------|-------|
-| `core/auth.py` | **MODIFY** | Add cookie-based login support alongside Basic Auth |
-| `core/auth.py` | **ADD** | `AdminSession` class wrapping HttpClient with cookie jar |
-| `config.py` | **MODIFY** | Add `wp_auth_method: Literal["app_password", "cookie"]` |
-| `main.py` | **MODIFY** | Add `--wp-auth-method` CLI flag |
-| `steps/access/site_health_step.py` | **NEW** | Query `/wp-admin/site-health-info.php` |
-
-**Cookie login flow:**
-1. POST `wp-login.php` with `log=`, `pwd=`, `rememberme=forever`, `testcookie=1`
-2. Store `Set-Cookie` in httpx.CookieJar
-3. For each subsequent admin-page request, cookies are sent automatically
-4. Verify session is alive by checking `/wp-admin/` redirects to dashboard (not login)
-
-**Note:** Cookie-based auth is more invasive than Application Passwords and may trigger security plugins (Wordfence, etc.). Recommend it as opt-in via `--wp-auth-method cookie`.
+Key files: `core/auth.py`, `steps/access/site_health_step.py`, `config.py`.
 
 ---
 
-### 6. REST API Hardening Checks
+### 6. REST API Hardening Checks ✅
 
-**Why:** The REST API is the #1 attack surface. The existing `RestSurfaceStep` discovers routes but does not test authorization. Multiple common misconfigurations exist.
+**Status:** Implemented. `RestHardeningStep` performs 4 checks: CORS wildcard detection, route leakage from `/wp-json/` response, public user endpoint exposure, and plugin endpoint accessibility audit.
 
-**Checks to add:**
-
-| Check | Method | What it detects |
-|-------|--------|-----------------|
-| **Permission callback audit** | Probe common endpoints without auth | Plugins/endpoints missing permission callbacks |
-| **CORS misconfiguration** | Send `Origin: null`, `Origin: evil.com` | CORS policies that allow any origin |
-| **User endpoint exposure** | Already partially covered by `RestApiUsersStep` | Verify `/wp-json/wp/v2/users` requires auth |
-| **Route discovery** | Crawl registered routes from `/wp-json/` | Plugin-specific endpoints leaked |
+Key files: `steps/access/rest_hardening_step.py`, registered in `AccessModule`.
 
 ---
 
-## Tier 3 — Polish & Integration
+## Tier 3 — Polish & Integration ✅
 
-### 7. Host Platform Fingerprinting
+### 7. Host Platform Fingerprinting ✅
 
-Detect hosting provider from response headers, IP ranges, and specific paths.
+**Status:** Implemented. `HostingStep` detects 12 hosting providers from response headers (WP Engine, Kinsta, Pantheon, Cloudways, Flywheel, WordPress.com, wpX, Pressable, SiteGround, GoDaddy, Pressable, Cloudways) plus Bedrock path-structure detection.
 
-| Platform | Detection Signal |
-|----------|-----------------|
-| WP Engine | `X-WP-Engine` header, `wpengine.com` references in page source |
-| Kinsta | `X-Kinsta` header, specific CDN path patterns |
-| Bedrock | `web/app/` path structure in wp-content references |
-| Pantheon | `X-Pantheon-Styx-Hostname` header |
-| Cloudways | `X-Cloudways` header |
-| WordPress.com | `x-hacker` header, specific cookies |
-| Flywheel | `X-Flywheel` header |
+Key files: `steps/infrastructure/hosting_step.py`, registered in `InfrastructureModule`.
 
-**Implementation:** New step in `steps/infrastructure/` — single HTTP request + header inspection.
+### 8. SARIF Output Format ✅
 
-### 8. SARIF Output Format
+**Status:** Implemented. `SarifFormatter` wraps findings in SARIF 2.1.0 run envelope with tool metadata, rules, results, and invocation info. Available via `output_format: "sarif"` or `"all"`. Uses existing `Finding.to_sarif()` method.
 
-WPScan v4.0.0 (May 2026) added SARIF output for CI/CD integration. The tool already has JSON and Markdown output via `JsonFormatter` and `MarkdownFormatter`.
+Key files: `utils/report.py`, `config.py` (output_format extended).
 
-**Implementation:** Add `SarifFormatter` in `utils/report.py` following the existing formatter pattern. SARIF standard: https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html
+### 9. Content Crawling / Spider ✅
 
-### 9. Content Crawling / Spider
+**Status:** Implemented. `SpiderStep` crawls same-origin links from homepage up to configurable depth (default 2) and page limit (default 50). Extracts form actions, upload directories, admin-like paths, and comment sections. Respects `robots.txt` disallow rules.
 
-**Why:** Spidering the target site can discover hidden forms, endpoints, and upload directories not found by wordlist-based enumeration.
-
-**Implementation:** New step using `httpx` to crawl same-origin links from the homepage, following links up to a configurable depth. Extract:
-- Form actions (potential XSS/CSRF surface)
-- Upload directories
-- Comment sections
-- Plugin-specific admin pages
+Key files: `steps/discovery/spider_step.py`, `config.py` (spider_max_depth, spider_max_pages).
 
 ---
 

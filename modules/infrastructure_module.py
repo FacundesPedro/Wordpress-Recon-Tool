@@ -13,6 +13,7 @@ Analyzes server headers, TLS config, WAF presence, and port accessibility.
 from modules.module import Module
 from steps.infrastructure import (
     HeadersStep,
+    HostingStep,
     PortsStep,
     TlsStep,
     WafStep,
@@ -21,11 +22,12 @@ from steps.infrastructure import (
 
 class InfrastructureModule(Module):
     name = "infrastructure"
-    description = "Infrastructure checks (headers, TLS, WAF, ports)"
+    description = "Infrastructure checks (headers, TLS, WAF, ports, hosting)"
 
     def __init__(self):
         super().__init__(self.name, self.description)
         self.add_step(HeadersStep)
+        self.add_step(HostingStep)
         self.add_step(TlsStep)
         self.add_step(WafStep)
         self.add_step(PortsStep)

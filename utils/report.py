@@ -162,6 +162,84 @@ class MarkdownFormatter:
             f.write(MarkdownFormatter.format(report))
 
 
+class SarifFormatter:
+    """Format report as SARIF 2.1.0 for CI/CD integration."""
+
+    SCHEMA = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/v2.1.0/utilities/sarif_schema.json"
+    SARIF_VERSION = "2.1.0"
+
+    @classmethod
+    def format(cls, report: Report) -> str:
+        """Format report to SARIF JSON string."""
+        doc = cls._build_document(report)
+        return json.dumps(doc, indent=2, default=str)
+
+    @classmethod
+    def save(cls, report: Report, path: Path) -> None:
+        """Save report as SARIF JSON file."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(cls.format(report))
+
+    @classmethod
+    def _build_document(cls, report: Report) -> dict:
+        rules: dict[str, dict] = {}
+        results = []
+
+        for finding in report.findings:
+            rule_id = f"{finding.module}/{finding.step}"
+            if rule_id not in rules:
+                rules[rule_id] = {
+                    "id": rule_id,
+                    "shortDescription": {"text": finding.title},
+                    "fullDescription": {"text": finding.description},
+                    "defaultConfiguration": {"level": cls._sarif_level(finding.severity)},
+                    "properties": {"severity": finding.severity},
+                }
+
+            results.append(finding.to_sarif())
+
+        return {
+            "$schema": cls.SCHEMA,
+            "version": cls.SARIF_VERSION,
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "wp-recon-tool",
+                            "version": "1.0.0",
+                            "rules": list(rules.values()),
+                        }
+                    },
+                    "results": results,
+                    "invocations": [
+                        {
+                            "startTimeUtc": report.started_at.isoformat(),
+                            "endTimeUtc": report.completed_at.isoformat(),
+                            "executionSuccessful": len(report.errors) == 0,
+                        }
+                    ],
+                    "properties": {
+                        "target": report.target,
+                        "domain": report.domain,
+                        "modules_run": report.modules_run,
+                        "errors": report.errors,
+                    },
+                }
+            ],
+        }
+
+    @staticmethod
+    def _sarif_level(severity: str) -> str:
+        return {
+            "critical": "error",
+            "high": "error",
+            "medium": "warning",
+            "low": "note",
+            "info": "none",
+        }.get(severity, "none")
+
+
 def generate_report_filename(domain: str, timestamp: datetime) -> str:
     """Generate a base filename for the report (without extension)."""
     ts = timestamp.strftime("%Y%m%d_%H%M%S")

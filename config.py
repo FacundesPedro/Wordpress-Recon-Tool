@@ -47,7 +47,7 @@ class ScanConfig(BaseSettings):
     output_dir: Path = Field(
         default=Path("./reports"), description="Output directory for reports"
     )
-    output_format: Literal["json", "markdown", "both"] = Field(
+    output_format: Literal["json", "markdown", "sarif", "all"] = Field(
         default="markdown", description="Report output format"
     )
     quiet: bool = Field(default=False, description="Suppress console output")
@@ -80,6 +80,10 @@ class ScanConfig(BaseSettings):
 
     wp_user: str = Field(default="", description="WordPress username for authenticated REST API scan")
     wp_application_password: str = Field(default="", description="WordPress application password (WP >= 5.6)")
+    wp_auth_method: Literal["app_password", "cookie"] = Field(
+        default="app_password",
+        description="Authentication method for admin-area steps (app_password or cookie)",
+    )
 
     vulndb_cache_ttl: int = Field(
         default=300, ge=0,
@@ -128,6 +132,13 @@ class ScanConfig(BaseSettings):
     )
     opendoor_mode: str = Field(
         default="wp_paths", description="OpenDoor mode (wp_paths, backup, config, sensitive)"
+    )
+
+    spider_max_depth: int = Field(
+        default=2, ge=1, le=10, description="Maximum crawl depth for content spider"
+    )
+    spider_max_pages: int = Field(
+        default=50, ge=1, le=500, description="Maximum pages to crawl"
     )
 
     def mkdir_output(self) -> None:

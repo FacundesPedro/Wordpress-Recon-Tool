@@ -1,16 +1,16 @@
-# recon_wp/core/auth.py
-"""WordPress Application Password authentication helpers."""
+"""WordPress authentication helpers — Application Passwords and Cookie-based session."""
 
 import base64
 from typing import Optional
+
+import httpx
 
 
 def get_wp_auth_header(
     wp_user: str = "",
     wp_application_password: str = "",
 ) -> Optional[dict[str, str]]:
-    """
-    Build Authorization header for WordPress Application Password auth.
+    """Build Authorization header for WordPress Application Password auth.
 
     Args:
         wp_user: WordPress username
@@ -33,3 +33,62 @@ def has_wp_auth(
 ) -> bool:
     """Check if WordPress auth credentials are configured."""
     return bool(wp_user and wp_application_password)
+
+
+class AdminSession:
+    """Cookie-based WordPress admin session.
+
+    Logs in via wp-login.php POST and stores cookies for subsequent
+    admin-page requests. Used only when ``wp_auth_method == "cookie"``.
+    """
+
+    def __init__(self, http: httpx.AsyncClient, base_url: str):
+        self.http = http
+        self.base_url = base_url.rstrip("/")
+        self._logged_in = False
+
+    @property
+    def is_authenticated(self) -> bool:
+        return self._logged_in
+
+    async def login(self, username: str, password: str) -> bool:
+        """POST to wp-login.php and store session cookies.
+
+        Returns:
+            True if login succeeded (redirect to wp-admin detected).
+        """
+        login_url = f"{self.base_url}/wp-login.php"
+        try:
+            resp = await self.http.post(
+                login_url,
+                data={
+                    "log": username,
+                    "pwd": password,
+                    "wp-submit": "Log In",
+                    "testcookie": "1",
+                    "redirect_to": f"{self.base_url}/wp-admin/",
+                },
+                follow_redirects=False,
+            )
+
+            location = resp.headers.get("location", "")
+            if resp.status_code == 302 and "wp-admin" in location:
+                self._logged_in = True
+                return True
+
+            self._logged_in = False
+            return False
+
+        except httpx.HTTPError:
+            self._logged_in = False
+            return False
+
+    async def get(self, path: str, **kwargs) -> httpx.Response:
+        """Make an authenticated GET request to an admin page."""
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        return await self.http.get(url, **kwargs)
+
+    async def post(self, path: str, data: Optional[dict] = None, **kwargs) -> httpx.Response:
+        """Make an authenticated POST request to an admin page."""
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        return await self.http.post(url, data=data, **kwargs)

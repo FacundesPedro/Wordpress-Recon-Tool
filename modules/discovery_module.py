@@ -19,6 +19,7 @@ from steps.discovery import (
     PluginBruteforceStep,
     ReadmeStep,
     SitemapStep,
+    SpiderStep,
     ThemeBruteforceStep,
     UploadsListingStep,
     WpCronStep,
@@ -29,7 +30,7 @@ class DiscoveryModule(Module):
     name = "discovery"
     description = (
         "Discovery checks (readme, license, sitemap, login page, wp-cron, uploads, "
-        "plugin/theme brute-force)"
+        "plugin/theme brute-force, content spider)"
     )
 
     def __init__(self):
@@ -42,3 +43,4 @@ class DiscoveryModule(Module):
         self.add_step(UploadsListingStep)
         self.add_step(PluginBruteforceStep)
         self.add_step(ThemeBruteforceStep)
+        self.add_step(SpiderStep)

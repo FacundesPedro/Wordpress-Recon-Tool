@@ -15,6 +15,9 @@ REST API endpoints for authoritative plugin/theme/user inventory.
 from modules.module import Module
 from steps.access import (
     InactivePluginCheckStep,
+    LoginBruteforceStep,
+    RestHardeningStep,
+    SiteHealthStep,
     WpJsonPluginsStep,
     WpJsonThemesStep,
     WpJsonUsersStep,
@@ -25,7 +28,8 @@ class AccessModule(Module):
     name = "access"
     description = (
         "Authenticated REST API enumeration (plugins, themes, users, "
-        "inactive plugin check)"
+        "inactive plugin check, login brute-force, site health, "
+        "REST API hardening)"
     )
 
     def __init__(self):
@@ -34,3 +38,6 @@ class AccessModule(Module):
         self.add_step(WpJsonThemesStep)
         self.add_step(WpJsonUsersStep)
         self.add_step(InactivePluginCheckStep)
+        self.add_step(LoginBruteforceStep)
+        self.add_step(SiteHealthStep)
+        self.add_step(RestHardeningStep)

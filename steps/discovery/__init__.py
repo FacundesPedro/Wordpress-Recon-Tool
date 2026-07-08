@@ -6,6 +6,7 @@ from steps.discovery.login_page_step import LoginPageStep
 from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
 from steps.discovery.readme_step import ReadmeStep
 from steps.discovery.sitemap_step import SitemapStep
+from steps.discovery.spider_step import SpiderStep
 from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
 from steps.discovery.uploads_listing_step import UploadsListingStep
 from steps.discovery.wp_cron_step import WpCronStep
@@ -19,4 +20,5 @@ __all__ = [
     "UploadsListingStep",
     "PluginBruteforceStep",
     "ThemeBruteforceStep",
+    "SpiderStep",
 ]

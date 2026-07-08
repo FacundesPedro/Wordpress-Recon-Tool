@@ -6,6 +6,18 @@
 
 ## Recent Changes
 
+### P0 - Tiers 2-3: Login Brute-Force, Cookie Session, REST Hardening, Hosting, SARIF, Spider (2026-07-08)
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/access/login_bruteforce_step.py` | **NEW** | POST wp-login.php with credential pairs |
+| `core/auth.py` | **MODIFIED** | Added `AdminSession` class for cookie-based login |
+| `steps/access/site_health_step.py` | **NEW** | Extract debug info via cookie admin session |
+| `steps/access/rest_hardening_step.py` | **NEW** | CORS, user endpoint, route leakage, plugin endpoint checks |
+| `steps/infrastructure/hosting_step.py` | **NEW** | 12 hosting provider signatures + Bedrock detection |
+| `utils/report.py` | **MODIFIED** | Added `SarifFormatter` class |
+| `steps/discovery/spider_step.py` | **NEW** | Same-origin crawler with robots.txt respect |
+| `config.py` | **MODIFIED** | Added `wp_auth_method`, `spider_max_depth`, `spider_max_pages`, sarif in `output_format` |
+
 ### P0 - Inactive Plugin File Accessibility Check (2026-07-08)
 | File | Change | Notes |
 |------|--------|-------|

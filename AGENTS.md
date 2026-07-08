@@ -4,9 +4,9 @@
 
 WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Rich.
 
-Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
+Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 55 steps, 143 tests passing.
+**Current state:** 12 modules, 61 steps, 143 tests passing.
 
 ## Key Design Decisions
 
@@ -18,7 +18,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (13 on main)
+## Commit History (14 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -35,31 +35,18 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via env
 | 11 | `c646dd3` | **Plugin/Theme brute-force** — response-code oracle with fallback wordlists |
 | 12 | `f1520dd` | **CVE correlation** — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 | 13 | `f5c4d85` | **Inactive plugin file accessibility** — probe readme.txt for deactivated plugins |
+| 14 | (current) | **Tiers 2-3: Login brute-force, cookie admin session, REST API hardening, hosting fingerprint, SARIF, content spider** |
 
-## Next Steps by Tier
+## Roadmap Status — ✅ All 9 items implemented
 
-### Tier 1 — High Impact
+| Tier | # | Feature | Key Files |
+|------|---|---------|-----------|
+| T1 | 1-3 | CVE correlation, Plugin/Theme brute-force, Inactive plugin check | Done in commits `f1520dd`, `c646dd3`, `f5c4d85` |
+| T2 | 4 | **Login Brute-Force** | `steps/access/login_bruteforce_step.py` |
+| T2 | 5 | **Cookie-Based Admin Session** | `core/auth.py`, `steps/access/site_health_step.py` |
+| T2 | 6 | **REST API Hardening** | `steps/access/rest_hardening_step.py` |
+| T3 | 7 | **Host Platform Fingerprinting** | `steps/infrastructure/hosting_step.py` |
+| T3 | 8 | **SARIF Output Format** | `utils/report.py` |
+| T3 | 9 | **Content Crawling / Spider** | `steps/discovery/spider_step.py` |
 
-| # | Feature | Key Files | Why Now |
-|---|---------|-----------|---------|
-| 1 | **CVE Correlation** | `core/vulndb.py`, `steps/vuln/` (3 steps), `modules/vuln_module.py` | ✅ Done — commit `f1520dd` |
-| 2 | **Plugin/Theme Brute-Force** | `steps/discovery/plugin_bruteforce_step.py`, `theme_bruteforce_step.py` | ✅ Done — commit `c646dd3` |
-| 3 | **Inactive Plugin File Accessibility** | `steps/access/inactive_plugin_check_step.py`, `modules/access_module.py` | ✅ Done — commit `f5c4d85` |
-
-### Tier 2 — Moderate Impact
-
-| # | Feature | Key Files |
-|---|---------|-----------|
-| 4 | **Login Brute-Force** | `steps/access/login_bruteforce_step.py` (uses existing `resolve_credentials_with_fallback()`) |
-| 5 | **Cookie-Based Admin Session** | `core/auth.py` (extend), `steps/access/site_health_step.py` (new) |
-| 6 | **REST API Hardening** | Permission audits, CORS checks on `/wp-json/` endpoints |
-
-### Tier 3 — Polish
-
-| # | Feature |
-|---|---------|
-| 7 | Host Platform Fingerprinting (WP Engine, Kinsta, Bedrock, etc.) |
-| 8 | SARIF Output Format (CI/CD integration) |
-| 9 | Content Crawling / Spider (discover hidden forms, upload dirs) |
-
-See `docs/next_steps.md` for full implementation plans and `docs/references.md` for external API/tool URLs.
+See `docs/next_steps.md` for implementation details and `docs/references.md` for external API/tool URLs.
