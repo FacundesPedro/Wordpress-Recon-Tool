@@ -11,6 +11,10 @@ A security-focused WordPress reconnaissance and vulnerability scanning tool with
 - **Wayback Machine** - Historical URL enumeration
 
 ### Vulnerability Scanning
+- **CVE Correlation** — Maps plugin/theme/core versions to known CVEs via WPVulnerability.net (free, no key) + optional WPScan API
+  - Core vulnerability detection
+  - Plugin vulnerability detection (auth API + HTML fallback)
+  - Theme vulnerability detection
 - **WPScan Integration** - Comprehensive WordPress vulnerability scanner
   - WordPress version detection + CVE mapping
   - Plugin enumeration + vulnerability detection
@@ -23,6 +27,23 @@ A security-focused WordPress reconnaissance and vulnerability scanning tool with
   - Configurable severity filtering (critical, high, medium)
   - Fast concurrent scanning
 
+### Plugin & Theme Discovery
+- **Response-code oracle brute-force** — Probes `/wp-content/plugins/{slug}/` and `/wp-content/themes/{slug}/`
+  - 200/301/403 = exists, 404 = absent
+  - Version extraction from readme.txt / style.css
+  - Fallback wordlists (30 plugins / 15 themes) with SecLists upgrade guide
+- **Inactive plugin file accessibility** — Queries auth REST API, then probes files for deactivated plugins
+- **Content spider** — Crawls same-origin links for forms, upload dirs, admin paths
+
+### Authentication Testing
+- **Login brute-force** — POST credential pairs to wp-login.php with redirect-based success detection
+- **Cookie-based admin session** — `AdminSession` class for wp-admin surface inspection (site health, etc.)
+- **REST API hardening audit** — CORS misconfiguration, route leakage, public user endpoint, plugin endpoint auth
+
+### Host Fingerprinting
+- **Hosting provider detection** — 12 platforms via response headers (WP Engine, Kinsta, Pantheon, etc.)
+- **Bedrock detection** — roots.io path-structure analysis
+
 ### Security Hardening
 - **SSRF Protection** - Blocks internal IP ranges and cloud metadata endpoints
 - **Rate Limiting** - Configurable request throttling with exponential backoff
@@ -32,12 +53,13 @@ A security-focused WordPress reconnaissance and vulnerability scanning tool with
 ### Report Generation
 - JSON format output
 - Markdown format output
+- SARIF 2.1.0 format output (CI/CD integration)
 - Custom filename support
 
 ### Concurrency
 - **Risk Tier Parallel Execution**
   - Tier 1 (parallel): passive
-  - Tier 2 (parallel): infrastructure, discovery, fingerprint
+  - Tier 2 (parallel): infrastructure, discovery, fingerprint, access, vuln
   - Tier 3 (parallel): users, api, xmlrpc, secrets, ssrf
   - Tier 4 (parallel): tools (wpscan, nuclei)
 
@@ -154,7 +176,7 @@ python main.py list-modules
 | `--profile` / `-p` | Scan profile (passive, light, standard, full, aggressive) | light |
 | `--modules` / `-m` | Specific modules to run | profile default |
 | `--output` / `-o` | Output directory | ./reports |
-| `--format` / `-f` | Output format (json, markdown, both) | markdown |
+| `--format` / `-f` | Output format (json, markdown, sarif, all) | markdown |
 | `--report-file` | Custom report filename | auto-generated |
 | `--quiet` / `-q` | Report output only | false |
 | `--threads` | Number of concurrent threads | 2 |
@@ -167,6 +189,9 @@ python main.py list-modules
 | `--wpscan-timeout` | WPScan timeout in seconds | 600 |
 | `--nuclei` | Enable Nuclei vulnerability scanner | false |
 | `--nuclei-severity` | Nuclei severity filter (critical,high,medium) | medium,high,critical |
+| `--wp-user` | WordPress username for authenticated scan | env: WP_USER |
+| `--wp-app-password` | WordPress Application Password (WP >= 5.6) | env: WP_APPLICATION_PASSWORD |
+| `--wp-auth-method` | Auth method: `app_password` or `cookie` | app_password |
 
 ## Profiles
 
@@ -175,23 +200,25 @@ python main.py list-modules
 | `passive` | passive |
 | `light` | passive, infrastructure, discovery, fingerprint |
 | `standard` | passive, infrastructure, discovery, fingerprint, users, api, xmlrpc, secrets, ssrf |
-| `full` | All modules including tools |
+| `full` | All 12 modules including access and vuln |
 | `aggressive` | users, xmlrpc, secrets, tools |
 
 ## Modules
 
-| Module | Description |
-|--------|-------------|
-| `passive` | Passive reconnaissance (WHOIS, DNS, crt.sh, Wayback) |
-| `infrastructure` | Headers, TLS, WAF, port scanning |
-| `discovery` | Readme, license, sitemap, login page, wp-cron, uploads |
-| `fingerprint` | WordPress version, themes, plugins |
-| `users` | REST API users, oEmbed, author ID enumeration |
-| `api` | REST surface, IP leak, app passwords |
-| `xmlrpc` | XML-RPC detection, methods, credentials, multicall, SSRF |
-| `secrets` | Config backups, .env files, git exposure |
-| `ssrf` | oEmbed proxy, pingback SSRF |
-| `tools` | External tool integrations (WPScan, Nuclei) |
+| Module | Steps | Description |
+|--------|-------|-------------|
+| `access` | 7 | Auth REST API enumeration, login brute-force, cookie admin, REST hardening |
+| `passive` | 5 | Passive reconnaissance (WHOIS, DNS, crt.sh, Wayback, Shodan) |
+| `infrastructure` | 5 | Headers, TLS, WAF, port scanning, hosting fingerprint |
+| `discovery` | 9 | Readme, license, sitemap, login, wp-cron, uploads, plugin/theme brute-force, spider |
+| `fingerprint` | 6 | WordPress version, themes, plugins, asset versions |
+| `vuln` | 3 | CVE correlation for core, plugins, and themes |
+| `users` | 4 | REST API users, oEmbed, author ID enumeration |
+| `api` | 3 | REST surface, IP leak, app passwords |
+| `xmlrpc` | 5 | XML-RPC detection, methods, credentials, multicall, SSRF |
+| `secrets` | 5 | Config backups, .env files, git exposure, debug logs |
+| `ssrf` | 2 | oEmbed proxy, pingback SSRF |
+| `tools` | 6 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor) |
 
 ## Environment Variables
 
@@ -209,8 +236,17 @@ export WP_WPSCAN_API_TOKEN=your_token
 # Nuclei
 export WP_NUCLEI_SEVERITY=critical,high
 
-# Other
+# Shodan
 export WP_SHODAN_API_KEY=your_key
+
+# WordPress auth
+export WP_WP_USER=admin
+export WP_WP_APPLICATION_PASSWORD=your_app_password
+export WP_WP_AUTH_METHOD=app_password
+
+# Content spider
+export WP_SPIDER_MAX_DEPTH=2
+export WP_SPIDER_MAX_PAGES=50
 ```
 
 Or via `.env` file in project root:
@@ -218,6 +254,11 @@ Or via `.env` file in project root:
 WP_THREADS=4
 WP_WPSCAN_API_TOKEN=your_token
 WP_NUCLEI_SEVERITY=critical,high
+WP_WP_USER=admin
+WP_WP_APPLICATION_PASSWORD=your_app_password
+WP_WP_AUTH_METHOD=app_password
+WP_SPIDER_MAX_DEPTH=2
+WP_SPIDER_MAX_PAGES=50
 ```
 
 ## Security
@@ -254,10 +295,12 @@ wordpress_testing_tool/
 ├── core/                   # Core atoms (HttpClient, Finding, Logger)
 ├── base/                   # Base classes (BaseStep, Runner)
 ├── steps/                  # Concrete step implementations
+│   ├── access/             # Authenticated REST API + login brute-force + cookie admin
 │   ├── passive/            # Passive reconnaissance steps
-│   ├── infrastructure/     # Infrastructure checks
-│   ├── discovery/         # File/discovery checks
+│   ├── infrastructure/     # Infrastructure checks + hosting fingerprint
+│   ├── discovery/         # File/discovery checks + brute-force + spider
 │   ├── fingerprint/        # Version/theme/plugin detection
+│   ├── vuln/              # CVE correlation steps
 │   ├── users/             # User enumeration
 │   ├── api/               # REST API checks
 │   ├── xmlrpc/            # XML-RPC checks
@@ -272,7 +315,7 @@ wordpress_testing_tool/
 
 ## Documentation
 
-- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 10 modules
+- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 12 modules
 - [Architecture Plan](docs/architecture_plan.md) - Project architecture
 - [Security Documentation](docs/SECURITY.md) - Security features
 - [Changelog](CHANGELOG.md) - Change history

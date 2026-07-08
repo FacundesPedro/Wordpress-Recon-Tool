@@ -3,12 +3,13 @@
 
 import asyncio
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Annotated, Literal, Optional, cast
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from base.runner import RISK_TIERS as RUNNER_RISK_TIERS
 from base.runner import Runner
 from config import ScanConfig
 from core.logger import Logger
@@ -18,6 +19,7 @@ from utils.report import (
     JsonFormatter,
     MarkdownFormatter,
     Report,
+    SarifFormatter,
     generate_report_filename,
 )
 
@@ -44,7 +46,7 @@ def main(
         typer.Option(
             "-f",
             "--format",
-            help="Report format: json, markdown, both",
+            help="Report format: json, markdown, sarif, all",
             case_sensitive=False,
         ),
     ] = "markdown",
@@ -168,6 +170,10 @@ def main(
         Optional[str],
         typer.Option("--wp-app-password", help="WordPress Application Password (WP >= 5.6)"),
     ] = None,
+    wp_auth_method: Annotated[
+        str,
+        typer.Option("--wp-auth-method", help="Auth method: app_password or cookie"),
+    ] = "app_password",
 ):
     """Run WordPress reconnaissance scan."""
     config = ScanConfig()
@@ -206,6 +212,9 @@ def main(
         config.wp_user = wp_user
     if wp_app_password:
         config.wp_application_password = wp_app_password
+    config.wp_auth_method = cast(
+        "Literal['app_password', 'cookie']", wp_auth_method
+    )
 
     config.skip_version_check = skip_version_check
     config.require_version = require_version
@@ -271,14 +280,22 @@ def list_profiles():
 
 @app.command("list-modules")
 def list_modules():
-    """List available modules."""
+    """List available modules with step counts and descriptions."""
     table = Table(title="Available Modules")
     table.add_column("Module", style="cyan")
+    table.add_column("Steps", style="yellow", justify="right")
+    table.add_column("Risk Tier", style="magenta")
     table.add_column("Description", style="green")
 
     for name in AVAILABLE_MODULES:
         cls = MODULE_REGISTRY[name]
-        table.add_row(name, cls.description or "No description")
+        inst = cls()
+        step_count = len(inst)
+        tier = next(
+            (str(t) for t, names in RUNNER_RISK_TIERS.items() if name in names),
+            "?",
+        )
+        table.add_row(name, str(step_count), f"T{tier}", inst.description or "No description")
 
     console.print(table)
 
@@ -298,7 +315,7 @@ def get_module_names(
     enable_nuclei: bool = False,
     enable_ffuf: bool = False,
     enable_opendoor: bool = False,
-) -> List[str]:
+) -> list[str]:
     """Resolve module names from profile or --modules argument."""
     if modules_arg:
         return [m.strip() for m in modules_arg.split(",")]
@@ -306,7 +323,7 @@ def get_module_names(
 
 
 def build_modules(
-    module_names: List[str],
+    module_names: list[str],
     enable_wpscan: bool = False,
     enable_nuclei: bool = False,
     enable_ffuf: bool = False,
@@ -328,10 +345,7 @@ def build_modules(
 
         module_cls = MODULE_REGISTRY[name]
 
-        if name == "tools":
-            module = module_cls(config)
-        else:
-            module = module_cls()
+        module = module_cls(config) if name == "tools" else module_cls()
 
         modules.append(module)
     return modules
@@ -349,15 +363,20 @@ def _save_report(
         report.domain, timestamp
     )
 
-    if config.output_format in ("json", "both"):
+    if config.output_format in ("json", "both", "all"):
         json_path = output / f"{filename_base}.json"
         JsonFormatter.save(report, json_path)
         console.print(f"[green]JSON report: {json_path}[/green]")
 
-    if config.output_format in ("markdown", "both"):
+    if config.output_format in ("markdown", "both", "all"):
         md_path = output / f"{filename_base}.md"
         MarkdownFormatter.save(report, md_path)
         console.print(f"[green]Markdown report: {md_path}[/green]")
+
+    if config.output_format in ("sarif", "all"):
+        sarif_path = output / f"{filename_base}.sarif"
+        SarifFormatter.save(report, sarif_path)
+        console.print(f"[green]SARIF report: {sarif_path}[/green]")
 
 
 if __name__ == "__main__":
