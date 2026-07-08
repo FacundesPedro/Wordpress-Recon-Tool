@@ -6,16 +6,20 @@ Checks for publicly accessible WordPress files that may expose information.
 """
 
 # WHAT: Discovers exposed files and pages (readme, license, sitemap, login, cron, uploads)
+#      + Brute-force plugin/theme detection via response-code oracle
 # HOW: Each step fetches specific paths and checks for presence/content
 # WHY: Exposed files reveal version info, directory structure, and attack surface
-# STEPS: ReadmeStep, LicenseStep, SitemapStep, LoginPageStep, WpCronStep, UploadsListingStep
+# STEPS: ReadmeStep, LicenseStep, SitemapStep, LoginPageStep, WpCronStep, UploadsListingStep,
+#        PluginBruteforceStep, ThemeBruteforceStep
 
 from modules.module import Module
 from steps.discovery import (
     LicenseStep,
     LoginPageStep,
+    PluginBruteforceStep,
     ReadmeStep,
     SitemapStep,
+    ThemeBruteforceStep,
     UploadsListingStep,
     WpCronStep,
 )
@@ -24,7 +28,8 @@ from steps.discovery import (
 class DiscoveryModule(Module):
     name = "discovery"
     description = (
-        "Discovery checks (readme, license, sitemap, login page, wp-cron, uploads)"
+        "Discovery checks (readme, license, sitemap, login page, wp-cron, uploads, "
+        "plugin/theme brute-force)"
     )
 
     def __init__(self):
@@ -35,3 +40,5 @@ class DiscoveryModule(Module):
         self.add_step(LoginPageStep)
         self.add_step(WpCronStep)
         self.add_step(UploadsListingStep)
+        self.add_step(PluginBruteforceStep)
+        self.add_step(ThemeBruteforceStep)

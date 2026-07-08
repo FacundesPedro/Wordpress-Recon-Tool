@@ -1,0 +1,33 @@
+# Default plugin brute-force fallback list (30 entries)
+# For production use, replace with SecLists wordpress-plugins.fuzz.txt
+# Download from: https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-plugins.fuzz.txt
+akismet
+all-in-one-seo-pack
+all-in-one-wp-migration
+backupbuddy
+better-wp-security
+contact-form-7
+duplicator
+elementor
+essential-addons-for-elementor-lite
+gravityforms
+jetpack
+litespeed-cache
+maintenance
+nextgen-gallery
+really-simple-ssl
+redirection
+revslider
+seo-by-rank-math
+sitepress-multilingual-cms
+smart-slider-3
+tablepress
+updraftplus
+w3-total-cache
+woocommerce
+wordfence
+wordpress-seo
+wp-fastest-cache
+wpforms-lite
+wpmu-dev-seo
+yoast-seo

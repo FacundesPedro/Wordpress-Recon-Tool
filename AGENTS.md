@@ -1,0 +1,62 @@
+# AGENTS.md — Session Anchor for AI Agents
+
+## Project
+
+WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Rich.
+
+Core architecture: `modules/` → `steps/` with risk tiers (1-2), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
+
+**Current state:** 11 modules, 49 steps, 143 tests passing.
+
+## Key Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Wordlist resolution | CLI → config → `wordlists/` → `~/.config/recon-wp/` → hardcoded | Graceful degradation, no file required |
+| Auth mechanism | Application Passwords (HTTP Basic) | WP >= 5.6, no 2FA bypass, cookie-free |
+| Shodan integration | Raw REST API via httpx | No extra `shodan` package dependency |
+| CVE source (planned) | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
+| Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
+
+## Commit History (10 on main)
+
+| # | Commit | Description |
+|---|--------|-------------|
+| 1 | `c1ba72b` | Fix wordlist loading: `wordlist_file` param, `get_wordlist_path()` fallback |
+| 2 | `48c6cf8` | Wire `wordlist_file` in all 7 `WordlistDependencyMixin` callers |
+| 3 | `1e72cba` | Add WHOIS TLD wordlist files (`.com`, `.br`, `.eu`) |
+| 4 | `8abb857` | Rewrite `wordlists/README.md` as production guide |
+| 5 | `8c24a92` | Reorganize docs into `docs/` directory |
+| 6 | `b7491fd` | Fix `utcnow()` deprecation (3 files, 13 pytest warnings) |
+| 7 | `836b50e` | Add Shodan intelligence gathering step |
+| 8 | `4571726` | Add authenticated REST API module (plugins, themes, users via App Passwords) |
+| 9 | — | Add `docs/next_steps.md` — prioritized roadmap |
+| 10 | — | Add `docs/references.md` — indexed external URLs |
+
+## Next Steps by Tier
+
+### Tier 1 — High Impact (start here next session)
+
+| # | Feature | Key Files | Why Now |
+|---|---------|-----------|---------|
+| 1 | **CVE Correlation** | `core/vulndb.py` (new), `steps/vuln/` (3 new), `modules/vuln_module.py` (new) | Maps versions to CVE findings — core value proposition |
+| 2 | **Plugin/Theme Brute-Force** | `steps/discovery/plugin_bruteforce_step.py`, `theme_bruteforce_step.py` | Catches inactive/hidden plugins passive scan misses |
+| 3 | **Inactive Plugin File Accessibility** | `steps/access/inactive_plugin_check_step.py` | Auth step already lists inactive plugins — check if files readable |
+
+### Tier 2 — Moderate Impact
+
+| # | Feature | Key Files |
+|---|---------|-----------|
+| 4 | **Login Brute-Force** | `steps/access/login_bruteforce_step.py` (uses existing `resolve_credentials_with_fallback()`) |
+| 5 | **Cookie-Based Admin Session** | `core/auth.py` (extend), `steps/access/site_health_step.py` (new) |
+| 6 | **REST API Hardening** | Permission audits, CORS checks on `/wp-json/` endpoints |
+
+### Tier 3 — Polish
+
+| # | Feature |
+|---|---------|
+| 7 | Host Platform Fingerprinting (WP Engine, Kinsta, Bedrock, etc.) |
+| 8 | SARIF Output Format (CI/CD integration) |
+| 9 | Content Crawling / Spider (discover hidden forms, upload dirs) |
+
+See `docs/next_steps.md` for full implementation plans and `docs/references.md` for external API/tool URLs.

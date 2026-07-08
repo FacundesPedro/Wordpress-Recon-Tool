@@ -1,0 +1,17 @@
+# Default theme brute-force fallback list (15 entries)
+# For production use, replace with a comprehensive theme wordlist
+astra
+avada
+divi
+enfold
+generatepress
+heateor-woo-floating-cart
+hello-elementor
+jupiter
+kadence
+oceanwp
+porto
+salient
+the7
+twenty-twenty-four
+ui-element

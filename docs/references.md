@@ -14,6 +14,11 @@
 | [WPScan API v3](https://wpscan.com/docs/api/v3/) | **Secondary CVE source (planned).** Free tier (25 req/day) with API token. Curated, manually verified vulnerabilities. Already partially integrated — the existing `config.py` has `wpscan_api_token` for WPScan CLI integration; can be reused for API lookups. |
 | [WPScan Enterprise Data](https://enterprise-data.wpscan.com/) | Enterprise bulk download of the full vulnerability database (gzipped JSON). Relevant if the project ever needs an offline CVE cache. |
 | [Wordfence Vulnerability Feed](https://www.wordfence.com/) | 117MB JSON feed with ~7,000 plugin CVEs. Requires free API key. Used by wpsecscan and wphunter as one of many sources. |
+| [NVD API 2.0](https://nvd.nist.gov/developers) | National Vulnerability Database API. Official CVE source with CVSS scores, CPE mappings, and references. Rate-limited (free API key available). |
+| [NVD Data Feeds](https://nvd.nist.gov/vuln/data-feeds) | Bulk JSON/XML feeds of all CVEs. Daily updates. Alternative to API for offline CVE correlation. |
+| [OSV.dev](https://osv.dev/) | Open Source Vulnerabilities database from Google. Aggregates from 17+ sources including GitHub, PyPI, npm, CVE. Free API, no key required. Relevant for plugin dependency vulns. |
+| [OSV.dev API Docs](https://osv.dev/docs/) | Query API: `POST /v1/query` for package-based vuln lookup, `GET /v1/vuln/{id}` for single vuln. Useful for dependency scanning. |
+| [Exploit-DB](https://www.exploit-db.com/) | Public exploit archive. Relevant for checking if a detected CVE has a publicly available exploit. |
 
 ## Tool Integrations (Existing)
 
@@ -21,6 +26,9 @@
 |-----|----------------|
 | [WPScan CLI](https://github.com/wpscanteam/wpscan) | **Integrated in `tools` module.** The industry standard WordPress scanner. Invoked via `steps/tools/wpscan_step.py`. v4.0.0 (May 2026) added `--wp-auth` and SARIF output. |
 | [Nuclei](https://github.com/projectdiscovery/nuclei) | **Integrated in `tools` module.** Fast vulnerability scanner with YAML templates. Invoked via `steps/tools/nuclei_step.py`. Has WordPress-specific templates under `fuzzing/wordpress-plugins-detect.yaml`. |
+| [Nuclei — WordPress Templates](https://github.com/projectdiscovery/nuclei-templates/tree/main/http/wordpress) | Repository of WordPress-specific Nuclei templates. Covers known vulns, config issues, exposed files. |
+| [Nuclei — CVE Templates](https://github.com/projectdiscovery/nuclei-templates/tree/main/http/cves) | General CVE templates that may include WP-related CVEs. |
+| [Nuclei — Fuzzing Templates](https://github.com/projectdiscovery/nuclei-templates/tree/main/http/fuzzing) | Fuzzing templates including `wordpress-plugins-detect.yaml` for plugin brute-force. |
 | [FFUF](https://github.com/ffuf/ffuf) | **Integrated in `tools` module.** Directory/file fuzzer. Invoked via `steps/tools/ffuf_*_step.py`. Used for wordlist-based path discovery. |
 | [OpenDoor](https://github.com/stanislav-web/OpenDoor) | **Integrated in `tools` module.** WordPress-focused path scanner. Invoked via `steps/tools/opendoor_step.py`. Includes WP-specific mode. |
 
@@ -41,7 +49,16 @@
 | [Application Passwords Integration Guide](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) | **Auth mechanism reference.** Documents how Application Passwords work — built into WP 5.6+, use HTTP Basic Auth, bypass 2FA, individually revocable. The auth design in `core/auth.py` follows this spec. |
 | [WP REST API Authentication Comparison (2026)](https://attowp.com/blog/wordpress-rest-api-authentication-methods-comparison/) | Auth method decision guide. Confirms Application Passwords are the right choice for server-to-server integrations. |
 | [Headless WP Auth: JWT vs App Passwords vs OAuth](https://jwtauth.pro/blog/headless-wp-auth-comparison) | Industry comparison. Validates the choice of Application Passwords for the authenticated scan mode. |
-
+| [WordPress.org Plugin API (`plugins/info/1.2`)](https://developer.wordpress.org/plugins/wordpress-org/api/) | Query plugin metadata (version, download count, rating) without hitting the target site. Used by some scanners for version comparison. |
+| [WordPress.org Theme API (`themes/info/1.1`)](https://developer.wordpress.org/themes/wordpress-org/api/) | Query theme metadata same as plugin API. |
+| [WordPress.org Version Check API (`core/version-check/1.7`)](https://api.wordpress.org/core/version-check/1.7/) | Returns latest WP versions by branch. Can be used to check if a detected version is current. |
+| [WordPress.org Secret Services (`secret-service/1.1`)](https://api.wordpress.org/secret-service/1.1/) | Checksums for core files by version. Relevant for file integrity checks. |
+| [WordPress Release Archive](https://wordpress.org/download/releases/) | Historical release archive. Useful for looking up old versions. |
+| [WordPress Trac Tags](https://core.trac.wordpress.org/tags) | All WP version tags (SVN). Useful for release history verification. |
+| [WordPress Versions (Codex)](https://codex.wordpress.org/WordPress_Versions) | Comprehensive list of all WP versions with dates. Reference for version detection validation. |
+| [WordPress Developer Resources](https://developer.wordpress.org/) | Official dev docs. Covers hooks, REST API, CLI, coding standards. |
+| [WP REST API Handbook](https://developer.wordpress.org/rest-api/) | Detailed REST API docs. Reference for endpoint detection and auth methods. |
+ 
 ## Wordlists
 
 | URL | Why It Matters |
@@ -67,8 +84,14 @@
 |-----|----------------|
 | [OWASP Web Security Testing Guide](https://owasp.org/www-project-web-security-testing-guide/) | Testing methodology framework. The project's checks should map to OWASP categories (as WPSecScan does). |
 | [CISA Known Exploited Vulnerabilities (KEV)](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Feed of actively exploited vulnerabilities. Relevant for CVE severity prioritization if CVE correlation is implemented. |
+| [CISA KEV — JSON Feed](https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json) | Machine-readable JSON dump of the KEV catalog. Can be consumed directly for exploit-activity scoring. |
+| [CISA KEV — GitHub Mirror](https://github.com/cisagov/KEV) | CISA-maintained GitHub mirror. Alternative access point with git history. |
 | [CVSS v3.1 Calculator](https://www.first.org/cvss/v3-1/) | Severity scoring reference. Maps CVSS scores to the tool's severity levels (`info`/`low`/`medium`/`high`/`critical`) in finding emission. |
 | [MITRE ATT&CK — WordPress Techniques](https://attack.mitre.org/techniques/enterprise/) | Threat modeling framework. Some scanners tag findings with ATT&CK technique IDs (e.g., `T1190`, `T1592.002`). |
+| [Mozilla Observatory](https://observatory.mozilla.org/) | Security header scanner and grader. Reference for evaluating the `HeadersStep` findings. Grades TLS, CSP, HSTS, XFO, etc. |
+| [SecurityHeaders.com](https://securityheaders.com/) | Header grading tool. Quick way to validate `HeadersStep` output. |
+| [CSP Evaluator](https://csp-evaluator.withgoogle.com/) | Google's CSP analysis tool. Helps evaluate Content-Security-Policy findings. |
+| [WPScan Vulnerability Statistics](https://wpscan.com/statistics) | Dashboard of WP vulnerability trends. Useful for understanding prevalence of plugin/theme vulns when prioritizing. |
 
 ## Python Ecosystem
 
