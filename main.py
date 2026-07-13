@@ -16,8 +16,10 @@ from core.logger import Logger
 from core.target import Target
 from modules import AVAILABLE_MODULES, MODULE_REGISTRY, PROFILES
 from utils.report import (
+    HtmlFormatter,
     JsonFormatter,
     MarkdownFormatter,
+    PdfFormatter,
     Report,
     SarifFormatter,
     generate_report_filename,
@@ -46,7 +48,7 @@ def main(
         typer.Option(
             "-f",
             "--format",
-            help="Report format: json, markdown, sarif, all",
+            help="Report format: json, markdown, sarif, html, pdf, all",
             case_sensitive=False,
         ),
     ] = "markdown",
@@ -377,6 +379,16 @@ def _save_report(
         sarif_path = output / f"{filename_base}.sarif"
         SarifFormatter.save(report, sarif_path)
         console.print(f"[green]SARIF report: {sarif_path}[/green]")
+
+    if config.output_format in ("html", "all"):
+        html_path = output / f"{filename_base}.html"
+        HtmlFormatter.save(report, html_path)
+        console.print(f"[green]HTML report: {html_path}[/green]")
+
+    if config.output_format in ("pdf", "all"):
+        pdf_path = output / f"{filename_base}.pdf"
+        PdfFormatter.save(report, pdf_path)
+        console.print(f"[green]PDF report: {pdf_path}[/green]")
 
 
 if __name__ == "__main__":

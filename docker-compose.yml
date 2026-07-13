@@ -1,0 +1,14 @@
+services:
+  recon:
+    build: .
+    image: wp-recon-tool:latest
+    container_name: wp-recon
+    volumes:
+      - ./reports:/app/reports
+    env_file:
+      - .env
+    environment:
+      - WP_THREADS=${WP_THREADS:-2}
+      - WP_TIMEOUT=${WP_TIMEOUT:-10}
+      - WP_LOG_LEVEL=${WP_LOG_LEVEL:-INFO}
+    command: ["-t", "${WP_TARGET:-https://example.com}", "-f", "${WP_FORMAT:-html}", "-o", "/app/reports"]

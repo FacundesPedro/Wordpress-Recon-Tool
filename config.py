@@ -47,7 +47,7 @@ class ScanConfig(BaseSettings):
     output_dir: Path = Field(
         default=Path("./reports"), description="Output directory for reports"
     )
-    output_format: Literal["json", "markdown", "sarif", "all"] = Field(
+    output_format: Literal["json", "markdown", "sarif", "html", "pdf", "all"] = Field(
         default="markdown", description="Report output format"
     )
     quiet: bool = Field(default=False, description="Suppress console output")
