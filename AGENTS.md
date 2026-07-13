@@ -36,6 +36,7 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 | 12 | `f1520dd` | **CVE correlation** — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 | 13 | `f5c4d85` | **Inactive plugin file accessibility** — probe readme.txt for deactivated plugins |
 | 14 | (current) | **Tiers 2-3: Login brute-force, cookie admin session, REST API hardening, hosting fingerprint, SARIF, content spider** |
+| 15 | `e6c6efa` | **Doc cleanup: remove redundant .md files, update outdated references** |
 
 ## Roadmap Status — ✅ All 9 items implemented
 
@@ -51,10 +52,48 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 
 ## Remaining Work
 
-| # | Area | Details |
-|---|------|---------|
-| 1 | **Tests** | 6 new steps lack tests: LoginBruteforceStep, SiteHealthStep, RestHardeningStep, HostingStep, SarifFormatter, SpiderStep |
-| 2 | **Wordlists** | Download/generate production wordlists (SecLists) |
-| 3 | **Beyond roadmap** | Stealth, HTML reporting, Docker, PyPI package, plugin architecture |
+### Priority 1 — Tests (high impact, untested production code)
+
+6 steps and 1 formatter have zero test coverage. All other modules have tests.
+
+| Step | File | What to test |
+|------|------|-------------|
+| `LoginBruteforceStep` | `steps/access/login_bruteforce_step.py` | POST wp-login.php with mock responses (302 success, 200 failure), credential wordlist fallback, rate limiting |
+| `SiteHealthStep` | `steps/access/site_health_step.py` | Cookie-based login via `AdminSession`, debug info extraction from HTML, skip when `wp_auth_method != "cookie"` |
+| `RestHardeningStep` | `steps/access/rest_hardening_step.py` | CORS wildcard detection, route leakage parsing, user endpoint exposure, plugin endpoint audit |
+| `HostingStep` | `steps/infrastructure/hosting_step.py` | Header matching for 12 providers, Bedrock path detection, no-match fallback |
+| `SarifFormatter` | `utils/report.py` | SARIF 2.1.0 envelope structure, rules/results/invocations, empty findings handling |
+| `SpiderStep` | `steps/discovery/spider_step.py` | Same-origin link extraction, depth limiting, max page limiting, robots.txt respect, form/upload detection |
+
+Test patterns: follow existing `tests/test_ssrf_protection.py` style — pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`).
+
+### Priority 2 — Wordlists (production scan effectiveness)
+
+Brute-force steps use small fallback lists (30 plugins / 15 themes). Production scans need SecLists.
+
+```bash
+# Download to project
+mkdir -p wordlists/external
+curl -o wordlists/external/wp-plugins.txt \
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-plugins.fuzz.txt
+curl -o wordlists/external/wp-themes.txt \
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-themes-fuzz.txt
+
+# Or to user config
+mkdir -p ~/.config/recon-wp/wordlists
+cp wordlists/external/wp-plugins.txt ~/.config/recon-wp/wordlists/
+```
+
+See `wordlists/README.md` for full resolution chain.
+
+### Priority 3 — Beyond roadmap (future features)
+
+| Feature | Effort | Impact | Notes |
+|---------|--------|--------|-------|
+| **Stealth** | High | High | Timing jitter, user-agent pool, request deduplication, distributed scanning |
+| **HTML reporting** | Medium | Medium | Visual report with severity badges, charts, executive summary |
+| **Docker** | Low | Medium | `Dockerfile` + `docker-compose.yml` with all deps pre-installed |
+| **PyPI package** | Medium | Low | `pyproject.toml`, entry point, versioning |
+| **Plugin architecture** | High | High | Dynamic step loading from external packages, CLI `--plugin` flag |
 
 See `docs/next_steps.md` for implementation details and `docs/references.md` for external API/tool URLs.
