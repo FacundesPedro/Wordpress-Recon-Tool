@@ -2,6 +2,64 @@
 
 A security-focused WordPress reconnaissance and vulnerability scanning tool with passive reconnaissance, security hardening features, and comprehensive report generation.
 
+## Quick Setup
+
+```bash
+git clone <repo-url> && cd wordpress_testing_tool
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# Basic scan
+python main.py main --target https://example.com
+
+# Full scan with all modules
+python main.py main --target https://example.com --profile full
+```
+
+See [Installation](#installation) for external tool setup and [Production Wordlists](#production-wordlists-optional) for production wordlists.
+
+## Quick Start
+
+### Basic Scan
+```bash
+python main.py main --target https://example.com
+```
+
+### Passive Reconnaissance Only
+```bash
+python main.py main --target https://example.com --modules passive
+```
+
+### Full Scan with Debug Output
+```bash
+python main.py main --target https://example.com --profile full --debug
+```
+
+### JSON / SARIF Output
+```bash
+python main.py main --target https://example.com --format json
+python main.py main --target https://example.com --format sarif
+```
+
+### Vulnerability Scanning
+```bash
+python main.py main --target https://example.com --wpscan --wpscan-api-token YOUR_TOKEN
+python main.py main --target https://example.com --nuclei
+python main.py main --target https://example.com --wpscan --nuclei
+```
+
+### Authenticated Scan (requires WP >= 5.6 with Application Password)
+```bash
+python main.py main --target https://example.com --profile full \
+  --wp-user admin --wp-app-password 'xxxx xxxx xxxx xxxx xxxx xxxx'
+```
+
+### List Available Options
+```bash
+python main.py list-profiles
+python main.py list-modules
+```
+
 ## Features
 
 ### Passive Reconnaissance
@@ -65,111 +123,40 @@ A security-focused WordPress reconnaissance and vulnerability scanning tool with
 
 ## Installation
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd wordpress_testing_tool
+### External Tools (Optional)
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+For WPScan, Nuclei, FFUF, OpenDoor, and DNS modules:
 
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### External Dependencies (Optional)
-
-For full functionality, install these system tools:
 ```bash
 # macOS
-brew install bind wpscan nuclei
+brew install wpscan nuclei bind  # whois included
 
 # Ubuntu/Debian
-apt install dnsutils whois
-
-# WPScan (Ruby)
+apt install whois dnsutils
 gem install wpscan
-
-# Nuclei (Go)
-go install -v github.com/projectdiscovery/nuclei/v3/...@latest
+go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 ```
 
-### Wordlists (Optional)
+### Production Wordlists (Optional)
 
-Wordlists are stored externally at `~/.config/recon-wp/wordlists/`:
+The tool works out-of-the-box with small fallback lists. For real scans, download SecLists:
 
 ```bash
-mkdir -p ~/.config/recon-wp/wordlists/whois
-# Place WHOIS pattern files in this directory
+# Download to project (git-ignored)
+mkdir -p wordlists/external
+curl -o wordlists/external/wp-plugins.txt \
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-plugins.fuzz.txt
+curl -o wordlists/external/wp-themes.txt \
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-themes-fuzz.txt
+
+# Or make them persistent (picked up automatically)
+mkdir -p ~/.config/recon-wp/wordlists
+cp wordlists/external/wp-plugins.txt ~/.config/recon-wp/wordlists/
 ```
 
-See [wordlists/README.md](wordlists/README.md) for WHOIS pattern configuration.
-
-## Quick Start
-
-### Basic Scan
-```bash
-python main.py main --target https://example.com
-```
-
-### Passive Reconnaissance Only
-```bash
-python main.py main --target https://example.com --modules passive
-```
-
-### Full Scan with Debug Output
-```bash
-python main.py main --target https://example.com --profile full --debug
-```
-
-### JSON Output
-```bash
-python main.py main --target https://example.com --format json
-```
-
-### Custom Report Filename
-```bash
-python main.py main --target https://example.com --report-file my_scan
-```
-
-### Skip TLS Verification (for self-signed certs)
-```bash
-python main.py main --target https://example.com --insecure
-```
-
-### WPScan Vulnerability Scanning
-```bash
-# Run WPScan with API token (recommended for CVE data)
-python main.py main --target https://example.com --wpscan --wpscan-api-token YOUR_TOKEN
-
-# WPScan with custom enumeration
-python main.py main --target https://example.com --wpscan --wpscan-enumerate "vp,vt,u"
-
-# WPScan with extended timeout (for large sites)
-python main.py main --target https://example.com --wpscan --wpscan-timeout 900
-```
-
-### Nuclei Vulnerability Scanning
-```bash
-# Run Nuclei with default severity (medium, high, critical)
-python main.py main --target https://example.com --nuclei
-
-# Run Nuclei with critical and high severity only
-python main.py main --target https://example.com --nuclei --nuclei-severity critical,high
-
-# Run both WPScan and Nuclei
-python main.py main --target https://example.com --wpscan --nuclei
-```
-
-### List Available Options
-```bash
-python main.py list-profiles
-python main.py list-modules
-```
+See [wordlists/README.md](wordlists/README.md) for the full resolution chain and guide.
 
 ## CLI Options
-
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--target` / `-t` | Target WordPress URL (required) | - |
