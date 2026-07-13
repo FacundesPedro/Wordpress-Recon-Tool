@@ -104,7 +104,7 @@ mkdir -p ~/.config/recon-wp/wordlists/whois
 # Place WHOIS pattern files in this directory
 ```
 
-See [docs/WHOIS_WORDLIST.md](docs/WHOIS_WORDLIST.md) for configuration.
+See [wordlists/README.md](wordlists/README.md) for WHOIS pattern configuration.
 
 ## Quick Start
 
@@ -320,7 +320,7 @@ wordpress_testing_tool/
 - [Security Documentation](docs/SECURITY.md) - Security features
 - [Changelog](CHANGELOG.md) - Change history
 - [Code Documentation](docs/code.md) - Code abstractions and execution flow
-- [WHOIS Wordlists](docs/WHOIS_WORDLIST.md) - Wordlist configuration
+- [Wordlists Guide](wordlists/README.md) - Wordlist configuration and production setup
 
 ## License
 

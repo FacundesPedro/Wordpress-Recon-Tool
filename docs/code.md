@@ -16,7 +16,7 @@ SOLID principles + Atomic Design layered on Python async (httpx, asyncio).
 |-------|---------|-----------------|
 | **Atoms** | `core/` | `Finding`, `HttpClient`, `Target`, `Logger`, `SsrfProtection`, exceptions |
 | **Molecules** | `base/` | `BaseStep`, `BaseHttpStep`, `BaseToolStep`, `Runner`, `ToolRunner`/`AsyncToolRunner`, dependency mixins |
-| **Organisms** | `steps/` | 45 concrete step implementations across 10 modules |
+| **Organisms** | `steps/` | 61 concrete step implementations across 12 modules |
 | **Modules** | `modules/` | `Module` container, `MODULE_REGISTRY`, `PROFILES` |
 | **Pipeline** | `main.py` | `Validator → Runner → Aggregator → Report` |
 | **Output** | `utils/report.py` | `JsonFormatter`, `MarkdownFormatter` |
@@ -341,16 +341,18 @@ return self.findings  →  collected by Runner
 
 ```python
 MODULE_REGISTRY = {
-    "passive": PassiveModule,     # WhoisStep, DnsStep, CrtShStep, WaymachineStep
-    "infrastructure": ...         # HeadersStep, TlsStep, WafStep, PortsStep
-    "discovery": ...              # ReadmeStep, LicenseStep, SitemapStep, LoginPageStep, WpCronStep, UploadsListingStep
-    "fingerprint": ...            # WpVersionStep, ThemeStep, PluginStep, PluginVersionStep, VersionedAssetsStep, ScriptsStep
-    "users": ...                  # RestApiUsersStep, OembedUsersStep, AuthorIdStep, LoginVerbosityStep
-    "api": ...                    # RestSurfaceStep, PagesIpLeakStep, AppPasswordsStep
-    "xmlrpc": ...                 # XmlrpcDetectStep, XmlrpcMethodsStep, XmlrpcCredsStep, XmlrpcMulticallStep, XmlrpcSsrfStep
-    "secrets": ...                # WpConfigBackupStep, EnvFileStep, GitExposureStep, DebugLogStep, PhpinfoStep
-    "ssrf": ...                   # OembedProxyStep, PingbackSsrfStep
-    "tools": ...,                 # WpscanStep, NucleiStep, FfufDirectoryStep, FfufFilesStep, FfufWpStep, OpenDoorStep
+    "access":          AccessModule,        # 7 steps — authenticated REST API, login, hardening
+    "passive":         PassiveModule,       # WhoisStep, DnsStep, CrtShStep, WaybackStep, ShodanStep
+    "infrastructure":  InfrastructureModule, # HeadersStep, TlsStep, WafStep, PortsStep, HostingStep
+    "discovery":       DiscoveryModule,      # ReadmeStep, LicenseStep, SitemapStep, LoginPageStep, WpCronStep, UploadsListingStep, PluginBruteforceStep, ThemeBruteforceStep, SpiderStep
+    "fingerprint":     FingerprintModule,    # WpVersionStep, ThemeStep, PluginStep, PluginVersionStep, VersionedAssetsStep, ScriptsStep
+    "vuln":            VulnModule,           # CoreVulnStep, PluginVulnStep, ThemeVulnStep
+    "users":           UsersModule,          # RestApiUsersStep, OembedUsersStep, AuthorIdStep, LoginVerbosityStep
+    "api":             ApiModule,            # RestSurfaceStep, PagesIpLeakStep, AppPasswordsStep
+    "xmlrpc":          XmlrpcModule,         # XmlrpcDetectStep, XmlrpcMethodsStep, XmlrpcCredsStep, XmlrpcMulticallStep, XmlrpcSsrfStep
+    "secrets":         SecretsModule,        # WpConfigBackupStep, EnvFileStep, GitExposureStep, DebugLogStep, PhpinfoStep
+    "ssrf":            SsrfModule,           # OembedProxyStep, PingbackSsrfStep
+    "tools":           ToolsModule,          # WpscanStep, NucleiStep, FfufDirectoryStep, FfufFilesStep, FfufWpStep, OpenDoorStep
 }
 PROFILES = {
     "passive": ["passive"],
@@ -379,23 +381,36 @@ class Module:
 
 ## 7. Step Inventory
 
-### Passive (4 steps, Tier 1)
+### Access (7 steps, Tier 2 — requires `--wp-user` + `--wp-app-password`)
+| Step | Endpoint | Severity |
+|------|----------|----------|
+| `WpJsonPluginsStep` | `/wp-json/wp/v2/plugins` (auth) | Info |
+| `WpJsonThemesStep` | `/wp-json/wp/v2/themes` (auth) | Info |
+| `WpJsonUsersStep` | `/wp-json/wp/v2/users` (auth) | Info |
+| `InactivePluginCheckStep` | `/wp-content/plugins/{slug}/readme.txt` | Medium |
+| `LoginBruteforceStep` | `POST /wp-login.php` | High |
+| `SiteHealthStep` | `/wp-admin/site-health-info.php` (cookie) | Info |
+| `RestHardeningStep` | CORS, route leakage, user endpoint | Medium |
+
+### Passive (5 steps, Tier 1)
 | Step | Base | Binary/API | Severity |
 |------|------|-----------|----------|
 | `WhoisStep` | BaseToolStep | `whois` | Info |
 | `DnsStep` | BaseToolStep | `dig` | Info |
 | `CrtShStep` | BaseHttpStep | crt.sh API | Info |
 | `WaymachineStep` | BaseHttpStep | Wayback CDX | Info |
+| `ShodanStep` | BaseStep | Shodan REST API | Info |
 
-### Infrastructure (4 steps, Tier 2)
+### Infrastructure (5 steps, Tier 2)
 | Step | Base | Severity |
 |------|------|----------|
 | `HeadersStep` | BaseHttpStep | Info |
 | `TlsStep` | BaseHttpStep | Info |
 | `WafStep` | BaseHttpStep | Info |
 | `PortsStep` | BaseHttpStep | Medium |
+| `HostingStep` | BaseHttpStep | Info |
 
-### Discovery (6 steps, Tier 2)
+### Discovery (9 steps, Tier 2)
 | Step | Severity |
 |------|----------|
 | `ReadmeStep` | Low |
@@ -404,6 +419,9 @@ class Module:
 | `LoginPageStep` | Info |
 | `WpCronStep` | Medium |
 | `UploadsListingStep` | Medium |
+| `PluginBruteforceStep` | Info |
+| `ThemeBruteforceStep` | Info |
+| `SpiderStep` | Info |
 
 ### Fingerprint (6 steps, Tier 2)
 | Step | Method | Severity |
@@ -414,6 +432,13 @@ class Module:
 | `PluginVersionStep` | readme.txt/md + PHP header | Info |
 | `VersionedAssetsStep` | `?ver=` in URLs | Info |
 | `ScriptsStep` | Core WP scripts | Info |
+
+### Vuln (3 steps, Tier 2)
+| Step | Source | Severity |
+|------|--------|----------|
+| `CoreVulnStep` | WPVulnerability.net + WPScan API | CVSS-based |
+| `PluginVulnStep` | WPVulnerability.net + WPScan API | CVSS-based |
+| `ThemeVulnStep` | WPVulnerability.net + WPScan API | CVSS-based |
 
 ### Users (4 steps, Tier 3)
 | Step | Endpoint | Severity |
@@ -472,6 +497,7 @@ class Module:
 - `Report` — Aggregated scan container (target, domain, timestamps, findings, modules_run, errors)
 - `JsonFormatter.format/save` — Pretty-printed JSON output
 - `MarkdownFormatter.format/save` — Markdown report with badges, severity buckets, evidence blocks
+- `SarifFormatter.format/save` — SARIF 2.1.0 output for CI/CD integration
 - `generate_report_filename()` — `recon_{domain}_{timestamp}`
 
 ### `utils/rate_limiter.py`

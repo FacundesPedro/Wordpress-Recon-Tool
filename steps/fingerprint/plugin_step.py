@@ -20,7 +20,7 @@ class PluginStep(BaseHttpStep):
     Detect installed WordPress plugins by parsing HTML for wp-content/plugins/ links.
 
     Note: This step only detects plugins explicitly linked in the HTML.
-    For comprehensive enumeration, use wordlist-based brute force (see docs/missing_wordlists.md).
+    For comprehensive enumeration, use wordlist-based brute force (see wordlists/README.md).
     """
 
     name = "plugin"

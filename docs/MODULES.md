@@ -1550,4 +1550,4 @@ Quick scan configurations:
 - [Security Documentation](./SECURITY.md) - Security features
 - [Code Documentation](./code.md) - Code abstractions and execution flow
 - [Changelog](../CHANGELOG.md) - Version history
-- [Missing Wordlists](./missing_wordlists.md) - Planned wordlist features
+- [Wordlists Guide](../wordlists/README.md) - Wordlist configuration and production setup

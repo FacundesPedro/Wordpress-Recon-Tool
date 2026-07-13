@@ -31,93 +31,124 @@
 ## 2. Project Structure
 
 ```
-recon_wp/
+wordpress_testing_tool/
 │
 ├── main.py                         # CLI entrypoint (Typer)
 │
+├── config.py                       # ScanConfig (pydantic-settings, WP_* env prefix)
+│
 ├── core/                           # ── ATOMS ──
-│   ├── http_client.py              # Shared async httpx session
-│   ├── tool_runner.py              # subprocess wrapper (timeout, capture, error)
+│   ├── http_client.py              # Shared async httpx session (UA rotation)
 │   ├── target.py                   # Target(url, domain, scope)
-│   ├── finding.py                  # Finding dataclass
-│   └── logger.py                   # Rich-powered timestamped logger
+│   ├── finding.py                  # Finding dataclass + SARIF export
+│   ├── logger.py                   # Rich-powered timestamped logger
+│   ├── ssrf_protection.py          # IP blocklist (RFC 1918, cloud metadata)
+│   ├── auth.py                     # Application Password + AdminSession (cookie)
+│   ├── vulndb.py                   # WPVulnerability.net + WPScan API facade
+│   └── exceptions.py               # ReconError, ToolNotFoundError, etc.
 │
 ├── base/                           # ── MOLECULES ──
-│   ├── base_step.py                # BaseStep ABC → run(), findings[], name, description
-│   ├── base_tool_step.py           # BaseToolStep(BaseStep) → binary, build_command(), parse_output()
-│   └── config.py                   # Config: .env + config.yaml + pydantic validation
+│   ├── step.py                     # BaseStep ABC, BaseHttpStep, BaseToolStep
+│   ├── tool.py                     # ToolRunner, AsyncToolRunner, ToolResult
+│   ├── dependencies.py             # WordlistDependencyMixin, BinaryDependencyMixin
+│   ├── runner.py                   # Async orchestrator (risk-tier parallel execution)
+│   └── aggregator.py               # Collects + deduplicates all findings
 │
-├── steps/                          # ── ORGANISMS (individual steps) ──
+├── steps/                          # ── ORGANISMS (61 steps across 12 modules) ──
 │   │
-│   ├── passive/
+│   ├── access/                     # Authenticated REST API + login + hardening (7)
+│   │   ├── plugins_step.py         # WpJsonPluginsStep
+│   │   ├── themes_step.py          # WpJsonThemesStep
+│   │   ├── users_step.py           # WpJsonUsersStep
+│   │   ├── inactive_plugin_check_step.py
+│   │   ├── login_bruteforce_step.py
+│   │   ├── site_health_step.py     # Cookie-based admin session
+│   │   └── rest_hardening_step.py  # CORS, route leakage, user endpoint
+│   │
+│   ├── passive/                    # External intelligence (5)
 │   │   ├── whois_step.py
 │   │   ├── dns_step.py
 │   │   ├── crt_sh_step.py
 │   │   ├── wayback_step.py
 │   │   └── shodan_step.py
 │   │
-│   ├── infrastructure/
+│   ├── infrastructure/             # Server configuration (5)
 │   │   ├── headers_step.py
 │   │   ├── tls_step.py
 │   │   ├── waf_step.py
-│   │   └── ports_step.py
+│   │   ├── ports_step.py
+│   │   └── hosting_step.py         # 12 hosting providers + Bedrock
 │   │
-│   ├── discovery/
+│   ├── discovery/                  # File enumeration + brute-force (9)
 │   │   ├── readme_step.py
 │   │   ├── license_step.py
 │   │   ├── sitemap_step.py
 │   │   ├── login_page_step.py
 │   │   ├── wp_cron_step.py
-│   │   └── uploads_listing_step.py
+│   │   ├── uploads_listing_step.py
+│   │   ├── plugin_bruteforce_step.py
+│   │   ├── theme_bruteforce_step.py
+│   │   └── spider_step.py
 │   │
-│   ├── fingerprint/
+│   ├── fingerprint/                # Version detection (6)
 │   │   ├── wp_version_step.py
 │   │   ├── theme_step.py
 │   │   ├── plugin_step.py
+│   │   ├── plugin_version_step.py
 │   │   ├── versioned_assets_step.py
 │   │   └── scripts_step.py
 │   │
-│   ├── users/
+│   ├── vuln/                       # CVE correlation (3)
+│   │   ├── core_vuln_step.py
+│   │   ├── plugin_vuln_step.py
+│   │   └── theme_vuln_step.py
+│   │
+│   ├── users/                      # User enumeration (4)
 │   │   ├── rest_api_users_step.py
 │   │   ├── oembed_users_step.py
 │   │   ├── author_id_step.py
 │   │   └── login_verbosity_step.py
 │   │
-│   ├── api/
+│   ├── api/                        # REST API surface (3)
 │   │   ├── rest_surface_step.py
 │   │   ├── pages_ip_leak_step.py
 │   │   └── app_passwords_step.py
 │   │
-│   ├── xmlrpc/
+│   ├── xmlrpc/                     # XML-RPC testing (5)
 │   │   ├── xmlrpc_detect_step.py
 │   │   ├── xmlrpc_methods_step.py
 │   │   ├── xmlrpc_creds_step.py
 │   │   ├── xmlrpc_multicall_step.py
 │   │   └── xmlrpc_ssrf_step.py
 │   │
-│   ├── secrets/
+│   ├── secrets/                    # Sensitive file exposure (5)
 │   │   ├── wp_config_backup_step.py
 │   │   ├── env_file_step.py
 │   │   ├── git_exposure_step.py
 │   │   ├── debug_log_step.py
 │   │   └── phpinfo_step.py
 │   │
-│   ├── ssrf/
+│   ├── ssrf/                       # SSRF vulnerability testing (2)
 │   │   ├── oembed_proxy_step.py
 │   │   └── pingback_ssrf_step.py
 │   │
-│   └── tools/                      # BaseToolStep subclasses
+│   └── tools/                      # External tool integrations (6)
 │       ├── wpscan_step.py
 │       ├── nuclei_step.py
-│       ├── ffuf_step.py
+│       ├── ffuf_directory_step.py
+│       ├── ffuf_files_step.py
+│       ├── ffuf_wp_step.py
 │       └── opendoor_step.py
 │
-├── modules/                        # ── ORGANISMS (grouped steps) ──
+├── modules/                        # ── MODULES (grouped steps) ──
 │   ├── module.py                   # Module(name, steps[]) container
+│   ├── __init__.py                 # MODULE_REGISTRY, PROFILES
+│   ├── access_module.py
 │   ├── passive_module.py
 │   ├── infrastructure_module.py
 │   ├── discovery_module.py
 │   ├── fingerprint_module.py
+│   ├── vuln_module.py
 │   ├── users_module.py
 │   ├── api_module.py
 │   ├── xmlrpc_module.py
@@ -126,20 +157,18 @@ recon_wp/
 │   └── tools_module.py
 │
 ├── utils/                          # ── UTILITIES ──
-│   ├── report.py                   # Report generation (JSON, Markdown)
-│   ├── rate_limiter.py             # Async rate limiting with retry
-│   ├── xml_parser.py              # Safe XML parsing (XXE protection)
-│   ├── wordlist_loader.py         # External wordlist management
-│   └── whois_parser.py            # TLD-aware WHOIS parsing
-
-├── base/
-│   ├── runner.py                   # Async orchestrator (runs modules/steps)
-│   └── aggregator.py              # Collects + deduplicates all findings
+│   ├── report.py                   # JsonFormatter, MarkdownFormatter, SarifFormatter
+│   ├── rate_limiter.py             # RateLimiter, RetryLimiter (token bucket + backoff)
+│   ├── xml_parser.py               # Safe XML parsing (XXE protection)
+│   ├── wordlist_loader.py          # External wordlist management
+│   ├── whois_parser.py             # TLD-aware WHOIS parsing
+│   └── tool_version_checker.py     # External tool version checking
 │
-└── wordlists/
-    ├── wp-plugins.txt
-    ├── wp-themes.txt
-    └── wp-paths.txt
+└── wordlists/                      # ── BUILT-IN WORDLISTS ──
+    ├── ffuf/                       # directories, files, wp_paths, plugins, themes
+    ├── opendoor/                   # wp_paths, backups, configs, sensitive
+    ├── credentials/                # Common WP credential pairs
+    └── whois/                      # TLD-specific WHOIS patterns
 ```
 
 ---
@@ -354,17 +383,19 @@ class Runner:
 Each module is just a named list of steps. The CLI resolves profiles to modules.
 
 ```python
-MODULES = {
-    "passive":        PassiveModule,
-    "infrastructure": InfrastructureModule,
-    "discovery":      DiscoveryModule,
-    "fingerprint":    FingerprintModule,
-    "users":          UsersModule,
-    "api":            ApiModule,
-    "xmlrpc":         XmlrpcModule,
-    "secrets":        SecretsModule,
-    "ssrf":           SsrfModule,
-    "tools":          ToolsModule,
+MODULE_REGISTRY = {
+    "access":          AccessModule,        # 7 steps — authenticated REST API, login brute-force, REST hardening
+    "passive":         PassiveModule,       # 5 steps — WHOIS, DNS, crt.sh, Wayback, Shodan
+    "infrastructure":  InfrastructureModule, # 5 steps — headers, TLS, WAF, ports, hosting
+    "discovery":       DiscoveryModule,      # 9 steps — files, brute-force plugin/theme, spider
+    "fingerprint":     FingerprintModule,    # 6 steps — WP version, themes, plugins, assets
+    "vuln":            VulnModule,           # 3 steps — CVE correlation (core, plugin, theme)
+    "users":           UsersModule,          # 4 steps — REST, oEmbed, author ID, login verbosity
+    "api":             ApiModule,            # 3 steps — REST surface, IP leak, app passwords
+    "xmlrpc":          XmlrpcModule,         # 5 steps — detect, methods, creds, multicall, SSRF
+    "secrets":         SecretsModule,        # 5 steps — config backup, .env, .git, debug log, phpinfo
+    "ssrf":            SsrfModule,           # 2 steps — oEmbed proxy, pingback SSRF
+    "tools":           ToolsModule,          # 6 steps — WPScan, Nuclei, FFUF (3), OpenDoor
 }
 
 PROFILES = {
@@ -372,7 +403,7 @@ PROFILES = {
     "light":      ["passive", "infrastructure", "discovery", "fingerprint"],
     "standard":   ["passive", "infrastructure", "discovery", "fingerprint",
                    "users", "api", "xmlrpc", "secrets", "ssrf"],
-    "full":       list(MODULES.keys()),
+    "full":       list(MODULE_REGISTRY.keys()),
     "aggressive": ["users", "xmlrpc", "secrets", "tools"],
 }
 ```
@@ -461,35 +492,41 @@ recon-wp --target https://example.com --wpscan --wpscan-enumerate "vp,vt,u"
 
 ## 8. Steps per Module (full list)
 
-### Module: passive
+### Module: access (7 steps)
+`WpJsonPluginsStep` · `WpJsonThemesStep` · `WpJsonUsersStep` · `InactivePluginCheckStep` · `LoginBruteforceStep` · `SiteHealthStep` · `RestHardeningStep`
+
+### Module: passive (5 steps)
 `WhoisStep` · `DnsStep` · `CrtShStep` · `WaybackStep` · `ShodanStep`
 
-### Module: infrastructure
-`HeadersStep` · `TlsStep` · `WafStep` · `PortsStep`
+### Module: infrastructure (5 steps)
+`HeadersStep` · `TlsStep` · `WafStep` · `PortsStep` · `HostingStep`
 
-### Module: discovery
-`ReadmeStep` · `LicenseStep` · `SitemapStep` · `LoginPageStep` · `WpCronStep` · `UploadsListingStep`
+### Module: discovery (9 steps)
+`ReadmeStep` · `LicenseStep` · `SitemapStep` · `LoginPageStep` · `WpCronStep` · `UploadsListingStep` · `PluginBruteforceStep` · `ThemeBruteforceStep` · `SpiderStep`
 
-### Module: fingerprint
-`WpVersionStep` · `ThemeStep` · `PluginStep` · `VersionedAssetsStep` · `ScriptsStep`
+### Module: fingerprint (6 steps)
+`WpVersionStep` · `ThemeStep` · `PluginStep` · `PluginVersionStep` · `VersionedAssetsStep` · `ScriptsStep`
 
-### Module: users
+### Module: vuln (3 steps)
+`CoreVulnStep` · `PluginVulnStep` · `ThemeVulnStep`
+
+### Module: users (4 steps)
 `RestApiUsersStep` · `OembedUsersStep` · `AuthorIdStep` · `LoginVerbosityStep`
 
-### Module: api
+### Module: api (3 steps)
 `RestSurfaceStep` · `PagesIpLeakStep` · `AppPasswordsStep`
 
-### Module: xmlrpc
+### Module: xmlrpc (5 steps)
 `XmlrpcDetectStep` · `XmlrpcMethodsStep` · `XmlrpcCredsStep` · `XmlrpcMulticallStep` · `XmlrpcSsrfStep`
 
-### Module: secrets
+### Module: secrets (5 steps)
 `WpConfigBackupStep` · `EnvFileStep` · `GitExposureStep` · `DebugLogStep` · `PhpinfoStep`
 
-### Module: ssrf
+### Module: ssrf (2 steps)
 `OembedProxyStep` · `PingbackSsrfStep`
 
-### Module: tools *(BaseToolStep subclasses)*
- `WpscanStep` ✅ · `NucleiStep` ✅ · `FfufDirectoryStep` ✅ · `FfufFilesStep` ✅ · `FfufWpStep` ✅ · `OpenDoorStep` ✅
+### Module: tools (6 steps)
+`WpscanStep` · `NucleiStep` · `FfufDirectoryStep` · `FfufFilesStep` · `FfufWpStep` · `OpenDoorStep`
 
 ---
 
@@ -543,14 +580,18 @@ Logger ────────────────────────�
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **1** | Atoms + Molecules + passive/discovery/fingerprint steps | ✅ Complete |
-| **2** | Users + API + XMLRPC steps | ✅ XMLRPC complete, partial others |
-| **3** | Secrets + SSRF steps | ✅ SSRF protection added, partial steps |
+| **2** | Users + API + XMLRPC steps | ✅ Complete |
+| **3** | Secrets + SSRF steps | ✅ Complete |
 | **4.0** | Tool Version Checker | ✅ Complete (2026-05-07) |
- | **4.1** | FFUF Integration | ✅ Complete (2026-05-07) |
- | **4.2** | OpenDoor Integration | ✅ Complete (2026-05-07) |
+| **4.1** | FFUF Integration | ✅ Complete (2026-05-07) |
+| **4.2** | OpenDoor Integration | ✅ Complete (2026-05-07) |
 | **4.3** | Nuclei Integration | ✅ Complete |
 | **5** | Pipeline polish + full report generation | ✅ Complete |
-| **6** | Authenticated scan mode (login-aware steps) | Not started |
+| **6** | Authenticated scan mode (login-aware steps) | ✅ Complete |
+| **7** | CVE correlation (WPVulnerability.net + WPScan API) | ✅ Complete (2026-07-08) |
+| **8** | Plugin/Theme brute-force (response-code oracle) | ✅ Complete (2026-07-08) |
+| **9** | Login brute-force + Cookie admin + REST hardening | ✅ Complete (2026-07-08) |
+| **10** | Hosting fingerprint, SARIF output, Content spider | ✅ Complete (2026-07-08) |
 
 ### Completed Features (2026-05-07)
 
