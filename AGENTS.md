@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 61 steps, 143 tests passing.
+**Current state:** 12 modules, 60 steps, 357 tests passing (21/60 steps covered, 35%).
 
 ## Key Design Decisions
 
@@ -35,8 +35,10 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 | 11 | `c646dd3` | **Plugin/Theme brute-force** — response-code oracle with fallback wordlists |
 | 12 | `f1520dd` | **CVE correlation** — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 | 13 | `f5c4d85` | **Inactive plugin file accessibility** — probe readme.txt for deactivated plugins |
-| 14 | (current) | **Tiers 2-3: Login brute-force, cookie admin session, REST API hardening, hosting fingerprint, SARIF, content spider** |
+| 14 | `f8c044d` | **Tiers 2-3: Login brute-force, cookie admin session, REST API hardening, hosting fingerprint, SARIF, content spider** |
 | 15 | `e6c6efa` | **Doc cleanup: remove redundant .md files, update outdated references** |
+| 16 | (current) | **Phase 1 bug fixes: 8 correctness bugs (findings discard, error double-format, silent validation failure, SSRF rename, urljoin inconsistency, auth improvements, sanitize chars, output redaction)** |
+| 17 | (current) | **Tests for access + vuln modules: 7 new test files, 74 tests, 357 total passing** |
 
 ## Roadmap Status — ✅ All 9 items implemented
 
@@ -54,18 +56,22 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 
 ### Priority 1 — Tests (high impact, untested production code)
 
-6 steps and 1 formatter have zero test coverage. All other modules have tests.
+**Coverage:** 21/60 steps tested (35%). 39 steps remain untested, concentrated in 7 modules.
 
-| Step | File | What to test |
-|------|------|-------------|
-| `LoginBruteforceStep` | `steps/access/login_bruteforce_step.py` | POST wp-login.php with mock responses (302 success, 200 failure), credential wordlist fallback, rate limiting |
-| `SiteHealthStep` | `steps/access/site_health_step.py` | Cookie-based login via `AdminSession`, debug info extraction from HTML, skip when `wp_auth_method != "cookie"` |
-| `RestHardeningStep` | `steps/access/rest_hardening_step.py` | CORS wildcard detection, route leakage parsing, user endpoint exposure, plugin endpoint audit |
-| `HostingStep` | `steps/infrastructure/hosting_step.py` | Header matching for 12 providers, Bedrock path detection, no-match fallback |
-| `SarifFormatter` | `utils/report.py` | SARIF 2.1.0 envelope structure, rules/results/invocations, empty findings handling |
-| `SpiderStep` | `steps/discovery/spider_step.py` | Same-origin link extraction, depth limiting, max page limiting, robots.txt respect, form/upload detection |
+| Module | Steps | Tested | Untested | Priority |
+|--------|-------|--------|----------|----------|
+| discovery | 9 | 1 | 8 | **next** |
+| fingerprint | 6 | 1 | 5 | **next** |
+| passive | 5 | 0 | 5 | high |
+| xmlrpc | 5 | 0 | 5 | high |
+| secrets | 5 | 0 | 5 | high |
+| api | 3 | 0 | 3 | medium |
+| infrastructure | 5 | 1 | 4 | medium |
+| ssrf | 2 | 0 | 2 | medium |
+| users | 4 | 0 | 4 | medium |
+| tools | 6 | 4 | 2 | low |
 
-Test patterns: follow existing `tests/test_ssrf_protection.py` style — pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`).
+Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 
 ### Priority 2 — Wordlists (production scan effectiveness)
 
