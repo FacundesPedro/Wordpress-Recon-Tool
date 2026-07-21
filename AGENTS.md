@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 357 tests passing (21/60 steps covered, 35%).
+**Current state:** 12 modules, 60 steps, 432 tests passing (26/60 steps covered, 43%).
 
 ## Key Design Decisions
 
@@ -56,13 +56,12 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 
 ### Priority 1 — Tests (high impact, untested production code)
 
-**Coverage:** 21/60 steps tested (35%). 39 steps remain untested, concentrated in 7 modules.
+**Coverage:** 26/60 steps tested (43%). 34 steps remain untested, concentrated in 6 modules.
 
 | Module | Steps | Tested | Untested | Priority |
 |--------|-------|--------|----------|----------|
 | discovery | 9 | 1 | 8 | **next** |
 | fingerprint | 6 | 1 | 5 | **next** |
-| passive | 5 | 0 | 5 | high |
 | xmlrpc | 5 | 0 | 5 | high |
 | secrets | 5 | 0 | 5 | high |
 | api | 3 | 0 | 3 | medium |
