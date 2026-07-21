@@ -23,7 +23,7 @@ This document describes the security features implemented in this WordPress reco
 | `100.100.100.200` | Alibaba Cloud metadata | Credential theft |
 
 **Functions**:
-- `is_safe_target(host, port)` - Check if target is in blocklist
+- `is_blocked_target(host, port)` - Check if target is in blocklist
 - `validate_safe_url(url)` - Validate URL for SSRF
 - `is_safe_url(url)` - Non-throwing version
 - `sanitize_target_for_logging(target)` - Redact sensitive data
@@ -184,7 +184,7 @@ User Input (URL, --insecure, wordlist)
          │     ├──► SSRF Protection (core/ssrf_protection.py)
          │     │         │
          │     │         ▼
-         │     │    is_safe_target() ──► Block internal IPs
+         │     │    is_blocked_target() ──► Block internal IPs
          │     │
          │     ├──► Rate Limiting (utils/rate_limiter.py)
          │     │         │

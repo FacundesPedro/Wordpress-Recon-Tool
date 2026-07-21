@@ -273,7 +273,7 @@ class BaseToolStep(BaseStep):
         """
         exists, error = self.check_binary(self._tool_binary)
         if not exists:
-            raise ToolNotFoundError(error)
+            raise ToolNotFoundError(self._tool_binary)
         return True
 
     async def run(self) -> list[Finding]:
@@ -312,7 +312,7 @@ class BaseToolStep(BaseStep):
             result = await self._async_tool_runner.run(cmd)
 
             if result.success or result.stdout:
-                self.findings = self.parse_output(result)
+                self.findings.extend(self.parse_output(result))
                 self.logger.info(
                     f"{self._tool_binary} completed: {len(self.findings)} findings"
                 )

@@ -29,7 +29,7 @@ def _sanitize_arg(arg: str) -> str:
     if not arg:
         return ""
 
-    dangerous_chars = [";", "&&", "||", "|", "`", "$(", "\n", "\r", "\0"]
+    dangerous_chars = [";", "&&", "||", "|", "`", "$(", "\n", "\r", "\0", ">", "<", "{", "}", "~"]
     sanitized = arg
     for char in dangerous_chars:
         sanitized = sanitized.replace(char, "_")
@@ -159,8 +159,8 @@ class ToolRunner:
                 shell=False,
             )
 
-            stdout = self._decode_output(result.stdout)
-            stderr = self._decode_output(result.stderr)
+            stdout = _redact_sensitive_from_output(self._decode_output(result.stdout))
+            stderr = _redact_sensitive_from_output(self._decode_output(result.stderr))
 
             return ToolResult(
                 stdout=stdout,
@@ -265,8 +265,8 @@ class AsyncToolRunner:
 
                 stdout_bytes, stderr_bytes = await proc.communicate()
 
-            stdout = ToolRunner._decode_output(stdout_bytes)
-            stderr = ToolRunner._decode_output(stderr_bytes)
+            stdout = _redact_sensitive_from_output(ToolRunner._decode_output(stdout_bytes))
+            stderr = _redact_sensitive_from_output(ToolRunner._decode_output(stderr_bytes))
 
             return ToolResult(
                 stdout=stdout,

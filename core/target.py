@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlparse
 
+from core.exceptions import ValidationError
+
 
 @dataclass
 class Target:
@@ -37,6 +39,8 @@ class Target:
             self.domain = validated["domain"]
             if not self.scope:
                 self.scope = [self.domain]
+        elif self.url:
+            raise ValidationError(f"Invalid target URL: {self.url}")
 
     def _validate_and_normalize(self, url: str) -> dict:
         """Validate and normalize URL.

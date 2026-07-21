@@ -8,7 +8,7 @@ from core.ssrf_protection import (
     is_cloud_metadata,
     is_localhost,
     is_private_ip,
-    is_safe_target,
+    is_blocked_target,
     is_safe_url,
     sanitize_target_for_logging,
     validate_safe_url,
@@ -120,30 +120,30 @@ class TestCloudMetadataDetection:
         assert is_cloud_metadata("test", "1.1.1.1") is False
 
 
-class TestSafeTargetCheck:
-    """Tests for safe target determination."""
+class TestBlockedTargetCheck:
+    """Tests for blocked target determination."""
 
     def test_private_targets_blocked(self):
         """Test private IP targets are blocked."""
-        assert is_safe_target("192.168.1.1") is True
-        assert is_safe_target("10.0.0.1") is True
-        assert is_safe_target("172.16.0.1") is True
+        assert is_blocked_target("192.168.1.1") is True
+        assert is_blocked_target("10.0.0.1") is True
+        assert is_blocked_target("172.16.0.1") is True
 
     def test_localhost_targets_blocked(self):
         """Test localhost targets are blocked."""
-        assert is_safe_target("127.0.0.1") is True
-        assert is_safe_target("localhost") is True
-        assert is_safe_target("::1") is True
+        assert is_blocked_target("127.0.0.1") is True
+        assert is_blocked_target("localhost") is True
+        assert is_blocked_target("::1") is True
 
     def test_cloud_metadata_blocked(self):
         """Test cloud metadata targets are blocked."""
-        assert is_safe_target("169.254.169.254") is True
+        assert is_blocked_target("169.254.169.254") is True
 
     def test_public_targets_allowed(self):
         """Test public IP targets are allowed."""
-        assert is_safe_target("8.8.8.8") is False
-        assert is_safe_target("1.1.1.1") is False
-        assert is_safe_target("example.com") is False
+        assert is_blocked_target("8.8.8.8") is False
+        assert is_blocked_target("1.1.1.1") is False
+        assert is_blocked_target("example.com") is False
 
 
 class TestURLValidation:

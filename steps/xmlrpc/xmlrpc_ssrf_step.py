@@ -12,7 +12,7 @@ Tests if pingback.ping accepts arbitrary target URLs.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
-from core.ssrf_protection import is_safe_target
+from core.ssrf_protection import is_blocked_target
 from utils.xml_parser import extract_fault_code, is_xmlrpc_success
 
 
@@ -43,7 +43,7 @@ class XmlrpcSsrfStep(BaseHttpStep):
 
         url = self.urljoin("xmlrpc.php")
 
-        if is_safe_target(self.target.domain):
+        if is_blocked_target(self.target.domain):
             self.logger.debug(
                 f"Skipping pingback SSRF check for {self.target.domain} - in SSRF blocklist"
             )

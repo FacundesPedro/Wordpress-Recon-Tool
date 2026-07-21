@@ -22,7 +22,7 @@ def get_wp_auth_header(
     if not wp_user or not wp_application_password:
         return None
     token = base64.b64encode(
-        f"{wp_user}:{wp_application_password}".encode()
+        f"{wp_user.strip()}:{wp_application_password.strip()}".encode()
     ).decode()
     return {"Authorization": f"Basic {token}"}
 
@@ -72,7 +72,15 @@ class AdminSession:
             )
 
             location = resp.headers.get("location", "")
-            if resp.status_code == 302 and "wp-admin" in location:
+            has_session_cookie = any(
+                "wordpress_logged_in" in str(k)
+                for k in resp.cookies
+            )
+
+            if (
+                (resp.status_code == 302 and "wp-admin" in location)
+                or has_session_cookie
+            ):
                 self._logged_in = True
                 return True
 

@@ -68,7 +68,4 @@ class BaseHttpStep(BaseStep):
 
     def urljoin(self, path: str) -> str:
         """Join a path to the target URL."""
-        base = self.target.url.rstrip("/")
-        if path.startswith("/"):
-            return base + path
-        return base + "/" + path
+        return self.target.url.rstrip("/") + "/" + path.lstrip("/")

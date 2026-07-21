@@ -8,10 +8,10 @@ This module provides utilities to prevent SSRF by blocking requests to:
 - Invalid URL schemes
 
 Usage:
-    from core.ssrf_protection import is_safe_target, validate_target
+    from core.ssrf_protection import is_blocked_target, validate_target
 
-    # Check if a target is safe (for port scanning, SSRF testing)
-    if is_safe_target("192.168.1.1", 80):
+    # Check if a target is blocked (for port scanning, SSRF testing)
+    if is_blocked_target("192.168.1.1", 80):
         # Target is in blocklist, skip
         pass
 
@@ -170,8 +170,8 @@ def resolve_hostname(hostname: str, port: int = 80) -> list[str]:
         return []
 
 
-def is_safe_target(host: str, port: Optional[int] = None) -> bool:
-    """Check if a target (host:port) is safe for SSRF-prone operations.
+def is_blocked_target(host: str, port: Optional[int] = None) -> bool:
+    """Check if a target (host:port) is in the SSRF blocklist.
 
     This is used for port scanning and SSRF testing where we want to
     prevent scanning/attacking internal infrastructure.
@@ -181,7 +181,8 @@ def is_safe_target(host: str, port: Optional[int] = None) -> bool:
         port: Optional port number
 
     Returns:
-        True if target is UNSAFE (in blocklist), False if safe
+        True if target is blocked (private IP, localhost, cloud metadata),
+        False if target is safe to scan
     """
     normalized_host = _normalize_ip(host)
 

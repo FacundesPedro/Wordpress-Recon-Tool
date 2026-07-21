@@ -16,7 +16,7 @@ from pathlib import Path
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
-from core.ssrf_protection import is_safe_target
+from core.ssrf_protection import is_blocked_target
 
 
 class PortsStep(BaseHttpStep, WordlistDependencyMixin):
@@ -97,7 +97,7 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
         for port in common_ports:
             target_host = f"{self.target.domain}:{port}"
 
-            if is_safe_target(self.target.domain, port):
+            if is_blocked_target(self.target.domain, port):
                 self.logger.debug(f"Skipping port {port} - target is in SSRF blocklist")
                 blocked_count += 1
                 continue
