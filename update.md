@@ -7,8 +7,8 @@
 | Modules | 12 |
 | Step files | 60 |
 | Codebase lines | ~11,000 |
-| Test count | 575 (all passing) |
-| Steps with tests | 50/60 (83%) |
+| Test count | 595 (all passing) |
+| Steps with tests | 54/60 (90%) |
 | utcnow() warnings | 50 |
 
 ---
@@ -120,9 +120,11 @@
 | **3** | ✅ Complete | Tests — `passive` module (item 11) |
 | **4** | ✅ Complete | Tests — `discovery` + `fingerprint` (items 12-13) |
 | **5** | ✅ Complete | Tests — `xmlrpc` + `secrets` + `api` (items 14-16) |
-| 6 | ⬜ Pending | Tests — remaining steps (items 17-21) |
-| 7 | ⬜ Pending | Code quality — docstrings + `assert` fixes (items 22-30) |
-| 8 | ⬜ Pending | Architecture cleanup (items 31-40) |
-| 9 | ⬜ Pending | Security + Polish (items 41-55) |
+| **6** | ✅ Complete | Tests — infrastructure module (item 17) |
+| 7 | ⬜ Pending | Tests — ssrf + users (items 18-19) |
+| 8 | ⬜ Pending | Tests — tools + utils (items 20-21) |
+| 9 | ⬜ Pending | Code quality — docstrings + `assert` fixes (items 22-30) |
+| 10 | ⬜ Pending | Architecture cleanup (items 31-40) |
+| 11 | ⬜ Pending | Security + Polish (items 41-55) |
 
 Each session represents ~2-4h of focused work.

@@ -163,7 +163,7 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
             if "<faultCode>" in content:
                 start = content.find("<faultCode>") + len("<faultCode>")
                 end = content.find("</faultCode>", start)
-                if start > len("<faultCode>") and end > start:
+                if end > start:
                     return int(content[start:end].strip())
         except (ValueError, TypeError):
             pass

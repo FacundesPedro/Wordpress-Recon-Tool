@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 575 tests passing (50/60 steps covered, 83%).
+**Current state:** 12 modules, 60 steps, 595 tests passing (54/60 steps covered, 90%).
 
 ## Key Design Decisions
 
@@ -56,13 +56,12 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 
 ### Priority 1 — Tests (high impact, untested production code)
 
-**Coverage:** 50/60 steps tested (83%). 10 steps remain untested, concentrated in 3 modules.
+**Coverage:** 54/60 steps tested (90%). 6 steps remain untested in 3 modules.
 
 | Module | Steps | Tested | Untested | Priority |
 |--------|-------|--------|----------|----------|
-| infrastructure | 5 | 1 | 4 | **next** |
-| ssrf | 2 | 0 | 2 | high |
-| users | 4 | 0 | 4 | high |
+| ssrf | 2 | 0 | 2 | **next** |
+| users | 4 | 0 | 4 | **next** |
 | tools | 6 | 4 | 2 | low |
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
