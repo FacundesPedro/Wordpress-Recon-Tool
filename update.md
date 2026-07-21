@@ -7,8 +7,8 @@
 | Modules | 12 |
 | Step files | 60 |
 | Codebase lines | ~11,000 |
-| Test count | 595 (all passing) |
-| Steps with tests | 54/60 (90%) |
+| Test count | 626 (all passing) |
+| Steps with tests | 60/60 (100%) |
 | utcnow() warnings | 50 |
 
 ---
@@ -121,7 +121,7 @@
 | **4** | ✅ Complete | Tests — `discovery` + `fingerprint` (items 12-13) |
 | **5** | ✅ Complete | Tests — `xmlrpc` + `secrets` + `api` (items 14-16) |
 | **6** | ✅ Complete | Tests — infrastructure module (item 17) |
-| 7 | ⬜ Pending | Tests — ssrf + users (items 18-19) |
+| **7** | ✅ Complete | Tests — ssrf + users (items 18-19) |
 | 8 | ⬜ Pending | Tests — tools + utils (items 20-21) |
 | 9 | ⬜ Pending | Code quality — docstrings + `assert` fixes (items 22-30) |
 | 10 | ⬜ Pending | Architecture cleanup (items 31-40) |
