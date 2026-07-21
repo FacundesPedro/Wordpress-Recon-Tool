@@ -7,8 +7,8 @@
 | Modules | 12 |
 | Step files | 60 |
 | Codebase lines | ~11,000 |
-| Test count | 500 (all passing) |
-| Steps with tests | 37/60 (62%) |
+| Test count | 575 (all passing) |
+| Steps with tests | 50/60 (83%) |
 | utcnow() warnings | 50 |
 
 ---
@@ -119,7 +119,7 @@
 | **2** | ✅ Complete | Tests — `access` + `vuln` modules (items 9-10) |
 | **3** | ✅ Complete | Tests — `passive` module (item 11) |
 | **4** | ✅ Complete | Tests — `discovery` + `fingerprint` (items 12-13) |
-| 5 | ⬜ Pending | Tests — `xmlrpc` + `secrets` + `api` (items 14-16) |
+| **5** | ✅ Complete | Tests — `xmlrpc` + `secrets` + `api` (items 14-16) |
 | 6 | ⬜ Pending | Tests — remaining steps (items 17-21) |
 | 7 | ⬜ Pending | Code quality — docstrings + `assert` fixes (items 22-30) |
 | 8 | ⬜ Pending | Architecture cleanup (items 31-40) |

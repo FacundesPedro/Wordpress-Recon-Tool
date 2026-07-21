@@ -69,6 +69,29 @@ class WordlistDependencyMixin:
         "provide wordlist at ~/.config/recon-wp/wordlists/"
     )
 
+    DEFAULT_WORDLIST_CREDENTIALS: list[tuple[str, str]] = [
+        ("admin", "password"),
+        ("admin", "admin"),
+        ("admin", "123456"),
+        ("admin", "admin123"),
+        ("administrator", "password"),
+        ("administrator", "admin"),
+        ("administrator", "123456"),
+        ("user", "password"),
+        ("user", "admin"),
+        ("user", "123456"),
+        ("test", "password"),
+        ("test", "test"),
+        ("editor", "password"),
+        ("editor", "editor"),
+        ("author", "password"),
+        ("author", "author"),
+        ("subscriber", "password"),
+        ("subscriber", "subscriber"),
+        ("wp", "wp"),
+        ("wordpress", "password"),
+    ]
+
     def resolve_wordlist_or_fallback(
         self: BaseStep,
         config_key: str,
