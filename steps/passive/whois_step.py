@@ -43,15 +43,10 @@ class WhoisStep(BaseToolStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
-        self._parser = WhoisParser(use_wordlist=True)
-
-    @property
-    def getBinary(self) -> str:
-        return self._tool_binary
+        self._parser = WhoisParser()
 
     def build_command(self) -> list[str]:
         if not self.target or not self.target.domain:

@@ -45,10 +45,10 @@ class ShodanStep(BaseStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
+        self.http = http
         self._api_key: str = ""
         self._errors: list[str] = []
 

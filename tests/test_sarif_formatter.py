@@ -10,8 +10,8 @@ from core.finding import Finding
 from utils.report import Report, SarifFormatter, generate_report_filename
 
 
-def make_finding(severity: str, module: str = "test", step: str = "check") -> Finding:
-    return Finding(
+def make_finding(severity: str, module: str = "test", step: str = "check", **kwargs) -> Finding:
+    defaults = dict(
         module=module,
         step=step,
         severity=severity,
@@ -20,6 +20,8 @@ def make_finding(severity: str, module: str = "test", step: str = "check") -> Fi
         evidence="evidence text",
         recommendation="fix it",
     )
+    defaults.update(kwargs)
+    return Finding(**defaults)
 
 
 class TestSarifDocumentStructure:
@@ -132,8 +134,7 @@ class TestSarifResults:
 
     def test_finding_properties_in_result(self):
         report = Report(target="https://example.com", domain="example.com")
-        f = make_finding("medium")
-        f.raw = {"extra": "data"}
+        f = make_finding("medium", raw={"extra": "data"})
         report.findings.append(f)
         doc = SarifFormatter._build_document(report)
         props = doc["runs"][0]["results"][0]["properties"]

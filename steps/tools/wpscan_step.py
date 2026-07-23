@@ -60,7 +60,6 @@ class WpscanStep(BaseToolStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
@@ -68,10 +67,6 @@ class WpscanStep(BaseToolStep):
         self.enumerate = enumerate or "vp,vt,tt,cb,u"
         self.timeout = timeout
         self._binary_path = shutil.which(self._tool_binary) or self._tool_binary
-
-    @property
-    def getBinary(self) -> str:
-        return self._tool_binary
 
     def build_command(self) -> list[str]:
         """Build WPScan command with all options."""
@@ -161,24 +156,28 @@ class WpscanStep(BaseToolStep):
         vulnerabilites = version_data.get("vulnerabilities", [])
 
         if version != "unknown":
-            finding = Finding(
-                module=self.MODULE,
-                step=self.name,
-                severity="info",
-                title=f"WordPress Version Detected: {version}",
-                description="WordPress version identified via fingerprinting",
-                evidence=f"Version: {version}",
-                recommendation="Ensure WordPress is updated to latest version",
-                raw={"version": version, "vulnerabilities": vulnerabilites},
-            )
-
             if vulnerabilites:
-                finding.severity = "high"
-                finding.title = f"WordPress {version} - Vulnerable"
-                finding.description = f"WordPress {version} has {len(vulnerabilites)} known vulnerabilities"
-                finding.recommendation = (
-                    "Upgrade WordPress immediately. "
-                    f"Vulnerabilities: {', '.join(v.get('title', '') for v in vulnerabilites[:3])}"
+                vuln_titles = ', '.join(v.get('title', '') for v in vulnerabilites[:3])
+                finding = Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="high",
+                    title=f"WordPress {version} - Vulnerable",
+                    description=f"WordPress {version} has {len(vulnerabilites)} known vulnerabilities",
+                    evidence=f"Version: {version}",
+                    recommendation=f"Upgrade WordPress immediately. Vulnerabilities: {vuln_titles}",
+                    raw={"version": version, "vulnerabilities": vulnerabilites},
+                )
+            else:
+                finding = Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="info",
+                    title=f"WordPress Version Detected: {version}",
+                    description="WordPress version identified via fingerprinting",
+                    evidence=f"Version: {version}",
+                    recommendation="Ensure WordPress is updated to latest version",
+                    raw={"version": version, "vulnerabilities": vulnerabilites},
                 )
 
             findings.append(finding)
@@ -199,36 +198,45 @@ class WpscanStep(BaseToolStep):
             location = plugin_data.get("location", "")
             confidence = plugin_data.get("confidence", "")
 
-            finding = Finding(
-                module=self.MODULE,
-                step=self.name,
-                severity="info",
-                title=f"Plugin Detected: {plugin_name}",
-                description=f"Plugin found with confidence: {confidence}",
-                evidence=f"Plugin: {plugin_name} | Version: {version} | Location: {location}",
-                recommendation="Ensure plugin is updated and monitored for vulnerabilities",
-                raw={
-                    "plugin": plugin_name,
-                    "version": version,
-                    "location": location,
-                    "confidence": confidence,
-                    "vulnerabilities": vulnerabilites,
-                },
-            )
-
             if vulnerabilites:
-                finding.severity = "critical"
-                finding.title = f"Plugin Vulnerable: {plugin_name}"
-                finding.description = f"Plugin '{plugin_name}' has {len(vulnerabilites)} known vulnerabilities"
                 vuln_list = []
                 for v in vulnerabilites:
                     vuln_title = v.get("title", "Unknown vulnerability")
                     vuln_type = v.get("type", "vulnerability")
                     vuln_list.append(f"{vuln_title} ({vuln_type})")
 
-                finding.recommendation = (
-                    f"UPDATE OR REMOVE this plugin immediately. "
-                    f"Vulnerabilities: {'; '.join(vuln_list[:3])}"
+                finding = Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="critical",
+                    title=f"Plugin Vulnerable: {plugin_name}",
+                    description=f"Plugin '{plugin_name}' has {len(vulnerabilites)} known vulnerabilities",
+                    evidence=f"Plugin: {plugin_name} | Version: {version} | Location: {location}",
+                    recommendation=f"UPDATE OR REMOVE this plugin immediately. Vulnerabilities: {'; '.join(vuln_list[:3])}",
+                    raw={
+                        "plugin": plugin_name,
+                        "version": version,
+                        "location": location,
+                        "confidence": confidence,
+                        "vulnerabilities": vulnerabilites,
+                    },
+                )
+            else:
+                finding = Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="info",
+                    title=f"Plugin Detected: {plugin_name}",
+                    description=f"Plugin found with confidence: {confidence}",
+                    evidence=f"Plugin: {plugin_name} | Version: {version} | Location: {location}",
+                    recommendation="Ensure plugin is updated and monitored for vulnerabilities",
+                    raw={
+                        "plugin": plugin_name,
+                        "version": version,
+                        "location": location,
+                        "confidence": confidence,
+                        "vulnerabilities": vulnerabilites,
+                    },
                 )
 
             findings.append(finding)
@@ -248,29 +256,38 @@ class WpscanStep(BaseToolStep):
             vulnerabilites = theme_data.get("vulnerabilities", [])
             location = theme_data.get("location", "")
 
-            finding = Finding(
-                module=self.MODULE,
-                step=self.name,
-                severity="info",
-                title=f"Theme Detected: {theme_name}",
-                description="Theme found on the target",
-                evidence=f"Theme: {theme_name} | Version: {version} | Location: {location}",
-                recommendation="Ensure theme is updated to latest version",
-                raw={
-                    "theme": theme_name,
-                    "version": version,
-                    "location": location,
-                    "vulnerabilities": vulnerabilites,
-                },
-            )
-
             if vulnerabilites:
-                finding.severity = "high"
-                finding.title = f"Theme Vulnerable: {theme_name}"
-                finding.description = f"Theme '{theme_name}' has {len(vulnerabilites)} known vulnerabilities"
-                finding.recommendation = (
-                    "Update or replace theme immediately. "
-                    f"Vulnerabilities: {', '.join(v.get('title', '') for v in vulnerabilites[:3])}"
+                vuln_titles = ', '.join(v.get('title', '') for v in vulnerabilites[:3])
+                finding = Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="high",
+                    title=f"Theme Vulnerable: {theme_name}",
+                    description=f"Theme '{theme_name}' has {len(vulnerabilites)} known vulnerabilities",
+                    evidence=f"Theme: {theme_name} | Version: {version} | Location: {location}",
+                    recommendation=f"Update or replace theme immediately. Vulnerabilities: {vuln_titles}",
+                    raw={
+                        "theme": theme_name,
+                        "version": version,
+                        "location": location,
+                        "vulnerabilities": vulnerabilites,
+                    },
+                )
+            else:
+                finding = Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="info",
+                    title=f"Theme Detected: {theme_name}",
+                    description="Theme found on the target",
+                    evidence=f"Theme: {theme_name} | Version: {version} | Location: {location}",
+                    recommendation="Ensure theme is updated to latest version",
+                    raw={
+                        "theme": theme_name,
+                        "version": version,
+                        "location": location,
+                        "vulnerabilities": vulnerabilites,
+                    },
                 )
 
             findings.append(finding)

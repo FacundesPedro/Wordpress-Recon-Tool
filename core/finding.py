@@ -5,8 +5,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+SARIF_LEVEL_MAP: dict[str, str] = {
+    "critical": "error",
+    "high": "error",
+    "medium": "warning",
+    "low": "note",
+    "info": "none",
+}
 
-@dataclass
+
+@dataclass(frozen=True)
 class Finding:
     """
     Immutable record of a discovered issue or information.
@@ -38,13 +46,7 @@ class Finding:
 
     def to_sarif(self) -> dict[str, Any]:
         """Serialize finding to SARIF result object."""
-        sarif_severity = {
-            "critical": "error",
-            "high": "error",
-            "medium": "warning",
-            "low": "note",
-            "info": "none",
-        }.get(self.severity, "none")
+        sarif_severity = SARIF_LEVEL_MAP.get(self.severity, "none")
 
         return {
             "ruleId": f"{self.module}/{self.step}",

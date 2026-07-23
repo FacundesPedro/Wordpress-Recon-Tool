@@ -56,7 +56,6 @@ class OpenDoorStep(BaseToolStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
@@ -64,10 +63,6 @@ class OpenDoorStep(BaseToolStep):
         self.timeout = timeout
         self.rate_limit = rate_limit
         self.mode = mode
-
-    @property
-    def getBinary(self) -> str:
-        return self._tool_binary
 
     def build_command(self) -> list[str]:
         """Build OpenDoor command for WordPress path discovery."""

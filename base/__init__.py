@@ -8,7 +8,6 @@ Exports:
     BaseHttpStep: Base class for steps making HTTP requests
     WordlistDependencyMixin: Mixin for wordlist handling with fallback
     BinaryDependencyMixin: Mixin for external binary checking
-    StepResult: Dataclass for step execution results
 """
 
 from base.dependencies import (
@@ -16,14 +15,13 @@ from base.dependencies import (
     WordlistDependencyMixin,
 )
 from base.http_step import BaseHttpStep
-from base.step import BaseStep, BaseToolStep, StepResult
+from base.step import BaseStep, BaseToolStep
 from base.tool import AsyncToolRunner, ToolResult, ToolRunner
 
 __all__ = [
     "BaseStep",
     "BaseToolStep",
     "BaseHttpStep",
-    "StepResult",
     "ToolRunner",
     "AsyncToolRunner",
     "ToolResult",

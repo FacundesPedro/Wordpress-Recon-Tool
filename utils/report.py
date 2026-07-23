@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from core.finding import Finding
+from core.finding import Finding, SARIF_LEVEL_MAP
 
 
 @dataclass
@@ -231,13 +231,7 @@ class SarifFormatter:
 
     @staticmethod
     def _sarif_level(severity: str) -> str:
-        return {
-            "critical": "error",
-            "high": "error",
-            "medium": "warning",
-            "low": "note",
-            "info": "none",
-        }.get(severity, "none")
+        return SARIF_LEVEL_MAP.get(severity, "none")
 
 
 class HtmlFormatter:

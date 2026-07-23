@@ -49,10 +49,10 @@ class WaymachineStep(BaseStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
+        self.http = http
         self._urls: set = set()
         self._errors: list = []
 

@@ -53,21 +53,8 @@ class WordlistDependencyMixin:
                 # ...
 
     Attributes:
-        WORDLIST_FALLBACK_WARNING: Template for fallback warnings
-        WORDLIST_DISABLED_WARNING: Template for disabled step warnings
+        DEFAULT_WORDLIST_CREDENTIALS: Fallback credential pairs
     """
-
-    WORDLIST_FALLBACK_WARNING = (
-        "Wordlist not found at {path}, using limited fallback ({count} items). "
-        "For full functionality, provide a wordlist via config or "
-        "ensure ~/.config/recon-wp/wordlists/ is set up."
-    )
-
-    WORDLIST_DISABLED_WARNING = (
-        "Wordlist not configured - step disabled. "
-        "To enable: set '{config_key}' key in config or "
-        "provide wordlist at ~/.config/recon-wp/wordlists/"
-    )
 
     DEFAULT_WORDLIST_CREDENTIALS: list[tuple[str, str]] = [
         ("admin", "password"),

@@ -16,8 +16,8 @@ def make_report(findings=None, modules=None, errors=None):
     return report
 
 
-def make_finding(severity: str, module="test", step="check"):
-    return Finding(
+def make_finding(severity: str, module="test", step="check", **kwargs):
+    defaults = dict(
         module=module,
         step=step,
         severity=severity,
@@ -26,6 +26,8 @@ def make_finding(severity: str, module="test", step="check"):
         evidence="evidence text",
         recommendation="fix it",
     )
+    defaults.update(kwargs)
+    return Finding(**defaults)
 
 
 class TestHtmlDocumentStructure:
@@ -135,28 +137,24 @@ class TestHtmlFindings:
         assert "A info severity test finding" in html
 
     def test_finding_shows_evidence_in_pre(self):
-        f = make_finding("high")
-        f.evidence = "important evidence content"
+        f = make_finding("high", evidence="important evidence content")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "important evidence content" in html
         assert "<pre>" in html
 
     def test_finding_shows_recommendation(self):
-        f = make_finding("high")
-        f.recommendation = "recommended action"
+        f = make_finding("high", recommendation="recommended action")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "recommended action" in html
         assert "Recommendation" in html
 
     def test_finding_no_evidence_omits_pre(self):
-        f = make_finding("high")
-        f.evidence = ""
+        f = make_finding("high", evidence="")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "<pre>" not in html
 
     def test_finding_no_recommendation_omits_rec(self):
-        f = make_finding("high")
-        f.recommendation = ""
+        f = make_finding("high", recommendation="")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "Recommendation" not in html
 
@@ -194,22 +192,19 @@ class TestHtmlEscape:
     """Tests for HTML entity escaping."""
 
     def test_escapes_html_in_finding_title(self):
-        f = make_finding("high")
-        f.title = "Title with <script>alert('xss')</script>"
+        f = make_finding("high", title="Title with <script>alert('xss')</script>")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "<script>" not in html
         assert "&lt;script&gt;" in html
 
     def test_escapes_html_in_evidence(self):
-        f = make_finding("high")
-        f.evidence = "Text with <tag>"
+        f = make_finding("high", evidence="Text with <tag>")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "<tag>" not in html
         assert "&lt;tag&gt;" in html
 
     def test_escapes_html_in_description(self):
-        f = make_finding("high")
-        f.description = 'Description with "quotes"'
+        f = make_finding("high", description='Description with "quotes"')
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "&quot;" in html
 

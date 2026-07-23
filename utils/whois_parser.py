@@ -85,13 +85,13 @@ class WhoisParser:
         "biz": "tld_com.txt",
     }
 
-    def __init__(self, use_wordlist: bool = True):
+    def __init__(self):
         self.patterns: list[WhoisPattern] = []
         self.using_wordlist = False
         self.loaded_tld: Optional[str] = None
-        self._load_patterns(use_wordlist)
+        self._load_patterns()
 
-    def _load_patterns(self, use_wordlist: bool):
+    def _load_patterns(self):
         """Load hardcoded patterns as base.
 
         Wordlist patterns (if loaded) will replace these.

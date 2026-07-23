@@ -7,7 +7,6 @@ All steps must implement the run() method which returns a list of Findings.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Optional
 
 from base.tool import (
@@ -31,15 +30,6 @@ if TYPE_CHECKING:
     from core.http_client import HttpClient
 
 
-@dataclass
-class StepResult:
-    """Result of running a step."""
-
-    success: bool
-    findings: list[Finding] = field(default_factory=list)
-    error: str = ""
-
-
 class BaseStep(ABC):
     name: str = "base_step"
     description: str = "Base step - override in subclasses"
@@ -49,7 +39,6 @@ class BaseStep(ABC):
         self,
         target: Optional[Target] = None,
         config: Optional[Config] = None,
-        http: Optional["HttpClient"] = None,
         name: Optional[str] = None,
         description: Optional[str] = None,
     ):
@@ -57,7 +46,7 @@ class BaseStep(ABC):
         self.target = target
         self.description = description or getattr(self, "description", "")
         self.config = config or Config()
-        self.http = http
+        self.http = None
         self.findings: list[Finding] = []
         log_level = getattr(self.config, "log_level", "INFO") if self.config else "INFO"
         self.logger = Logger(self.name, log_level)
@@ -133,14 +122,12 @@ class BaseToolStep(BaseStep):
         self,
         target: Optional[Target] = None,
         config: Optional[Config] = None,
-        http: Optional["HttpClient"] = None,
         name: Optional[str] = None,
         description: Optional[str] = None,
     ):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=name,
             description=description,
         )
@@ -208,12 +195,6 @@ class BaseToolStep(BaseStep):
         except VersionMismatchError as e:
             self.logger.error(str(e))
             return False
-
-    @property
-    @abstractmethod
-    def getBinary(self) -> str:
-        """Return the binary name or path for this tool."""
-        ...
 
     @abstractmethod
     def build_command(self) -> list[str]:

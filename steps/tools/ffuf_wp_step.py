@@ -55,7 +55,6 @@ class FfufWpStep(BaseToolStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
@@ -63,10 +62,6 @@ class FfufWpStep(BaseToolStep):
         self.timeout = timeout
         self.rate_limit = rate_limit
         self.filter_status = filter_status
-
-    @property
-    def getBinary(self) -> str:
-        return self._tool_binary
 
     def build_command(self) -> list[str]:
         """Build FFUF command for WordPress path discovery."""

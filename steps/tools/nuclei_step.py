@@ -51,7 +51,6 @@ class NucleiStep(BaseToolStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
@@ -60,10 +59,6 @@ class NucleiStep(BaseToolStep):
         )
         self.threads = threads or getattr(config, "nuclei_threads", 100)
         self.timeout = timeout or getattr(config, "nuclei_timeout", 300)
-
-    @property
-    def getBinary(self) -> str:
-        return self._tool_binary
 
     def build_command(self) -> list[str]:
         """Build Nuclei command with all options."""

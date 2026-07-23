@@ -20,8 +20,9 @@ def get_wordlist_path(
     Priority:
     1. Custom directory if provided
     2. ~/.config/recon-wp/wordlists/
-    3. ./wordlists/ (project relative)
-    4. None (not found)
+    3. ./wordlists/external/ (production wordlists)
+    4. ./wordlists/ (project relative)
+    5. None (not found)
 
     Args:
         filename: Wordlist filename (e.g., "whois/fields.txt")
@@ -38,6 +39,7 @@ def get_wordlist_path(
     search_paths.extend(
         [
             DEFAULT_WORDLIST_DIR / filename,
+            Path(__file__).parent.parent / "wordlists" / "external" / filename,
             Path(__file__).parent.parent / "wordlists" / filename,
         ]
     )

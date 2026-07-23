@@ -30,7 +30,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (15 on main)
+## Commit History (24 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -56,7 +56,8 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 20 | `8a95798` | **Session 6 tests: infrastructure module (20 tests, 595 total)** |
 | 21 | `981f01d` | **Session 7 tests: ssrf + users modules (31 tests, 626 total)** |
 | 22 | `323f1a9` | **Session 8 tests: tools + utils modules (96 tests, 722 total)** |
-| 23 | (current) | **Sessions 9: code quality — WHAT/HOW/WHY headers, vulndb docstrings, import re fix, assert→validation, _build_html docs** |
+| 23 | `fdcd75c` | **Sessions 8-9: tools/utils tests + code quality docstrings** |
+| 24 | (current) | **Session 10: architecture cleanup — dead code removal, Finding frozen=True, http init chain, user agents, wordlist resolution** |
 
 ## Roadmap Status — ✅ All 9 items implemented
 

@@ -72,15 +72,10 @@ class DnsStep(BaseToolStep):
         super().__init__(
             target=target,
             config=config,
-            http=http,
             name=self.name,
             description=self.description,
         )
         self._dns_records: dict = {rt: [] for rt in self.RECORD_TYPES}
-
-    @property
-    def getBinary(self) -> str:
-        return self._tool_binary
 
     def build_command(self, record_type: str = "A") -> list[str]:
         if not self.target or not self.target.domain:
