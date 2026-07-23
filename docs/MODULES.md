@@ -29,7 +29,7 @@
 
 ## Overview
 
-The tool is organized into **12 modules** containing **61 steps** total:
+The tool is organized into **12 modules** containing **60 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|

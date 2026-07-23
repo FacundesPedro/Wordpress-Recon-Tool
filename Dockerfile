@@ -18,8 +18,11 @@ WORKDIR /app
 COPY --from=builder /build/dist/*.whl .
 RUN pip install --no-cache-dir *.whl[pdf] && rm *.whl
 
-RUN groupadd -r recon && useradd -r -g recon recon
+COPY wordlists/ wordlists/
+
+RUN groupadd -r recon && useradd -r -g recon recon && \
+    chown -R recon:recon /app/wordlists
 USER recon
 
 ENTRYPOINT ["wp-recon"]
-CMD ["--help"]
+CMD ["main", "--help"]

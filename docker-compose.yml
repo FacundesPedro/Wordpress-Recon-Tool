@@ -8,7 +8,10 @@ services:
     env_file:
       - .env
     environment:
+      - WP_TARGET=${WP_TARGET:-https://example.com}
+      - WP_OUTPUT_FORMAT=${WP_OUTPUT_FORMAT:-markdown}
       - WP_THREADS=${WP_THREADS:-2}
       - WP_TIMEOUT=${WP_TIMEOUT:-10}
       - WP_LOG_LEVEL=${WP_LOG_LEVEL:-INFO}
-    command: ["-t", "${WP_TARGET:-https://example.com}", "-f", "${WP_FORMAT:-html}", "-o", "/app/reports"]
+      - WP_PROFILE=${WP_PROFILE:-light}
+    command: ["main"]

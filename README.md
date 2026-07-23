@@ -121,6 +121,31 @@ python main.py list-modules
   - Tier 3 (parallel): users, api, xmlrpc, secrets, ssrf
   - Tier 4 (parallel): tools (wpscan, nuclei)
 
+## Docker
+
+Build and run the tool via Docker (no local Python setup needed):
+
+```bash
+# Build the image
+docker compose build
+
+# Quick scan
+WP_TARGET=https://example.com docker compose run --rm recon
+
+# Full scan with profile override
+docker compose run --rm recon main --target https://example.com --profile full
+
+# Generate SARIF output
+docker compose run --rm recon main --target https://example.com --format sarif
+
+# Use .env file for configuration
+# (edit .env from .env.example first)
+cp .env.example .env
+docker compose up
+```
+
+Reports are written to `./reports/` (mounted as a volume).
+
 ## Installation
 
 ### External Tools (Optional)

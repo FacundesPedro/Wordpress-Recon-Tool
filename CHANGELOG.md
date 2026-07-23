@@ -1,10 +1,59 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-07-08
+## Last Updated: 2026-07-23
 
 ---
 
 ## Recent Changes
+
+### S14 - Config/CLI/Edge Case Unit Tests (2026-07-23)
+| File | Change | Notes |
+|------|--------|-------|
+| `tests/test_config.py` | **NEW** | 24 tests — ScanConfig defaults, env prefix, field validation, mkdir_output |
+| `tests/test_exceptions.py` | **NEW** | 9 tests — ReconError hierarchy, ToolNotFoundError, ToolTimeoutError |
+| `tests/test_logger.py` | **NEW** | 16 tests — LEVEL_MAP, Logger init, method delegation |
+| `tests/test_whois_parser.py` | **NEW** | 25 tests — tld detection, parse output, to_finding_dict |
+| `tests/test_main_cli.py` | **NEW** | 15 tests — resolve_domain, get_module_names, build_modules, _save_report |
+| `AGENTS.md` | **UPDATED** | Commit #28; test count 1038→1138 |
+| `docs/next_steps.md` | **UPDATED** | HEAD, current state, session history |
+
+### S13 - Base Infrastructure Unit Tests (2026-07-23)
+| File | Change | Notes |
+|------|--------|-------|
+| `tests/test_tool_runner.py` | **NEW** | 69 tests — ToolRunner, AsyncToolRunner, sanitize/redact |
+| `tests/test_step.py` | **NEW** | 48 tests — BaseStep, BaseToolStep (init, run, verify) |
+| `tests/test_http_step.py` | **NEW** | 12 tests — BaseHttpStep fetch, get/post/head, urljoin |
+| `tests/test_dependencies.py` | **NEW** | 26 tests — WordlistDependencyMixin 6 paths, BinaryDependencyMixin |
+| `tests/test_runner.py` | **NEW** | 14 tests — Runner init, tier grouping, run_all, summary |
+
+### S12 - Core Layer Unit Tests (2026-07-23)
+| File | Change | Notes |
+|------|--------|-------|
+| `tests/test_target.py` | **NEW** | 42 tests — URL parsing, validation, normalization |
+| `tests/test_http_client.py` | **NEW** | 30 tests — httpx wrapper, user agents, timeout, close |
+| `tests/test_auth.py` | **NEW** | 35 tests — get_wp_auth_header, string/bytes handling |
+| `tests/test_vulndb.py` | **NEW** | 56 tests — VulnDB, WPVulnerabilityClient, WPScanClient |
+
+### S11 - Security + Polish (2026-07-16)
+| File | Change | Notes |
+|------|--------|-------|
+| `utils/report.py` | **FIXED** | XSS escape in HtmlFormatter, canonical SARIF schema URL |
+| `core/ssrf_protection.py` | **FIXED** | Port restriction removed for DNS resolution |
+| `core/target.py` | **FIXED** | IPv6 + port URL validation support |
+| `core/logger.py` | **FIXED** | Replaced print() with stdlib logging |
+| `core/vulndb.py` | **FIXED** | Deduplication in VulnDB facade |
+| `modules/__init__.py` | **FIXED** | Profile composition validated against risk tiers |
+| `base/runner.py` | **FIXED** | Warning for modules not matching risk tiers |
+
+### S10 - Architecture Cleanup (2026-07-16)
+| File | Change | Notes |
+|------|--------|-------|
+| `base/step.py` | **REMOVED** | Dead StepResult dataclass and getBinary property |
+| `core/finding.py` | **FIXED** | Finding frozen=True for immutability |
+| `base/__init__.py`, `base/http_step.py` | **FIXED** | http init chain cleaned up |
+| `core/http_client.py` | **FIXED** | Removed unused random import, updated user agents |
+| `base/dependencies.py` | **REMOVED** | Dead WORDLIST_FALLBACK_WARNING / WORDLIST_DISABLED_WARNING |
+| `utils/whois_parser.py` | **REMOVED** | Dead use_wordlist parameter
 
 ### P0 - Tiers 2-3: Login Brute-Force, Cookie Session, REST Hardening, Hosting, SARIF, Spider (2026-07-08)
 | File | Change | Notes |
@@ -701,62 +750,24 @@ python main.py --modules passive --target https://website.cfo.org.br/ --debug
 
 ---
 
-## Pending Items for Future Sessions
+## Architecture Status — All Complete
 
-### P0 - Critical (Should Complete First)
-- [x] Fix remaining LSP type errors in `base/step.py` (severity Literal type, raw dict type) - 2026-04-06
-- [ ] Fix type errors in `core/ssrf_protection.py` (list[str | int] vs list[str])
-- [ ] Fix type errors in `utils/rate_limiter.py` (TypeIs usage)
+All 6 phases from `docs/architecture_plan.md` implemented. 12 modules, 60 steps, 1138 tests.
 
-### P1 - High Priority
-- [x] Implement `WpscanStep` in `steps/tools/` - 2026-04-07
-- [x] Implement `NucleiStep` in `steps/tools/` - 2026-04-10
-- [x] Add SSRF protection to `steps/ssrf/` module (oembed, pingback) - 2026-04-06
-- [x] Add tests for all security features - 2026-04-06 (76 tests passing)
-- [x] Standardize dependency handling with mixins - 2026-04-07
-- [x] Risk tier parallel execution in `base/runner.py` - 2026-04-10
-- [x] AsyncToolRunner integration - 2026-04-10
-- [x] Pydantic-settings config migration - 2026-04-10
-- [x] Typer CLI migration - 2026-04-10
-
-### P2 - Medium Priority
-- [ ] Add wordlists directory and placeholder files (`docs/missing_wordlists.md` references this)
-- [ ] Implement `PortsStep` with configurable wordlist (`docs/missing_wordlists.md`)
-- [ ] Add `PluginStep` wordlist-based brute force
-- [ ] Add `ThemeStep` wordlist-based enumeration
-- [ ] Implement `ScriptsStep` with path enumeration
-
-### P3 - Nice to Have
-- [ ] Add authenticated scan mode (Phase 6 per docs/architecture_plan.md)
-- [x] Add report generation (JSON, Markdown) - 2026-04-06
-- [ ] Add logging to file with rotation
-- [ ] Add configuration file (config.yaml) support
-
----
-
-## Architecture Status
-
-### Completed Phases (per `docs/architecture_plan.md`)
-- [x] Phase 1: Atoms + Molecules + passive/discovery/fingerprint steps (partial)
-- [ ] Phase 2: Users + API + XMLRPC steps (partial - XMLRPC done)
-- [ ] Phase 3: Secrets + SSRF steps (partial - SSRF protection added)
-- [ ] Phase 4: All `BaseToolStep` implementations
-- [ ] Phase 5: Pipeline polish + full report generation
-- [ ] Phase 6: Authenticated scan mode
-
-### Module Status
-| Module | Status | Notes |
-|--------|--------|-------|
-| `passive` | Complete | WhoisStep, DnsStep, CrtShStep, WaymachineStep implemented |
-| `infrastructure` | Partial | HeadersStep, TlsStep, WafStep, PortsStep (with SSRF) |
-| `discovery` | Partial | ReadmeStep, LicenseStep, etc. exist |
-| `fingerprint` | Partial | Version detection works, wordlist enumeration pending |
-| `users` | Partial | REST API detection works |
-| `api` | Partial | Basic checks exist |
-| `xmlrpc` | Complete | All steps implemented with security |
-| `secrets` | Partial | File checks exist |
-| `ssrf` | Partial | Steps exist with SSRF protection |
-| `tools` | Partial | WpscanStep implemented (2026-04-07), NucleiStep pending |
+| Module | Steps | Status |
+|--------|-------|--------|
+| `passive` | 5 | Complete — Whois, DNS, crt.sh, Wayback, Shodan |
+| `infrastructure` | 5 | Complete — Headers, TLS, WAF, Ports, Hosting |
+| `discovery` | 9 | Complete — Readme, License, Sitemap, Login, wp-cron, Uploads, Plugin/Theme brute-force, Spider |
+| `fingerprint` | 6 | Complete — WP version, Themes, Plugins, Plugin version, Assets, Scripts |
+| `access` | 7 | Complete — Auth REST API, Inactive plugin check, Login brute-force, Site health, REST hardening |
+| `vuln` | 3 | Complete — Core/Plugin/Theme CVE correlation |
+| `users` | 4 | Complete — REST API, oEmbed, Author ID, Login verbosity |
+| `api` | 3 | Complete — REST surface, IP leak, App passwords |
+| `xmlrpc` | 5 | Complete — Detection, Methods, Creds, Multicall, SSRF |
+| `secrets` | 5 | Complete — Config backups, .env, Git, Debug log, phpinfo |
+| `ssrf` | 2 | Complete — oEmbed proxy, Pingback SSRF |
+| `tools` | 6 | Complete — WPScan, Nuclei, FFUF (dir/files/WP), OpenDoor |
 
 ---
 
@@ -814,24 +825,6 @@ config.keys["wordlist"] = "/path/to/wordlist.txt"
 
 ## Known Issues
 
-1. **LSP Type Errors**: Type checkers show errors in `core/ssrf_protection.py` and `utils/rate_limiter.py` - these don't affect runtime but should be fixed for IDE support.
-
-2. **Tools Module**: WpscanStep implemented (2026-04-07), NucleiStep still pending.
-
-3. **Wordlist Enumeration**: Plugin, theme, and path enumeration via wordlists are pending implementation.
-
----
-
-## Session Context
-
-### This Session (2026-04-06)
-- **Task**: Security audit and hardening
-- **Duration**: ~30 minutes
-- **Files Created**: 4 new files
-- **Files Modified**: 11 files
-- **Tests**: Basic security tests passed
-
-### Next Session Priorities
-1. Fix remaining type errors (P0) - ssrf_protection.py, rate_limiter.py
-2. Implement NucleiStep (P1) - network vulnerability scanning
-3. Add wordlist-based enumeration (P2) - PluginStep, ThemeStep
+1. **LSP Type Errors**: Type checkers show errors in tests that mock httpx responses (accessing attributes on `None`) — expected false positives, don't affect runtime.
+2. **`pyproject.toml` requires `>=3.9` but Dockerfile uses `python:3.11-slim`** — consistent (3.11 satisfies >=3.9).
+3. **Wordlists**: Built-in fallback lists are small (30 plugins / 15 themes). See `wordlists/README.md` for SecLists production setup.

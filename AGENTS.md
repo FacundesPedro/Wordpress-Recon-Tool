@@ -77,9 +77,9 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 
 ## Remaining Work
 
-### Priority 1 — Tests (high impact, untested production code)
+### Priority 1 — Tests (complete)
 
-**Coverage:** 60/60 steps tested (100%). All modules covered.
+**Coverage:** 60/60 steps tested (100%), 1138 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 

@@ -2,7 +2,7 @@
 
 **Purpose:** Index of external APIs, tools, wordlists, and documentation that this project depends on or integrates with. Keep this up to date as dependencies change.
 
-**Last Updated:** 2026-06-17
+**Last Updated:** 2026-07-23
 
 ---
 

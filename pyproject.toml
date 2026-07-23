@@ -15,6 +15,9 @@ dependencies = [
     "packaging>=21.0",
 ]
 
+[project.scripts]
+wp-recon = "main:app"
+
 [project.optional-dependencies]
 pdf = ["weasyprint"]
 

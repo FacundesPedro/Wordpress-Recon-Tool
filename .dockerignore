@@ -1,0 +1,61 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Tests (not needed in production image)
+tests/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / Secrets
+.env
+.env.*
+.env.local
+*.key
+*.pem
+*.crt
+*.pub
+
+# Reports (generated at runtime)
+reports/
+results/
+output/
+
+# Caches
+.ruff_cache/
+.mypy_cache/
+.cache/
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# Docs (not needed at runtime)
+docs/
+CHANGELOG.md
+AGENTS.md

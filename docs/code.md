@@ -16,7 +16,7 @@ SOLID principles + Atomic Design layered on Python async (httpx, asyncio).
 |-------|---------|-----------------|
 | **Atoms** | `core/` | `Finding`, `HttpClient`, `Target`, `Logger`, `SsrfProtection`, exceptions |
 | **Molecules** | `base/` | `BaseStep`, `BaseHttpStep`, `BaseToolStep`, `Runner`, `ToolRunner`/`AsyncToolRunner`, dependency mixins |
-| **Organisms** | `steps/` | 61 concrete step implementations across 12 modules |
+| **Organisms** | `steps/` | 60 concrete step implementations across 12 modules |
 | **Modules** | `modules/` | `Module` container, `MODULE_REGISTRY`, `PROFILES` |
 | **Pipeline** | `main.py` | `Validator → Runner → Aggregator → Report` |
 | **Output** | `utils/report.py` | `JsonFormatter`, `MarkdownFormatter` |

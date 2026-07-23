@@ -40,6 +40,7 @@ desktop.ini
 # =========================
 .env
 .env.*
+!.env.example
 .env.local
 config.local.py
 secrets.json
