@@ -1,8 +1,8 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-07-08  
+**Last Updated:** 2026-07-23  
 **Current Branch:** `main`  
-**HEAD:** `(current)` — Tiers 2-3 full implementation (login brute-force, cookie admin, REST hardening, hosting fingerprint, SARIF, content spider)
+**HEAD:** `5952286` — Session 14: Config/CLI/edge case unit tests (1138 tests, all layers tested)
 
 ---
 
@@ -21,9 +21,23 @@
 | 9 | `c646dd3` | Add plugin/theme brute-force — response-code oracle with SecLists fallback wordlists |
 | 10 | `f1520dd` | Add CVE correlation — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 | 11 | `f5c4d85` | Add inactive plugin file accessibility check — probe readme.txt for deactivated plugins |
-| 12 | (current) | Tiers 2-3: Login brute-force, cookie admin, REST hardening, hosting fingerprint, SARIF, spider |
+| 12 | `f8c044d` | Tiers 2-3: Login brute-force, cookie admin, REST hardening, hosting fingerprint, SARIF, spider |
+| 13 | `e6c6efa` | Doc cleanup: remove redundant .md files, update outdated references |
+| 14 | `c3e5b10` | Phase 1 bug fixes: 8 correctness bugs |
+| 15 | `bcf93fb` | Phase 3 tests: passive module (75 tests, 432 total) |
+| 16 | `90299c6` | Phase 4 tests: discovery + fingerprint (68 tests, 500 total) |
+| 17 | `ae098c2` | Phase 5 tests: xmlrpc + secrets + api (75 tests, 575 total) |
+| 18 | `8a95798` | Session 6 tests: infrastructure module (20 tests, 595 total) |
+| 19 | `981f01d` | Session 7 tests: ssrf + users (31 tests, 626 total) |
+| 20 | `323f1a9` | Session 8 tests: tools + utils (96 tests, 722 total) |
+| 21 | `fdcd75c` | Sessions 8-9: tools/utils tests + code quality docstrings |
+| 22 | `fdcd75c` | Session 10: architecture cleanup |
+| 23 | `8c24a7f` | Session 11: Security + Polish |
+| 24 | `f54c316` | Session 12: Core layer unit tests (163 tests, 885 total) |
+| 25 | `01cea35` | Session 13: Base infrastructure tests (153 tests, 1038 total) |
+| 26 | `5952286` | Session 14: Config/CLI/edge case tests (100 tests, 1138 total) |
 
-**Current state:** 12 modules, 61 steps, 143 tests passing (1 pre-existing warning).
+**Current state:** 12 modules, 60 steps, 1138 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. See AGENTS.md for full commit history.
 
 ---
 
