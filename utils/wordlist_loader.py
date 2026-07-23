@@ -73,7 +73,9 @@ def load_lines(
                     line = line.strip()
                 if line:
                     yield line
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError) as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not read wordlist '{path}': {e}")
         return
 
 

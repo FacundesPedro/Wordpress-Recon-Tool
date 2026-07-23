@@ -42,6 +42,23 @@ class Target:
         elif self.url:
             raise ValidationError(f"Invalid target URL: {self.url}")
 
+    @staticmethod
+    def _split_host_port(netloc: str) -> tuple[str, Optional[int]]:
+        if netloc.startswith("["):
+            bracket = netloc.find("]")
+            if bracket == -1:
+                return netloc, None
+            host = netloc[: bracket + 1]
+            rest = netloc[bracket + 1 :]
+            port = int(rest[1:]) if rest.startswith(":") else None
+            return host, port
+        if ":" in netloc:
+            host, port_str = netloc.rsplit(":", 1)
+            if port_str.isdigit():
+                return host, int(port_str)
+            return netloc, None
+        return netloc, None
+
     def _validate_and_normalize(self, url: str) -> dict:
         """Validate and normalize URL.
 
@@ -71,17 +88,27 @@ class Target:
             if not parsed.netloc:
                 return {}
 
-            domain = parsed.netloc
+            host, port = self._split_host_port(parsed.netloc)
 
-            if not re.match(
-                r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$",
-                domain,
-            ):
-                if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", domain):
-                    return {}
+            host_ok = bool(
+                re.match(
+                    r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$",
+                    host,
+                )
+            )
+            ipv4_ok = bool(re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", host))
+            ipv6_ok = bool(
+                re.match(r"^\[[a-fA-F0-9:]+\]$", host)
+            )
+
+            if not host_ok and not ipv4_ok and not ipv6_ok:
+                return {}
+
+            domain = host.strip("[]")
+            port_suffix = f":{port}" if port is not None else ""
 
             return {
-                "url": f"{parsed.scheme}://{domain}",
+                "url": f"{parsed.scheme}://{host}{port_suffix}",
                 "domain": domain,
             }
 

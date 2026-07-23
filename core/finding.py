@@ -30,6 +30,20 @@ class Finding:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw: dict[str, Any] = field(default_factory=dict)
 
+    _DEDUP_FIELDS = (
+        "module", "step", "severity", "title", "description", "evidence", "recommendation",
+    )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Finding):
+            return NotImplemented
+        return tuple(getattr(self, f) for f in self._DEDUP_FIELDS) == tuple(
+            getattr(other, f) for f in self._DEDUP_FIELDS
+        )
+
+    def __hash__(self) -> int:
+        return hash(tuple(getattr(self, f) for f in self._DEDUP_FIELDS))
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize finding to dictionary for reports."""
         return {

@@ -16,7 +16,7 @@ Usage:
 
 import asyncio
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 
 class RateLimiter:
@@ -118,8 +118,8 @@ class RetryLimiter:
     async def execute_with_retry(
         self,
         coro,
-        on_success: Optional[callable] = None,
-        on_failure: Optional[callable] = None,
+        on_success: Optional[Callable] = None,
+        on_failure: Optional[Callable] = None,
     ):
         """Execute a coroutine with rate limiting and retry.
 

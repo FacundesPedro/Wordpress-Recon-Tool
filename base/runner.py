@@ -10,15 +10,9 @@ from core.finding import Finding
 from core.http_client import HttpClient
 from core.logger import Logger
 from core.target import Target
+from modules import RISK_TIERS
 from modules.module import Module
 from utils.report import Report
-
-RISK_TIERS = {
-    1: ["passive"],
-    2: ["infrastructure", "discovery", "fingerprint", "access", "vuln"],
-    3: ["users", "api", "xmlrpc", "secrets", "ssrf"],
-    4: ["tools"],
-}
 
 
 class Runner:
@@ -53,10 +47,16 @@ class Runner:
 
         for module in self.modules:
             module_name = module.name or module.__class__.__name__
+            matched = False
             for tier, tier_names in RISK_TIERS.items():
                 if module_name in tier_names:
                     tier_modules[tier].append(module)
+                    matched = True
                     break
+            if not matched:
+                self.logger.warning(
+                    f"Module '{module_name}' does not match any risk tier — will not run"
+                )
 
         return tier_modules
 

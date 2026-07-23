@@ -165,7 +165,7 @@ class MarkdownFormatter:
 class SarifFormatter:
     """Format report as SARIF 2.1.0 for CI/CD integration."""
 
-    SCHEMA = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/v2.1.0/utilities/sarif_schema.json"
+    SCHEMA = "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json"
     SARIF_VERSION = "2.1.0"
 
     @classmethod
@@ -423,7 +423,7 @@ class HtmlFormatter:
     @staticmethod
     def _esc(s: str) -> str:
         """Escape HTML entities."""
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#x27;")
 
 
 class PdfFormatter:

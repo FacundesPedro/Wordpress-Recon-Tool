@@ -9,12 +9,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from base.runner import RISK_TIERS as RUNNER_RISK_TIERS
 from base.runner import Runner
 from config import ScanConfig
 from core.logger import Logger
 from core.target import Target
-from modules import AVAILABLE_MODULES, MODULE_REGISTRY, PROFILES
+from modules import AVAILABLE_MODULES, MODULE_REGISTRY, PROFILES, RISK_TIERS
 from utils.report import (
     HtmlFormatter,
     JsonFormatter,
@@ -294,7 +293,7 @@ def list_modules():
         inst = cls()
         step_count = len(inst)
         tier = next(
-            (str(t) for t, names in RUNNER_RISK_TIERS.items() if name in names),
+            (str(t) for t, names in RISK_TIERS.items() if name in names),
             "?",
         )
         table.add_row(name, str(step_count), f"T{tier}", inst.description or "No description")

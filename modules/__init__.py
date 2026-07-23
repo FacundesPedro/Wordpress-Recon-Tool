@@ -37,6 +37,7 @@ PROFILES = {
         "infrastructure",
         "discovery",
         "fingerprint",
+        "vuln",
         "users",
         "api",
         "xmlrpc",
@@ -49,3 +50,29 @@ PROFILES = {
 
 AVAILABLE_PROFILES = list(PROFILES.keys())
 AVAILABLE_MODULES = list(MODULE_REGISTRY.keys())
+
+RISK_TIERS: dict[int, list[str]] = {
+    1: ["passive"],
+    2: ["infrastructure", "discovery", "fingerprint", "access", "vuln"],
+    3: ["users", "api", "xmlrpc", "secrets", "ssrf"],
+    4: ["tools"],
+}
+
+
+def validate_tier_coverage() -> None:
+    """Assert every registered module maps to exactly one risk tier."""
+    registered = set(MODULE_REGISTRY)
+    tiered: set[str] = set()
+    for names in RISK_TIERS.values():
+        tiered.update(names)
+    uncovered = registered - tiered
+    if uncovered:
+        raise ValueError(
+            f"Modules registered but not assigned to any risk tier: {', '.join(sorted(uncovered))}"
+        )
+    extraneous = tiered - registered
+    if extraneous:
+        print(f"Warning: RISK_TIERS references non-existent modules: {', '.join(sorted(extraneous))}")
+
+
+validate_tier_coverage()

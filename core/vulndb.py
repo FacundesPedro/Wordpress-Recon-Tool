@@ -55,21 +55,12 @@ class CveFinding:
     source: str = ""
 
 
-class WPVulnerabilityClient:
-    """Client for the WPVulnerability.net API (free, no API key required)."""
-    def __init__(self, cache_ttl: int = 300):
-        """Initialize the WPVulnerability client.
+class CacheMixin:
+    """Mixin providing TTL-based in-memory cache for vulnerability results."""
 
-        Args:
-            cache_ttl: Cache TTL in seconds (default 300).
-        """
+    def __init__(self, cache_ttl: int = 300):
         self._cache: dict[str, tuple[float, list[CveFinding]]] = {}
         self._cache_ttl = cache_ttl
-        self._http = httpx.AsyncClient(timeout=15)
-
-    async def close(self) -> None:
-        """Close the underlying HTTP client session."""
-        await self._http.aclose()
 
     def _cache_get(self, key: str) -> Optional[list[CveFinding]]:
         """Get cached vulnerability results if within TTL."""
@@ -85,6 +76,22 @@ class WPVulnerabilityClient:
     def _cache_set(self, key: str, data: list[CveFinding]) -> None:
         """Cache vulnerability results with current timestamp."""
         self._cache[key] = (time.monotonic(), data)
+
+
+class WPVulnerabilityClient(CacheMixin):
+    """Client for the WPVulnerability.net API (free, no API key required)."""
+    def __init__(self, cache_ttl: int = 300):
+        """Initialize the WPVulnerability client.
+
+        Args:
+            cache_ttl: Cache TTL in seconds (default 300).
+        """
+        super().__init__(cache_ttl)
+        self._http = httpx.AsyncClient(timeout=15)
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client session."""
+        await self._http.aclose()
 
     def _get_cve_id(self, vuln: dict) -> str:
         """Extract the CVE identifier from a vulnerability dict."""
@@ -172,7 +179,7 @@ class WPVulnerabilityClient:
         return await self._get_wpvuln(f"core/{version}/", f"core:{version}")
 
 
-class WPScanClient:
+class WPScanClient(CacheMixin):
     """Client for the WPScan.com API (requires API token)."""
 
     def __init__(self, api_token: str, cache_ttl: int = 300):
@@ -182,30 +189,14 @@ class WPScanClient:
             api_token: WPScan API token.
             cache_ttl: Cache TTL in seconds (default 300).
         """
+        super().__init__(cache_ttl)
         self._api_token = api_token
-        self._cache: dict[str, tuple[float, list[CveFinding]]] = {}
-        self._cache_ttl = cache_ttl
         self._headers = {"Authorization": f"Token token={api_token}"}
         self._http = httpx.AsyncClient(timeout=15, headers=self._headers)
 
     async def close(self) -> None:
         """Close the underlying HTTP client session."""
         await self._http.aclose()
-
-    def _cache_get(self, key: str) -> Optional[list[CveFinding]]:
-        """Get cached vulnerability results if within TTL."""
-        entry = self._cache.get(key)
-        if entry is None:
-            return None
-        ts, data = entry
-        if time.monotonic() - ts > self._cache_ttl:
-            del self._cache[key]
-            return None
-        return data
-
-    def _cache_set(self, key: str, data: list[CveFinding]) -> None:
-        """Cache vulnerability results with current timestamp."""
-        self._cache[key] = (time.monotonic(), data)
 
     def _get_vulns_list(self, data) -> list[dict]:
         """Extract the vulnerabilities list from an API response."""
@@ -235,15 +226,23 @@ class WPScanClient:
             source="wpscan",
         )
 
-    async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
-        """Get CVEs for a plugin by slug from WPScan."""
-        cached = self._cache_get(f"plugin:{slug}")
+    async def _fetch_and_parse(self, url: str, cache_key: str) -> list[CveFinding]:
+        """Fetch and parse vulnerabilities from a WPScan endpoint.
+
+        Args:
+            url: Full WPScan API URL to fetch.
+            cache_key: Cache key for storing/retrieving results.
+
+        Returns:
+            List of parsed CveFinding objects.
+        """
+        cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
         try:
-            resp = await self._http.get(f"{BASE_WPSCAN_API}/plugins/{slug}/")
+            resp = await self._http.get(url)
             if resp.status_code != 200:
-                self._cache_set(f"plugin:{slug}", [])
+                self._cache_set(cache_key, [])
                 return []
             data = resp.json()
         except Exception:
@@ -254,53 +253,27 @@ class WPScanClient:
             parsed = self._parse_vuln(v)
             if parsed:
                 results.append(parsed)
-        self._cache_set(f"plugin:{slug}", results)
+        self._cache_set(cache_key, results)
         return results
+
+    async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a plugin by slug from WPScan."""
+        return await self._fetch_and_parse(
+            f"{BASE_WPSCAN_API}/plugins/{slug}/", f"plugin:{slug}"
+        )
 
     async def get_theme_vulns(self, slug: str) -> list[CveFinding]:
         """Get CVEs for a theme by slug from WPScan."""
-        cached = self._cache_get(f"theme:{slug}")
-        if cached is not None:
-            return cached
-        try:
-            resp = await self._http.get(f"{BASE_WPSCAN_API}/themes/{slug}/")
-            if resp.status_code != 200:
-                self._cache_set(f"theme:{slug}", [])
-                return []
-            data = resp.json()
-        except Exception:
-            return []
-        vulns = self._get_vulns_list(data)
-        results = []
-        for v in vulns:
-            parsed = self._parse_vuln(v)
-            if parsed:
-                results.append(parsed)
-        self._cache_set(f"theme:{slug}", results)
-        return results
+        return await self._fetch_and_parse(
+            f"{BASE_WPSCAN_API}/themes/{slug}/", f"theme:{slug}"
+        )
 
     async def get_core_vulns(self, version: str) -> list[CveFinding]:
         """Get CVEs for a WordPress core version from WPScan."""
         ver_flat = version.replace(".", "")
-        cached = self._cache_get(f"core:{ver_flat}")
-        if cached is not None:
-            return cached
-        try:
-            resp = await self._http.get(f"{BASE_WPSCAN_API}/wordpresses/{ver_flat}/")
-            if resp.status_code != 200:
-                self._cache_set(f"core:{ver_flat}", [])
-                return []
-            data = resp.json()
-        except Exception:
-            return []
-        vulns = self._get_vulns_list(data)
-        results = []
-        for v in vulns:
-            parsed = self._parse_vuln(v)
-            if parsed:
-                results.append(parsed)
-        self._cache_set(f"core:{ver_flat}", results)
-        return results
+        return await self._fetch_and_parse(
+            f"{BASE_WPSCAN_API}/wordpresses/{ver_flat}/", f"core:{ver_flat}"
+        )
 
 
 class VulnDB:
@@ -329,56 +302,60 @@ class VulnDB:
         if self._secondary:
             await self._secondary.close()
 
-    async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
-        """Get CVEs for a plugin, merging primary + secondary sources."""
-        seen = set()
-        results = []
-        primary = await self._primary.get_plugin_vulns(slug)
+    async def _merge_results(
+        self,
+        primary_fn,
+        secondary_fn,
+        *args,
+    ) -> list[CveFinding]:
+        """Merge results from primary and optional secondary source, dedup by CVE ID.
+
+        Args:
+            primary_fn: Async method on self._primary to call.
+            secondary_fn: Async method on self._secondary to call (or None).
+            *args: Arguments forwarded to both functions.
+
+        Returns:
+            Deduplicated list of CveFinding objects.
+        """
+        seen: set[str] = set()
+        results: list[CveFinding] = []
+        primary = await primary_fn(*args)
         for v in primary:
             if v.id not in seen:
                 seen.add(v.id)
                 results.append(v)
-        if self._secondary:
-            secondary = await self._secondary.get_plugin_vulns(slug)
+        if self._secondary and secondary_fn:
+            secondary = await secondary_fn(*args)
             for v in secondary:
                 if v.id not in seen:
                     seen.add(v.id)
                     results.append(v)
         return results
+
+    async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a plugin, merging primary + secondary sources."""
+        return await self._merge_results(
+            self._primary.get_plugin_vulns,
+            getattr(self._secondary, "get_plugin_vulns", None) if self._secondary else None,
+            slug,
+        )
 
     async def get_theme_vulns(self, slug: str) -> list[CveFinding]:
         """Get CVEs for a theme, merging primary + secondary sources."""
-        seen = set()
-        results = []
-        primary = await self._primary.get_theme_vulns(slug)
-        for v in primary:
-            if v.id not in seen:
-                seen.add(v.id)
-                results.append(v)
-        if self._secondary:
-            secondary = await self._secondary.get_theme_vulns(slug)
-            for v in secondary:
-                if v.id not in seen:
-                    seen.add(v.id)
-                    results.append(v)
-        return results
+        return await self._merge_results(
+            self._primary.get_theme_vulns,
+            getattr(self._secondary, "get_theme_vulns", None) if self._secondary else None,
+            slug,
+        )
 
     async def get_core_vulns(self, version: str) -> list[CveFinding]:
         """Get CVEs for a WP core version, merging primary + secondary sources."""
-        seen = set()
-        results = []
-        primary = await self._primary.get_core_vulns(version)
-        for v in primary:
-            if v.id not in seen:
-                seen.add(v.id)
-                results.append(v)
-        if self._secondary:
-            secondary = await self._secondary.get_core_vulns(version)
-            for v in secondary:
-                if v.id not in seen:
-                    seen.add(v.id)
-                    results.append(v)
-        return results
+        return await self._merge_results(
+            self._primary.get_core_vulns,
+            getattr(self._secondary, "get_core_vulns", None) if self._secondary else None,
+            version,
+        )
 
 
 _SEVERITY_MAP: dict[str, FindingSeverity] = {

@@ -176,6 +176,11 @@ def is_blocked_target(host: str, port: Optional[int] = None) -> bool:
     This is used for port scanning and SSRF testing where we want to
     prevent scanning/attacking internal infrastructure.
 
+    Note: DNS resolution is performed at check time only. DNS rebinding
+    attacks (where the DNS response changes between this check and the
+    actual request) are not defended against. For high-security use
+    cases, pin DNS resolution at connection time or use connect-and-check.
+
     Args:
         host: Hostname or IP address to check
         port: Optional port number
@@ -197,7 +202,7 @@ def is_blocked_target(host: str, port: Optional[int] = None) -> bool:
     if is_cloud_metadata(hostname, normalized_host):
         return True
 
-    if port and port in {80, 443, 8080, 8443}:
+    if port:
         ips = resolve_hostname(hostname, port)
         for ip in ips:
             if is_private_ip(ip) or ip in CLOUD_METADATA_IPS:
