@@ -9,6 +9,8 @@ Retrieves all available XML-RPC methods.
 # HOW: POST system.listMethods, parses method names
 # WHY: Identifies dangerous methods (wp.getUsersBlogs, pingback.ping, multicall)
 
+import re
+
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
@@ -56,8 +58,6 @@ class XmlrpcMethodsStep(BaseHttpStep, WordlistDependencyMixin):
             )
 
             if response.status_code == 200 and "<array>" in response.text:
-                import re
-
                 methods = re.findall(r"<string>([^<]+)</string>", response.text)
 
                 found_dangerous = [m for m in methods if m in dangerous_methods]

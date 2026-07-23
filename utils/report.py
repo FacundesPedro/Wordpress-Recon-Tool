@@ -265,6 +265,17 @@ class HtmlFormatter:
 
     @classmethod
     def _build_html(cls, report: Report) -> str:
+        """Build a self-contained HTML page from a Report.
+
+        Produces a single HTML document with:
+          - Gradient header (domain, target, date, duration)
+          - Severity summary table
+          - Modules run list (if any)
+          - Findings grouped by severity (critical+high, medium+low, info)
+          - Errors section (if any)
+          - Footer with generation notice
+        Inlines all CSS via <style> for portability.
+        """
         summary = report.get_summary()
         findings_html = cls._render_findings(report)
         errors_html = cls._render_errors(report)

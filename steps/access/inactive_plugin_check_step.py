@@ -1,3 +1,7 @@
+# WHAT: Probe readme.txt for deactivated plugins to assess exposure
+# HOW: HTTP GET to known plugin readme paths, check for 200 responses
+# WHY: Inactive plugins are often unpatched and can be an easy RCE vector
+
 from base.http_step import BaseHttpStep
 from core.auth import get_wp_auth_header
 from core.finding import Finding

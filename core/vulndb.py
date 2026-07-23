@@ -1,3 +1,9 @@
+"""Vulnerability database abstraction layer.
+
+Provides unified access to WPVulnerability.net (free, no key) and WPScan API
+(key-required) with in-memory caching and automatic fallback.
+"""
+
 import time
 from dataclasses import dataclass
 from typing import Literal, Optional
@@ -11,6 +17,7 @@ FindingSeverity = Literal["info", "low", "medium", "high", "critical"]
 
 
 def cvss_to_severity(score: Optional[float]) -> str:
+    """Map a CVSS score (0-10) to a severity string."""
     if score is None:
         return "info"
     if score >= 9.0:
@@ -24,6 +31,19 @@ def cvss_to_severity(score: Optional[float]) -> str:
 
 @dataclass
 class CveFinding:
+    """A single CVE record returned from a vulnerability database query.
+
+    Attributes:
+        id: CVE identifier (e.g. CVE-2024-12345)
+        title: Human-readable title
+        description: Short description of the vulnerability
+        cvss_score: CVSS base score (0-10)
+        cvss_vector: CVSS vector string
+        severity: Mapped severity string (info/low/medium/high/critical)
+        fixed_in: Version where the vulnerability is fixed, if known
+        published: Publication date string
+        source: Source database name (wpvulnerability or wpscan)
+    """
     id: str
     title: str
     description: str
@@ -36,15 +56,23 @@ class CveFinding:
 
 
 class WPVulnerabilityClient:
+    """Client for the WPVulnerability.net API (free, no API key required)."""
     def __init__(self, cache_ttl: int = 300):
+        """Initialize the WPVulnerability client.
+
+        Args:
+            cache_ttl: Cache TTL in seconds (default 300).
+        """
         self._cache: dict[str, tuple[float, list[CveFinding]]] = {}
         self._cache_ttl = cache_ttl
         self._http = httpx.AsyncClient(timeout=15)
 
     async def close(self) -> None:
+        """Close the underlying HTTP client session."""
         await self._http.aclose()
 
     def _cache_get(self, key: str) -> Optional[list[CveFinding]]:
+        """Get cached vulnerability results if within TTL."""
         entry = self._cache.get(key)
         if entry is None:
             return None
@@ -55,15 +83,18 @@ class WPVulnerabilityClient:
         return data
 
     def _cache_set(self, key: str, data: list[CveFinding]) -> None:
+        """Cache vulnerability results with current timestamp."""
         self._cache[key] = (time.monotonic(), data)
 
     def _get_cve_id(self, vuln: dict) -> str:
+        """Extract the CVE identifier from a vulnerability dict."""
         cve = vuln.get("cve") or {}
         if isinstance(cve, dict):
             return cve.get("id", "") or ""
         return vuln.get("id", "") or ""
 
     def _get_desc(self, vuln: dict) -> str:
+        """Extract the description from a vulnerability dict."""
         cve = vuln.get("cve") or {}
         if not isinstance(cve, dict):
             return ""
@@ -79,6 +110,7 @@ class WPVulnerabilityClient:
         return ""
 
     def _parse_vuln(self, vuln: dict, source: str) -> Optional[CveFinding]:
+        """Parse a WPVulnerability API vuln dict into a CveFinding."""
         cve_id = self._get_cve_id(vuln)
         if not cve_id:
             return None
@@ -105,6 +137,7 @@ class WPVulnerabilityClient:
         )
 
     async def _get_wpvuln(self, endpoint: str, cache_key: str) -> list[CveFinding]:
+        """Fetch and parse vulnerabilities from a WPVulnerability endpoint."""
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
@@ -127,17 +160,28 @@ class WPVulnerabilityClient:
         return results
 
     async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a plugin by slug from WPVulnerability.net."""
         return await self._get_wpvuln(f"plugin/{slug}/", f"plugin:{slug}")
 
     async def get_theme_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a theme by slug from WPVulnerability.net."""
         return await self._get_wpvuln(f"theme/{slug}/", f"theme:{slug}")
 
     async def get_core_vulns(self, version: str) -> list[CveFinding]:
+        """Get CVEs for a WordPress core version from WPVulnerability.net."""
         return await self._get_wpvuln(f"core/{version}/", f"core:{version}")
 
 
 class WPScanClient:
+    """Client for the WPScan.com API (requires API token)."""
+
     def __init__(self, api_token: str, cache_ttl: int = 300):
+        """Initialize the WPScan client.
+
+        Args:
+            api_token: WPScan API token.
+            cache_ttl: Cache TTL in seconds (default 300).
+        """
         self._api_token = api_token
         self._cache: dict[str, tuple[float, list[CveFinding]]] = {}
         self._cache_ttl = cache_ttl
@@ -145,9 +189,11 @@ class WPScanClient:
         self._http = httpx.AsyncClient(timeout=15, headers=self._headers)
 
     async def close(self) -> None:
+        """Close the underlying HTTP client session."""
         await self._http.aclose()
 
     def _cache_get(self, key: str) -> Optional[list[CveFinding]]:
+        """Get cached vulnerability results if within TTL."""
         entry = self._cache.get(key)
         if entry is None:
             return None
@@ -158,9 +204,11 @@ class WPScanClient:
         return data
 
     def _cache_set(self, key: str, data: list[CveFinding]) -> None:
+        """Cache vulnerability results with current timestamp."""
         self._cache[key] = (time.monotonic(), data)
 
     def _get_vulns_list(self, data) -> list[dict]:
+        """Extract the vulnerabilities list from an API response."""
         if isinstance(data, dict):
             return data.get("vulnerabilities", [])
         if isinstance(data, list):
@@ -168,6 +216,7 @@ class WPScanClient:
         return []
 
     def _parse_vuln(self, vuln: dict) -> Optional[CveFinding]:
+        """Parse a WPScan API vuln dict into a CveFinding."""
         cve_id = (vuln.get("cve") or vuln.get("id") or "").strip()
         if not cve_id:
             return None
@@ -187,6 +236,7 @@ class WPScanClient:
         )
 
     async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a plugin by slug from WPScan."""
         cached = self._cache_get(f"plugin:{slug}")
         if cached is not None:
             return cached
@@ -208,6 +258,7 @@ class WPScanClient:
         return results
 
     async def get_theme_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a theme by slug from WPScan."""
         cached = self._cache_get(f"theme:{slug}")
         if cached is not None:
             return cached
@@ -229,6 +280,7 @@ class WPScanClient:
         return results
 
     async def get_core_vulns(self, version: str) -> list[CveFinding]:
+        """Get CVEs for a WordPress core version from WPScan."""
         ver_flat = version.replace(".", "")
         cached = self._cache_get(f"core:{ver_flat}")
         if cached is not None:
@@ -252,18 +304,33 @@ class WPScanClient:
 
 
 class VulnDB:
+    """Facade over WPVulnerabilityClient and WPScanClient with dedup.
+
+    Queries WPVulnerability.net first (free, no key), then falls back to
+    WPScan API (if token configured) to supplement any missing results.
+    Results are deduplicated by CVE ID.
+    """
+
     def __init__(self, cache_ttl: int = 300, wpscan_token: str = ""):
+        """Initialize vulnerability database clients.
+
+        Args:
+            cache_ttl: Cache TTL in seconds.
+            wpscan_token: Optional WPScan API token for secondary source.
+        """
         self._primary = WPVulnerabilityClient(cache_ttl=cache_ttl)
         self._secondary: Optional[WPScanClient] = None
         if wpscan_token:
             self._secondary = WPScanClient(wpscan_token, cache_ttl=cache_ttl)
 
     async def close(self) -> None:
+        """Close both database client sessions."""
         await self._primary.close()
         if self._secondary:
             await self._secondary.close()
 
     async def get_plugin_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a plugin, merging primary + secondary sources."""
         seen = set()
         results = []
         primary = await self._primary.get_plugin_vulns(slug)
@@ -280,6 +347,7 @@ class VulnDB:
         return results
 
     async def get_theme_vulns(self, slug: str) -> list[CveFinding]:
+        """Get CVEs for a theme, merging primary + secondary sources."""
         seen = set()
         results = []
         primary = await self._primary.get_theme_vulns(slug)
@@ -296,6 +364,7 @@ class VulnDB:
         return results
 
     async def get_core_vulns(self, version: str) -> list[CveFinding]:
+        """Get CVEs for a WP core version, merging primary + secondary sources."""
         seen = set()
         results = []
         primary = await self._primary.get_core_vulns(version)
@@ -322,4 +391,5 @@ _SEVERITY_MAP: dict[str, FindingSeverity] = {
 
 
 def to_finding_severity(severity: str) -> FindingSeverity:
+    """Map an API severity string to a Finding severity literal."""
     return _SEVERITY_MAP.get(severity, "info")

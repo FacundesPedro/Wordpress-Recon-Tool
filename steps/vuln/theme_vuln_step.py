@@ -1,3 +1,11 @@
+"""
+Correlate installed theme versions against CVEs from vulnerability databases.
+"""
+
+# WHAT: Matches detected theme slugs against VulnDB to find known vulnerabilities
+# HOW: Detects themes via REST API (auth) or passive HTML scraping, queries VulnDB
+# WHY: Outdated themes can expose XSS, SQLi, and other high-severity vulnerabilities
+
 import re
 from typing import Optional
 
@@ -8,6 +16,7 @@ from core.vulndb import VulnDB, to_finding_severity
 
 
 class ThemeVulnStep(BaseHttpStep):
+    """Query vulnerability databases for CVEs affecting installed themes."""
     name = "theme_vuln"
     description = "Correlate installed theme versions against known CVEs"
     severity = "info"

@@ -1,3 +1,7 @@
+# WHAT: Brute-force plugin path discovery via response-code oracle
+# HOW: HTTP GET to known plugin paths — 200/301/403 confirms existence
+# WHY: Finds installed plugins without requiring authenticated access
+
 import re
 from typing import Optional
 

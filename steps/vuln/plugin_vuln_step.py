@@ -1,3 +1,11 @@
+"""
+Correlate installed plugin versions against CVEs from vulnerability databases.
+"""
+
+# WHAT: Matches detected plugin slugs against VulnDB to find known vulnerabilities
+# HOW: Detects plugins via REST API (auth) or passive HTML scraping, queries VulnDB
+# WHY: Vulnerable plugins are the most common WordPress compromise vector
+
 import re
 from typing import Optional
 
@@ -8,6 +16,7 @@ from core.vulndb import VulnDB, to_finding_severity
 
 
 class PluginVulnStep(BaseHttpStep):
+    """Query vulnerability databases for CVEs affecting installed plugins."""
     name = "plugin_vuln"
     description = "Correlate installed plugin versions against known CVEs"
     severity = "info"

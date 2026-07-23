@@ -1,3 +1,7 @@
+# WHAT: Audit REST API hardening — CORS, auth bypass, and route leakage
+# HOW: Probe wp-json endpoints, check auth headers, CORS, and permissions
+# WHY: Unauthenticated API access is a common WordPress misconfiguration
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 

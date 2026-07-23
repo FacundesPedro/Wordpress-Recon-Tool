@@ -1,3 +1,7 @@
+# WHAT: Brute-force theme path discovery via response-code oracle
+# HOW: HTTP GET to known theme paths — 200/301/403 confirms existence
+# WHY: Identifies active and deactivated themes for vulnerability matching
+
 import re
 from typing import Optional
 

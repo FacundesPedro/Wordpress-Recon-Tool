@@ -1,3 +1,7 @@
+# WHAT: Brute-force WordPress login via XML-RPC with credential pairs
+# HOW: Sends async credential pairs to xmlrpc.php via wp.getUsersBlogs, respects rate limits
+# WHY: Tests weak credentials without interactive login form
+
 import asyncio
 
 from base.dependencies import WordlistDependencyMixin

@@ -6,7 +6,19 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 626 tests passing (60/60 steps covered, 100%).
+**Current state:** 12 modules, 60 steps, 722 tests passing (60/60 steps covered, 100%).
+
+## Agent Working Protocol
+
+**Always research before coding.** When implementing changes (especially new features, API integrations, or external library usage), use `websearch` and `webfetch` to verify current API schemas, library versions, and best practices. Do not rely on training data alone — external APIs and libraries change. Validate code against live documentation before writing it.
+
+**Research-first workflow:**
+1. `websearch` for current API/library docs and recent changes
+2. `webfetch` official docs for exact schemas, parameters, and deprecations
+3. Implement based on verified information
+4. Run tests/lint to confirm correctness
+
+This applies especially to: REST API endpoints, Python library APIs, CVE data sources (WPVulnerability, WPScan), Shodan API, SARIF schema, and httpx/typer/pydantic-settings usage patterns.
 
 ## Key Design Decisions
 
@@ -37,8 +49,14 @@ Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via env
 | 13 | `f5c4d85` | **Inactive plugin file accessibility** — probe readme.txt for deactivated plugins |
 | 14 | `f8c044d` | **Tiers 2-3: Login brute-force, cookie admin session, REST API hardening, hosting fingerprint, SARIF, content spider** |
 | 15 | `e6c6efa` | **Doc cleanup: remove redundant .md files, update outdated references** |
-| 16 | (current) | **Phase 1 bug fixes: 8 correctness bugs (findings discard, error double-format, silent validation failure, SSRF rename, urljoin inconsistency, auth improvements, sanitize chars, output redaction)** |
-| 17 | (current) | **Tests for access + vuln modules: 7 new test files, 74 tests, 357 total passing** |
+| 16 | `c3e5b10` | **Phase 1 bug fixes: 8 correctness bugs (findings discard, error double-format, silent validation failure, SSRF rename, urljoin inconsistency, auth improvements, sanitize chars, output redaction)** |
+| 17 | `bcf93fb` | **Phase 3 tests: passive module (75 new tests, 432 total)** |
+| 18 | `90299c6` | **Phase 4 tests: discovery + fingerprint modules (68 new tests, 500 total)** |
+| 19 | `ae098c2` | **Phase 5 tests: xmlrpc + secrets + api modules (75 new tests, 575 total)** |
+| 20 | `8a95798` | **Session 6 tests: infrastructure module (20 tests, 595 total)** |
+| 21 | `981f01d` | **Session 7 tests: ssrf + users modules (31 tests, 626 total)** |
+| 22 | `323f1a9` | **Session 8 tests: tools + utils modules (96 tests, 722 total)** |
+| 23 | (current) | **Sessions 9: code quality — WHAT/HOW/WHY headers, vulndb docstrings, import re fix, assert→validation, _build_html docs** |
 
 ## Roadmap Status — ✅ All 9 items implemented
 

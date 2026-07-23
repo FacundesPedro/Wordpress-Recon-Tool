@@ -1,3 +1,7 @@
+# WHAT: Fingerprint WordPress hosting provider from response headers and IP ranges
+# HOW: HTTP header analysis for known provider signals, plus CDN detection
+# WHY: Hosting provider determines attack surface and available mitigation options
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 
@@ -47,7 +51,8 @@ class HostingStep(BaseHttpStep):
     async def run(self) -> list[Finding]:
         self.logger.info("Detecting hosting platform...")
 
-        assert self.target is not None
+        if self.target is None:
+            return self.findings
         try:
             resp = await self.http.get(self.target.url)
             headers = {k.lower(): v for k, v in resp.headers.items()}

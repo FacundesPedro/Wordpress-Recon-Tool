@@ -9,6 +9,8 @@ Checks if readme.html is exposed and extracts WordPress version.
 # HOW: HTTP GET to readme.html, regex for "version X.X.X"
 # WHY: Version disclosure aids targeted vulnerability research
 
+import re
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 
@@ -31,8 +33,6 @@ class ReadmeStep(BaseHttpStep):
                 content = response.text.lower()
 
                 if "wordpress" in content:
-                    import re
-
                     version_match = re.search(
                         r"version\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", content
                     )

@@ -1,3 +1,7 @@
+# WHAT: Check WordPress Site Health endpoint for debug info
+# HOW: Authenticated GET to wp-admin/site-health-info.php via cookie auth, parse JSON
+# WHY: Reveals server config, file permissions, and known site health issues
+
 import json
 import re
 
@@ -26,7 +30,8 @@ class SiteHealthStep(BaseHttpStep):
             self.logger.debug("HTTP client not yet initialized")
             return self.findings
 
-        assert self.target is not None
+        if self.target is None:
+            return self.findings
         session = AdminSession(raw_client, self.target.url.rstrip("/"))
 
         logged_in = await session.login(

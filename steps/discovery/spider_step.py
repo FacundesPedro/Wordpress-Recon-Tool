@@ -1,3 +1,7 @@
+# WHAT: Crawl same-origin links to discover hidden forms, upload dirs, and endpoints
+# HOW: Recursive HTTP GET with link extraction, respects depth and page limits
+# WHY: Discovers hidden pages, exposed paths, and unintended information disclosure
+
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -34,7 +38,8 @@ class SpiderStep(BaseHttpStep):
     async def run(self) -> list[Finding]:
         self.logger.info("Starting content spider...")
 
-        assert self.target is not None
+        if self.target is None:
+            return self.findings
 
         max_depth = getattr(self.config, "spider_max_depth", self.MAX_DEPTH)
         max_pages = getattr(self.config, "spider_max_pages", self.MAX_PAGES)

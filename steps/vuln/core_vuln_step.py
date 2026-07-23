@@ -1,3 +1,11 @@
+"""
+Correlate WordPress core version against CVEs from vulnerability databases.
+"""
+
+# WHAT: Queries vulnerability databases for CVEs affecting the detected WP core version
+# HOW: Detects core version from generator tag or readme.html, then queries VulnDB
+# WHY: Running outdated WordPress core is the single highest-risk configuration
+
 import re
 from typing import Optional
 
@@ -7,6 +15,7 @@ from core.vulndb import VulnDB, to_finding_severity
 
 
 class CoreVulnStep(BaseHttpStep):
+    """Query vulnerability databases for CVEs affecting the WordPress core version."""
     name = "core_vuln"
     description = "Correlate WordPress core version against known CVEs"
     severity = "info"
