@@ -125,6 +125,6 @@
 | 8 | ✅ Complete | Tests — tools + utils (items 20-21) |
 | 9 | ✅ Complete | Code quality — docstrings + `assert` fixes (items 22-29; 30 was already done) |
 | 10 | ✅ Complete | Architecture cleanup (items 31-40) |
-| 11 | ⬜ Pending | Security + Polish (items 41-55) |
+| 11 | ✅ Complete | Security + Polish (items 41-55; items 43, 46 were already done) |
 
 Each session represents ~2-4h of focused work.
