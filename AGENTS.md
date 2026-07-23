@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 722 tests passing (60/60 steps covered, 100%).
+**Current state:** 12 modules, 60 steps, 1138 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 ## Agent Working Protocol
 
@@ -59,6 +59,9 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 23 | `fdcd75c` | **Sessions 8-9: tools/utils tests + code quality docstrings** |
 | 24 | `fdcd75c` | **Session 10: architecture cleanup — dead code removal, Finding frozen=True, http init chain, user agents, wordlist resolution** |
 | 25 | `8c24a7f` | **Session 11: Security + Polish — XSS escape, SARIF URL, SSRF port fix, IPv6 target, stdlib logger, VulnDB dedup, profile/tier validation** |
+| 26 | `f54c316` | **Session 12: Core layer unit tests — target, http_client, auth, vulndb (163 new tests, 885 total)** |
+| 27 | `01cea35` | **Session 13: Base infrastructure unit tests — tool_runner, step, http_step, dependencies, runner (153 new tests, 1038 total)** |
+| 28 | (current) | **Session 14: Config, CLI, edge case unit tests — config, exceptions, logger, whois_parser, main_cli (100 new tests, 1138 total)** |
 
 ## Roadmap Status — ✅ All 9 items implemented
 
