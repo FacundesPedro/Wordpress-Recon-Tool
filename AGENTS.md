@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 1138 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level.
+**Current state:** 12 modules, 60 steps, 1138 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
 
 ## Agent Working Protocol
 
@@ -62,8 +62,9 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 26 | `f54c316` | **Session 12: Core layer unit tests — target, http_client, auth, vulndb (163 new tests, 885 total)** |
 | 27 | `01cea35` | **Session 13: Base infrastructure unit tests — tool_runner, step, http_step, dependencies, runner (153 new tests, 1038 total)** |
 | 28 | `5952286` | **Session 14: Config, CLI, edge case unit tests — config, exceptions, logger, whois_parser, main_cli (100 new tests, 1138 total)** |
+| 29 | — | **HTML Dashboard Report** — dark theme, health score, SVG donut chart, metric cards, collapsible findings, responsive layout |
 
-## Roadmap Status — ✅ All 9 items implemented
+## Roadmap Status — ✅ All 9 items implemented (plus 1 enhancement)
 
 | Tier | # | Feature | Key Files |
 |------|---|---------|-----------|
@@ -73,6 +74,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | T2 | 6 | **REST API Hardening** | `steps/access/rest_hardening_step.py` |
 | T3 | 7 | **Host Platform Fingerprinting** | `steps/infrastructure/hosting_step.py` |
 | T3 | 8 | **SARIF Output Format** | `utils/report.py` |
+| T3 | 8b | **HTML Dashboard Report** | `utils/report.py` — dark theme, health score, donut chart, metric cards, collapsible sections |
 | T3 | 9 | **Content Crawling / Spider** | `steps/discovery/spider_step.py` |
 
 ## Remaining Work
@@ -91,13 +93,14 @@ Brute-force steps use small fallback lists (30 plugins / 15 themes). Production 
 # Download to project
 mkdir -p wordlists/external
 curl -o wordlists/external/wp-plugins.txt \
-  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-plugins.fuzz.txt
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-plugins.fuzz.txt
 curl -o wordlists/external/wp-themes.txt \
-  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-themes-fuzz.txt
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-themes.fuzz.txt
 
 # Or to user config
-mkdir -p ~/.config/recon-wp/wordlists
-cp wordlists/external/wp-plugins.txt ~/.config/recon-wp/wordlists/
+mkdir -p ~/.config/recon-wp/wordlists/plugins
+cp wordlists/external/wp-plugins.txt ~/.config/recon-wp/wordlists/plugins/plugin_fallback.txt
+cp wordlists/external/wp-themes.txt ~/.config/recon-wp/wordlists/plugins/theme_fallback.txt
 ```
 
 See `wordlists/README.md` for full resolution chain.
@@ -107,8 +110,6 @@ See `wordlists/README.md` for full resolution chain.
 | Feature | Effort | Impact | Notes |
 |---------|--------|--------|-------|
 | **Stealth** | High | High | Timing jitter, user-agent pool, request deduplication, distributed scanning |
-| **HTML reporting** | Medium | Medium | Visual report with severity badges, charts, executive summary |
-| **Docker** | Low | Medium | `Dockerfile` + `docker-compose.yml` with all deps pre-installed |
 | **PyPI package** | Medium | Low | `pyproject.toml`, entry point, versioning |
 | **Plugin architecture** | High | High | Dynamic step loading from external packages, CLI `--plugin` flag |
 

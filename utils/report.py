@@ -2,6 +2,7 @@
 """Report generation utilities for scan results."""
 
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -235,17 +236,226 @@ class SarifFormatter:
 
 
 class HtmlFormatter:
-    """Format report as a self-contained HTML page."""
-
-    SEVERITY_COLORS = {
-        "critical": ("#dc3545", "#f8d7da"),
-        "high": ("#fd7e14", "#ffe5d0"),
-        "medium": ("#ffc107", "#fff3cd"),
-        "low": ("#0d6efd", "#cfe2ff"),
-        "info": ("#6c757d", "#e2e3e5"),
-    }
+    """Format report as a self-contained HTML dashboard page."""
 
     SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+
+    SEVERITY_COLORS: dict[str, tuple[str, str]] = {
+        "critical": ("#e63946", "#4d194d"),
+        "high": ("#e76f51", "#3e1f47"),
+        "medium": ("#e9c46a", "#312244"),
+        "low": ("#457b9d", "#272640"),
+        "info": ("#6c757d", "#212f45"),
+    }
+
+    _SEVERITY_ACCENT = {
+        "critical": "#e63946",
+        "high": "#e76f51",
+        "medium": "#e9c46a",
+        "low": "#457b9d",
+        "info": "#6c757d",
+    }
+
+    _CSS = """\
+:root {
+  --stormy-teal: #006466ff;
+  --dark-teal: #065a60ff;
+  --dark-teal-2: #0b525bff;
+  --dark-teal-3: #144552ff;
+  --charcoal-blue: #1b3a4bff;
+  --deep-space-blue: #212f45ff;
+  --space-indigo: #272640ff;
+  --midnight-violet: #312244ff;
+  --midnight-violet-2: #3e1f47ff;
+  --deep-purple: #4d194dff;
+  --severity-critical: #e63946;
+  --severity-high: #e76f51;
+  --severity-medium: #e9c46a;
+  --severity-low: #457b9d;
+  --severity-info: #6c757d;
+  --bg-page: #1a1a2e;
+  --bg-card: #212f45;
+  --bg-card-alt: #272640;
+  --bg-card-hover: #2a2f4a;
+  --border-color: #312244;
+  --border-light: #3e1f47;
+  --text-primary: #e9ecef;
+  --text-secondary: #8892a8;
+  --text-muted: #6c757d;
+  --health-good: #2d6a4f;
+  --health-fair: #e9c46a;
+  --health-poor: #e63946;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg-page); color: var(--text-primary); line-height: 1.6; padding: 24px;
+}
+.container { max-width: 1024px; margin: 0 auto; }
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, var(--deep-space-blue), var(--space-indigo), var(--midnight-violet));
+  padding: 32px; border-radius: 12px; margin-bottom: 24px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.header-top { display: flex; justify-content: space-between; align-items: center; }
+.header-label { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-secondary); }
+.header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; }
+.header-meta { display: flex; flex-wrap: wrap; gap: 20px; font-size: 0.88rem; color: var(--text-secondary); }
+
+/* Health score badge */
+.health-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 14px; border-radius: 20px;
+  font-size: 0.82rem; font-weight: 700;
+}
+.health-badge.good { background: var(--health-good); color: #fff; }
+.health-badge.fair { background: var(--health-fair); color: #1a1a2e; }
+.health-badge.poor { background: var(--health-poor); color: #fff; }
+
+/* Dashboard cards */
+.dashboard { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+.card {
+  background: var(--bg-card); border-radius: 10px; padding: 20px;
+  text-align: center; border-top: 3px solid transparent;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: transform 0.15s, box-shadow 0.15s;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+.card-critical { border-top-color: var(--severity-critical); }
+.card-high { border-top-color: var(--severity-high); }
+.card-medium { border-top-color: var(--severity-medium); }
+.card-low { border-top-color: var(--severity-low); }
+.card-info { border-top-color: var(--severity-info); }
+.card-count { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+.card-critical .card-count { color: var(--severity-critical); }
+.card-high .card-count { color: var(--severity-high); }
+.card-medium .card-count { color: var(--severity-medium); }
+.card-low .card-count { color: var(--severity-low); }
+.card-info .card-count { color: var(--severity-info); }
+.card-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-secondary); margin-top: 4px; }
+
+/* Summary row: donut + scan info */
+.summary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.section {
+  background: var(--bg-card); border-radius: 10px; padding: 24px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.section h2 {
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.2px;
+  margin-bottom: 16px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-light); color: var(--text-secondary);
+}
+.donut-section { display: flex; flex-direction: column; align-items: center; }
+.donut-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 12px; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--text-primary); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Scan info */
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.info-item { padding: 10px 12px; background: var(--bg-card-alt); border-radius: 8px; }
+.info-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 4px; }
+.info-value { font-size: 0.9rem; color: var(--text-primary); }
+.info-modules { grid-column: 1 / -1; }
+.info-modules .module-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.module-tag {
+  display: inline-block; padding: 2px 10px; border-radius: 4px;
+  background: var(--space-indigo); font-size: 0.78rem; color: var(--text-primary);
+}
+
+/* Findings */
+.findings-group { margin-bottom: 24px; }
+.findings-group details { background: var(--bg-card); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+.findings-group summary {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px; cursor: pointer; list-style: none; user-select: none;
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-secondary);
+  transition: background 0.15s;
+}
+.findings-group summary::-webkit-details-marker { display: none; }
+.findings-group summary:hover { background: var(--bg-card-hover); }
+.findings-group summary::after {
+  content: "\25B6"; font-size: 0.7rem; transition: transform 0.2s; color: var(--text-muted);
+}
+.findings-group details[open] summary::after { transform: rotate(90deg); }
+.findings-group summary .severity-dots { display: flex; gap: 4px; align-items: center; }
+.findings-group summary .severity-dots .dot { width: 8px; height: 8px; border-radius: 50%; }
+.findings-group .findings-body { padding: 8px 24px 24px; }
+
+/* Finding card */
+.finding-card {
+  padding: 16px; margin-bottom: 12px; border-radius: 8px;
+  border-left: 4px solid transparent; background: var(--bg-card-alt);
+  transition: background 0.15s;
+}
+.finding-card:last-child { margin-bottom: 0; }
+.finding-card:hover { background: var(--bg-card-hover); }
+.finding-card .fc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.finding-card .fc-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
+.finding-card .fc-mod-step { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
+.finding-card .fc-desc { font-size: 0.88rem; color: var(--text-primary); margin-bottom: 8px; }
+.finding-card .fc-evidence {
+  background: #151a2e; border: 1px solid var(--border-color); border-radius: 6px;
+  padding: 12px; overflow-x: auto; font-size: 0.82rem; line-height: 1.4;
+  margin: 8px 0; white-space: pre-wrap; font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  color: #cdd6f4;
+}
+.finding-card .fc-rec {
+  background: var(--space-indigo); border-radius: 6px; padding: 10px 12px;
+  font-size: 0.84rem; margin-top: 8px; color: #b8c0e0;
+}
+.finding-card .fc-rec strong { color: var(--severity-medium); }
+
+/* Badge */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.badge-critical { background: #4a1525; color: var(--severity-critical); }
+.badge-high { background: #4a1e15; color: var(--severity-high); }
+.badge-medium { background: #4a3e15; color: var(--severity-medium); }
+.badge-low { background: #152a4a; color: var(--severity-low); }
+.badge-info { background: #2a2a2a; color: var(--severity-info); }
+
+/* Errors */
+.errors-section { margin-bottom: 24px; }
+.errors-section .section { border-left: 3px solid var(--severity-critical); }
+.errors-section .section h2 { color: var(--severity-critical); border-bottom-color: #4a1525; }
+.errors-section ul { list-style: none; padding: 0; }
+.errors-section li {
+  padding: 8px 12px; margin-bottom: 4px; border-radius: 6px;
+  background: var(--bg-card-alt); color: var(--severity-critical); font-size: 0.88rem;
+}
+
+/* Footer */
+.footer { text-align: center; font-size: 0.8rem; color: var(--text-muted); padding: 24px 0 12px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dashboard { grid-template-columns: repeat(2, 1fr); }
+  .summary-row { grid-template-columns: 1fr; }
+  .info-grid { grid-template-columns: 1fr; }
+  .info-modules { grid-column: 1; }
+  body { padding: 12px; }
+}
+@media (max-width: 480px) {
+  .dashboard { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .card { padding: 14px; }
+  .card-count { font-size: 1.5rem; }
+}
+
+/* Print */
+@media print {
+  body { background: #fff !important; padding: 10px; color: #000; }
+  .header { background: #212f45 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+  .badge, .health-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .legend-dot, .module-tag, .finding-card .fc-rec { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .section { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+  .finding-card { break-inside: avoid; }
+}
+"""
 
     @staticmethod
     def format(report: Report) -> str:
@@ -259,36 +469,9 @@ class HtmlFormatter:
 
     @classmethod
     def _build_html(cls, report: Report) -> str:
-        """Build a self-contained HTML page from a Report.
-
-        Produces a single HTML document with:
-          - Gradient header (domain, target, date, duration)
-          - Severity summary table
-          - Modules run list (if any)
-          - Findings grouped by severity (critical+high, medium+low, info)
-          - Errors section (if any)
-          - Footer with generation notice
-        Inlines all CSS via <style> for portability.
-        """
         summary = report.get_summary()
-        findings_html = cls._render_findings(report)
-        errors_html = cls._render_errors(report)
         duration = (report.completed_at - report.started_at).total_seconds()
-
-        sev_rows = "\n".join(
-            cls._summary_row(sev, summary.get(sev, 0)) for sev in cls.SEVERITY_ORDER
-        )
-
-        modules_html = ""
-        if report.modules_run:
-            items = "\n".join(
-                f'<li style="padding:2px 0">{m}</li>' for m in report.modules_run
-            )
-            modules_html = f"""
-            <div class="section">
-              <h2>Modules Run</h2>
-              <ul style="margin:0;padding-left:20px">{items}</ul>
-            </div>"""
+        score, score_label, score_color = cls._calculate_health_score(summary)
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -296,106 +479,197 @@ class HtmlFormatter:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reconnaissance Report: {cls._esc(report.domain)}</title>
-<style>
-  *, *::before, *::after {{ box-sizing:border-box;margin:0;padding:0 }}
-  body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f5f6fa;color:#212529;line-height:1.6;padding:20px }}
-  .container {{ max-width:960px;margin:0 auto }}
-  .header {{ background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);color:#fff;padding:32px;border-radius:12px;margin-bottom:24px }}
-  .header h1 {{ font-size:1.6rem;margin-bottom:8px }}
-  .header .meta {{ font-size:0.9rem;opacity:.85 }}
-  .header .meta span {{ display:inline-block;margin-right:20px }}
-  .section {{ background:#fff;border-radius:10px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08) }}
-  .section h2 {{ font-size:1.15rem;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #e9ecef;color:#1a1a2e }}
-  table {{ width:100%;border-collapse:collapse }}
-  th,td {{ padding:10px 12px;text-align:left;border-bottom:1px solid #e9ecef }}
-  th {{ background:#f8f9fa;font-weight:600;font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#495057 }}
-  .badge {{ display:inline-block;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:600;text-transform:uppercase }}
-  .finding {{ padding:16px;margin-bottom:12px;border-radius:8px;border-left:4px solid transparent }}
-  .finding h3 {{ font-size:1rem;margin-bottom:6px }}
-  .finding .mod-step {{ font-size:.8rem;color:#6c757d;margin-bottom:8px }}
-  .finding p {{ margin-bottom:8px;font-size:.92rem }}
-  .finding pre {{ background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:12px;overflow-x:auto;font-size:.85rem;line-height:1.4;margin:8px 0;white-space:pre-wrap }}
-  .finding .rec {{ background:#e8f4f8;border-radius:6px;padding:10px 12px;font-size:.88rem;margin-top:8px }}
-  .finding .rec strong {{ color:#0c5460 }}
-  .footer {{ text-align:center;font-size:.82rem;color:#6c757d;padding:24px 0 12px }}
-  @media print {{ body {{ background:#fff;padding:10px }} .header {{ background:#1a1a2e !important;-webkit-print-color-adjust:exact;print-color-adjust:exact }} .badge {{ -webkit-print-color-adjust:exact;print-color-adjust:exact }} .section {{ box-shadow:none;border:1px solid #dee2e6 }} }}
-</style>
+<style>{cls._CSS}</style>
 </head>
 <body>
 <div class="container">
 
-<div class="header">
-  <h1>🛡 Reconnaissance Report: {cls._esc(report.domain)}</h1>
-  <div class="meta">
-    <span>Target: {cls._esc(report.target)}</span>
-    <span>Date: {report.completed_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</span>
-    <span>Duration: {duration:.1f}s</span>
-  </div>
-</div>
+{cls._render_header(report, score, score_label, score_color)}
+{cls._render_dashboard_cards(summary)}
+{cls._render_summary_row(report, summary, duration)}
+{cls._render_findings(report)}
+{cls._render_errors(report)}
 
-<div class="section">
-  <h2>Summary</h2>
-  <table>
-    <thead><tr><th>Severity</th><th>Count</th></tr></thead>
-    <tbody>
-      {sev_rows}
-      <tr><td><strong>Total</strong></td><td><strong>{summary['total']}</strong></td></tr>
-    </tbody>
-  </table>
-</div>
-
-{modules_html}
-
-{findings_html}
-
-{errors_html}
-
-<div class="footer">
-  Report generated by WordPress Reconnaissance Tool
-</div>
-
+<div class="footer">Report generated by WordPress Reconnaissance Tool</div>
 </div>
 </body>
 </html>"""
 
     @classmethod
+    def _render_header(cls, report: Report, score: int, score_label: str, score_color: str) -> str:
+        duration = (report.completed_at - report.started_at).total_seconds()
+        return f"""<header class="header">
+  <div class="header-top">
+    <span class="header-label">Reconnaissance Report</span>
+    <span class="health-badge {score_label}" style="background:{score_color}">{score}/100 &middot; {score_label}</span>
+  </div>
+  <h1>{cls._esc(report.domain)}</h1>
+  <div class="header-meta">
+    <span>Target: {cls._esc(report.target)}</span>
+    <span>Date: {report.completed_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</span>
+    <span>Duration: {duration:.1f}s</span>
+  </div>
+</header>"""
+
+    @classmethod
+    def _render_dashboard_cards(cls, summary: dict) -> str:
+        cards = []
+        for sev in cls.SEVERITY_ORDER:
+            count = summary.get(sev, 0)
+            accent = cls._SEVERITY_ACCENT.get(sev, "#6c757d")
+            cards.append(f"""<div class="card card-{sev}">
+  <div class="card-count">{count}</div>
+  <div class="card-label">{sev.upper()}</div>
+</div>""")
+        return f'<div class="dashboard">{"".join(cards)}</div>'
+
+    @classmethod
+    def _render_summary_row(cls, report: Report, summary: dict, duration: float) -> str:
+        total = summary.get("total", 0)
+        donut = cls._render_donut_chart(summary)
+
+        modules_html = ""
+        if report.modules_run:
+            tags = "".join(
+                f'<span class="module-tag">{cls._esc(m)}</span>'
+                for m in report.modules_run
+            )
+            modules_html = f"""<div class="info-item info-modules">
+  <span class="info-label">Modules Run</span>
+  <div class="module-list">{tags}</div>
+</div>"""
+
+        return f"""<div class="summary-row">
+  <div class="section donut-section">
+    <h2>Severity Distribution</h2>
+    {donut}
+  </div>
+  <div class="section">
+    <h2>Scan Overview</h2>
+    <div class="info-grid">
+      {modules_html}
+      <div class="info-item">
+        <span class="info-label">Duration</span>
+        <span class="info-value">{duration:.1f}s</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Total Findings</span>
+        <span class="info-value">{total}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Errors</span>
+        <span class="info-value">{len(report.errors)}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Health Score</span>
+        <span class="info-value">{cls._calculate_health_score(summary)[0]}/100</span>
+      </div>
+    </div>
+  </div>
+</div>"""
+
+    @classmethod
+    def _render_donut_chart(cls, summary: dict) -> str:
+        total = summary.get("total", 0)
+        if total == 0:
+            return '<div style="color:var(--text-muted);font-size:0.9rem;padding:20px;">No findings to display</div>'
+
+        cx, cy = 80, 80
+        inner_r = 46
+        stroke_w = 18
+        circumference = 2 * math.pi * inner_r
+
+        circles = []
+        cumulative = 0.0
+        colors = cls._SEVERITY_ACCENT
+
+        for sev in cls.SEVERITY_ORDER:
+            count = summary.get(sev, 0)
+            if count == 0:
+                continue
+            pct = count / total
+            seg_len = circumference * pct
+            offset = -cumulative * circumference
+            cumulative += pct
+            circles.append(
+                f'<circle cx="{cx}" cy="{cy}" r="{inner_r}" fill="none" '
+                f'stroke="{colors[sev]}" stroke-width="{stroke_w}" '
+                f'stroke-dasharray="{seg_len:.1f} {circumference:.1f}" '
+                f'stroke-dashoffset="{offset:.1f}" '
+                f'transform="rotate(-90 {cx} {cy})" stroke-linecap="butt"/>'
+            )
+
+        legend_items = ""
+        for sev in cls.SEVERITY_ORDER:
+            count = summary.get(sev, 0)
+            if count == 0:
+                continue
+            accent = colors[sev]
+            legend_items += (
+                f'<span class="legend-item">'
+                f'<span class="legend-dot" style="background:{accent}"></span>'
+                f'{sev} ({count})</span>'
+            )
+
+        return f"""<svg width="160" height="160" viewBox="0 0 160 160" style="display:block;">
+  <circle cx="{cx}" cy="{cy}" r="{inner_r}" fill="none" stroke="var(--border-color)" stroke-width="{stroke_w}" opacity="0.5"/>
+  {"".join(circles)}
+  <circle cx="{cx}" cy="{cy}" r="28" fill="var(--bg-card)"/>
+  <text x="{cx}" y="{cy - 4}" text-anchor="middle" fill="var(--text-primary)" font-size="26" font-weight="700" font-family="inherit">{total}</text>
+  <text x="{cx}" y="{cy + 16}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="inherit">findings</text>
+</svg>
+<div class="donut-legend">{legend_items}</div>"""
+
+    @classmethod
     def _render_findings(cls, report: Report) -> str:
         sections = []
         groups = [
-            ("critical", "high", "Critical &amp; High Findings"),
-            ("medium", "low", "Medium &amp; Low Findings"),
-            ("info", None, "Informational"),
+            ("critical", "high", "Critical &amp; High Findings", ["critical", "high"], True),
+            ("medium", "low", "Medium &amp; Low Findings", ["medium", "low"], False),
+            ("info", None, "Informational", ["info"], False),
         ]
-        for sev_a, sev_b, title in groups:
+        for sev_a, sev_b, title, severities, default_open in groups:
             findings = report.get_findings_by_severity(sev_a)
             if sev_b:
                 findings += report.get_findings_by_severity(sev_b)
             if not findings:
                 continue
             items = "\n".join(cls._render_finding(f) for f in findings)
-            sections.append(f"""
-            <div class="section">
-              <h2>{title}</h2>
-              {items}
-            </div>""")
+
+            dots = "".join(
+                f'<span class="dot" style="background:{cls._SEVERITY_ACCENT[s]}"></span>'
+                for s in severities
+                if any(f.severity == s for f in findings)
+            )
+
+            sections.append(f"""<div class="findings-group">
+  <details{" open" if default_open else ""}>
+    <summary>
+      <span>{title}</span>
+      <span class="severity-dots">{dots}</span>
+    </summary>
+    <div class="findings-body">
+      {items}
+    </div>
+  </details>
+</div>""")
         return "\n".join(sections)
 
     @classmethod
     def _render_finding(cls, f: Finding) -> str:
-        bg, border = cls.SEVERITY_COLORS.get(f.severity, ("#6c757d", "#e2e3e5"))
-        badge_color = bg
-        badge_bg = border
         rec_html = ""
         if f.recommendation:
-            rec_html = f'<div class="rec"><strong>Recommendation:</strong> {cls._esc(f.recommendation)}</div>'
+            rec_html = f'<div class="fc-rec"><strong>Recommendation:</strong> {cls._esc(f.recommendation)}</div>'
         evidence_html = ""
         if f.evidence:
-            evidence_html = f"<pre>{cls._esc(f.evidence)}</pre>"
-        return f"""<div class="finding" style="border-left-color:{bg};background:{border}22">
-  <span class="badge" style="background:{badge_bg};color:{badge_color}">{f.severity.upper()}</span>
-  <h3>{cls._esc(f.title)}</h3>
-  <div class="mod-step">{cls._esc(f.module)} / {cls._esc(f.step)}</div>
-  <p>{cls._esc(f.description)}</p>
+            evidence_html = f'<div class="fc-evidence">{cls._esc(f.evidence)}</div>'
+        return f"""<div class="finding-card" style="border-left-color:{cls._SEVERITY_ACCENT.get(f.severity, '#6c757d')}">
+  <div class="fc-top">
+    <span class="fc-title">{cls._esc(f.title)}</span>
+    <span class="badge badge-{f.severity}">{f.severity.upper()}</span>
+  </div>
+  <div class="fc-mod-step">{cls._esc(f.module)} / {cls._esc(f.step)}</div>
+  <div class="fc-desc">{cls._esc(f.description)}</div>
   {evidence_html}
   {rec_html}
 </div>"""
@@ -405,24 +679,30 @@ class HtmlFormatter:
         if not report.errors:
             return ""
         items = "\n".join(
-            f'<li style="padding:2px 0;color:#dc3545">{cls._esc(e)}</li>'
-            for e in report.errors
+            f"<li>{cls._esc(e)}</li>" for e in report.errors
         )
-        return f"""
-        <div class="section">
-          <h2 style="color:#dc3545">Errors</h2>
-          <ul style="margin:0;padding-left:20px">{items}</ul>
-        </div>"""
+        return f"""<div class="errors-section">
+  <div class="section">
+    <h2>Errors</h2>
+    <ul>{items}</ul>
+  </div>
+</div>"""
 
-    @classmethod
-    def _summary_row(cls, sev: str, count: int) -> str:
-        badge_color = cls.SEVERITY_COLORS.get(sev, ("#6c757d", "#e2e3e5"))[0]
-        badge_bg = cls.SEVERITY_COLORS.get(sev, ("#6c757d", "#e2e3e5"))[1]
-        return f"""<tr><td><span class="badge" style="background:{badge_bg};color:{badge_color}">{sev.upper()}</span></td><td>{count}</td></tr>"""
+    @staticmethod
+    def _calculate_health_score(summary: dict) -> tuple[int, str, str]:
+        critical = summary.get("critical", 0)
+        high = summary.get("high", 0)
+        medium = summary.get("medium", 0)
+        low = summary.get("low", 0)
+        score = max(0, 100 - (critical * 25 + high * 10 + medium * 3 + low * 1))
+        if score >= 80:
+            return score, "good", "#2d6a4f"
+        elif score >= 50:
+            return score, "fair", "#e9c46a"
+        return score, "poor", "#e63946"
 
     @staticmethod
     def _esc(s: str) -> str:
-        """Escape HTML entities."""
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#x27;")
 
 

@@ -55,14 +55,13 @@ class TestHtmlDocumentStructure:
 
 
 class TestHtmlSummary:
-    """Tests for summary table section."""
+    """Tests for dashboard and severity distribution."""
 
-    def test_summary_table_present(self):
+    def test_severity_distribution_section_present(self):
         html = HtmlFormatter.format(make_report())
-        assert "Summary" in html
-        assert "<table>" in html
+        assert "Severity Distribution" in html
 
-    def test_shows_severity_counts(self):
+    def test_shows_severity_counts_in_cards(self):
         findings = [
             make_finding("critical"),
             make_finding("high"),
@@ -77,11 +76,11 @@ class TestHtmlSummary:
         assert "LOW" in html
         assert "INFO" in html
 
-    def test_total_count(self):
+    def test_total_count_in_donut_or_overview(self):
         findings = [make_finding("high"), make_finding("medium")]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "Total" in html
         assert "2" in html
+        assert "Total Findings" in html
 
 
 class TestHtmlModulesRun:
@@ -136,11 +135,10 @@ class TestHtmlFindings:
         html = HtmlFormatter.format(make_report(findings=findings))
         assert "A info severity test finding" in html
 
-    def test_finding_shows_evidence_in_pre(self):
+    def test_finding_shows_evidence_in_evidence_block(self):
         f = make_finding("high", evidence="important evidence content")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "important evidence content" in html
-        assert "<pre>" in html
 
     def test_finding_shows_recommendation(self):
         f = make_finding("high", recommendation="recommended action")
@@ -148,10 +146,10 @@ class TestHtmlFindings:
         assert "recommended action" in html
         assert "Recommendation" in html
 
-    def test_finding_no_evidence_omits_pre(self):
+    def test_finding_no_evidence_omits_evidence_block(self):
         f = make_finding("high", evidence="")
         html = HtmlFormatter.format(make_report(findings=[f]))
-        assert "<pre>" not in html
+        assert 'class="fc-evidence"' not in html
 
     def test_finding_no_recommendation_omits_rec(self):
         f = make_finding("high", recommendation="")
@@ -185,7 +183,7 @@ class TestHtmlErrors:
 
     def test_errors_section_absent_when_no_errors(self):
         html = HtmlFormatter.format(make_report())
-        assert "Errors" not in html
+        assert 'class="errors-section"' not in html
 
 
 class TestHtmlEscape:

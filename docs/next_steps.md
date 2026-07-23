@@ -209,6 +209,21 @@ Key files: `steps/infrastructure/hosting_step.py`, registered in `Infrastructure
 
 Key files: `utils/report.py`, `config.py` (output_format extended).
 
+### 8b. HTML Dashboard Report ✅
+
+**Status:** Enhanced. `HtmlFormatter` produces a self-contained HTML page with:
+  - Dark theme dashboard using deep-space color palette (`#212f45` → `#272640` → `#312244`)
+  - Health score badge (weighted: max(0, 100 - critical*25 - high*10 - medium*3 - low*1))
+  - Five dashboard metric cards (Critical, High, Medium, Low, Info) with severity-colored top borders
+  - SVG donut chart showing severity distribution with legend
+  - Scan Overview panel (modules, duration, total findings, health score)
+  - Collapsible findings sections: Critical+High expanded by default, Medium+Low and Informational collapsed
+  - Finding cards with left-border accent, severity badge, evidence, and recommendation
+  - Responsive grid layout, print styles, XSS-safe HTML escaping
+  - Wraps to PDF via `PdfFormatter` (WeasyPrint)
+
+Key files: `utils/report.py` (HtmlFormatter).
+
 ### 9. Content Crawling / Spider ✅
 
 **Status:** Implemented. `SpiderStep` crawls same-origin links from homepage up to configurable depth (default 2) and page limit (default 50). Extracts form actions, upload directories, admin-like paths, and comment sections. Respects `robots.txt` disallow rules.
