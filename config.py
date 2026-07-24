@@ -141,6 +141,29 @@ class ScanConfig(BaseSettings):
         default=50, ge=1, le=500, description="Maximum pages to crawl"
     )
 
+    stealth_enabled: bool = Field(
+        default=False, description="Enable stealth mode (jitter, UA pool, referer spoofing, dedup)"
+    )
+    stealth_min_delay: float = Field(
+        default=1.0, ge=0.0, description="Minimum delay between requests in seconds (stealth mode)"
+    )
+    stealth_max_delay: float = Field(
+        default=3.0, ge=0.0, description="Maximum delay between requests in seconds (stealth mode)"
+    )
+    stealth_rotate_ua: bool = Field(
+        default=True, description="Rotate User-Agent headers per request"
+    )
+    stealth_rotate_referer: bool = Field(
+        default=True, description="Spoof random Referer headers per request"
+    )
+    stealth_dedup_requests: bool = Field(
+        default=True, description="Skip duplicate HTTP requests"
+    )
+    stealth_rate_limit: float = Field(
+        default=0.0, ge=0.0,
+        description="Max requests per second (0 = unlimited, uses jitter only)"
+    )
+
     def mkdir_output(self) -> None:
         """Ensure output directory exists."""
         self.output_dir.mkdir(parents=True, exist_ok=True)

@@ -1,12 +1,18 @@
 # tests/test_http_client.py
-"""Tests for HttpClient — context manager, UA rotation, request delegation."""
+"""Tests for HttpClient — context manager, UA rotation, request delegation, stealth mode."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from core.http_client import COMMON_USER_AGENTS, HttpClient
+from core.http_client import (
+    COMMON_USER_AGENTS,
+    STEALTH_USER_AGENTS,
+    REFERERS,
+    ACCEPT_LANGUAGES,
+    HttpClient,
+)
 
 
 class TestHttpClientLifecycle:
@@ -241,4 +247,178 @@ class TestHttpClientInit:
 
     def test_user_agents_is_common_list(self):
         client = HttpClient()
-        assert client._user_agents is COMMON_USER_AGENTS
+        assert client._user_agents == list(COMMON_USER_AGENTS)
+
+
+class TestStealthMode:
+    """Tests for stealth mode (jitter, referer, dedup, expanded UA pool)."""
+
+    def _stealth_config(self, **overrides):
+        """Create a minimal stealth config."""
+        from config import ScanConfig
+        params = {
+            "stealth_enabled": True,
+            "stealth_min_delay": 0.01,
+            "stealth_max_delay": 0.05,
+            "stealth_rotate_ua": True,
+            "stealth_rotate_referer": True,
+            "stealth_dedup_requests": True,
+            "stealth_rate_limit": 0.0,
+        }
+        params.update(overrides)
+        return ScanConfig(**params)
+
+    def test_stealth_uses_expanded_ua_pool(self):
+        client = HttpClient(config=self._stealth_config())
+        assert len(client._user_agents) >= 50
+        assert client._user_agents == STEALTH_USER_AGENTS
+
+    def test_non_stealth_uses_common_ua_pool(self):
+        client = HttpClient()
+        assert client._user_agents == list(COMMON_USER_AGENTS)
+        assert len(client._user_agents) == 5
+
+    def test_stealth_has_referers(self):
+        client = HttpClient(config=self._stealth_config())
+        assert len(client._referers) > 0
+        assert client._referers == REFERERS
+
+    def test_non_stealth_no_referers(self):
+        client = HttpClient()
+        assert client._referers == []
+
+    def test_stealth_has_accept_languages(self):
+        client = HttpClient(config=self._stealth_config())
+        assert len(client._accept_languages) > 0
+        assert client._accept_languages == ACCEPT_LANGUAGES
+
+    def test_non_stealth_no_accept_languages(self):
+        client = HttpClient()
+        assert client._accept_languages == []
+
+    def test_stealth_dedup_enabled(self):
+        client = HttpClient(config=self._stealth_config())
+        assert client.dedup_enabled is True
+
+    def test_non_stealth_dedup_disabled(self):
+        client = HttpClient()
+        assert client.dedup_enabled is False
+
+    def test_stealth_rotate_ua_default_true(self):
+        client = HttpClient(config=self._stealth_config(stealth_rotate_ua=False))
+        assert client.rotate_ua is False
+
+    def test_stealth_rotate_referer_default_true(self):
+        client = HttpClient(config=self._stealth_config(stealth_rotate_referer=False))
+        assert client.rotate_referer is False
+
+    def _make_mock_client(self):
+        mock = AsyncMock()
+        mock.headers = {}
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_referer_set_on_request_in_stealth(self):
+        client = HttpClient(config=self._stealth_config())
+        async with client:
+            client._client = self._make_mock_client()
+            await client.get("https://example.com")
+            assert "Referer" in client._client.headers
+            assert client._client.headers["Referer"] in REFERERS
+
+    @pytest.mark.asyncio
+    async def test_accept_language_set_on_request_in_stealth(self):
+        client = HttpClient(config=self._stealth_config())
+        async with client:
+            client._client = self._make_mock_client()
+            await client.get("https://example.com")
+            assert "Accept-Language" in client._client.headers
+            assert client._client.headers["Accept-Language"] in ACCEPT_LANGUAGES
+
+    @pytest.mark.asyncio
+    async def test_no_referer_when_non_stealth(self):
+        client = HttpClient()
+        async with client:
+            client._client = self._make_mock_client()
+            await client.get("https://example.com")
+            assert "Referer" not in client._client.headers
+
+    @pytest.mark.asyncio
+    async def test_request_unique_skips_duplicate(self):
+        client = HttpClient(config=self._stealth_config())
+        async with client:
+            client._client = self._make_mock_client()
+            r1 = await client.request_unique("GET", "https://example.com/")
+            assert r1 is not None
+            r2 = await client.request_unique("GET", "https://example.com/")
+            assert r2 is None
+
+    @pytest.mark.asyncio
+    async def test_request_unique_force_bypasses_dedup(self):
+        client = HttpClient(config=self._stealth_config())
+        async with client:
+            mock = MagicMock(spec=httpx.Response)
+            client._client = self._make_mock_client()
+            client._client.request = AsyncMock(return_value=mock)
+            r1 = await client.request_unique("GET", "https://example.com/", force=True)
+            assert r1 is not None
+            r2 = await client.request_unique("GET", "https://example.com/", force=True)
+            assert r2 is not None
+
+    @pytest.mark.asyncio
+    async def test_different_methods_not_deduplicated(self):
+        client = HttpClient(config=self._stealth_config())
+        async with client:
+            client._client = self._make_mock_client()
+            r1 = await client.request_unique("GET", "https://example.com/")
+            assert r1 is not None
+            r2 = await client.request_unique("POST", "https://example.com/")
+            assert r2 is not None
+
+    @pytest.mark.asyncio
+    async def test_jitter_applies_delay_in_stealth(self):
+        client = HttpClient(config=self._stealth_config())
+        async with client:
+            client._client = self._make_mock_client()
+            with patch("core.http_client.asyncio.sleep", AsyncMock()) as mock_sleep:
+                await client.get("https://example.com")
+                mock_sleep.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_jitter_when_non_stealth(self):
+        client = HttpClient()
+        async with client:
+            client._client = self._make_mock_client()
+            with patch("core.http_client.asyncio.sleep", AsyncMock()) as mock_sleep:
+                await client.get("https://example.com")
+                mock_sleep.assert_not_awaited()
+
+    def test_stealth_disabled_by_default(self):
+        client = HttpClient()
+        assert client.stealth_enabled is False
+
+    def test_stealth_enabled_flag(self):
+        client = HttpClient(config=self._stealth_config())
+        assert client.stealth_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_created_when_rate_set(self):
+        cfg = self._stealth_config(stealth_rate_limit=5.0)
+        client = HttpClient(config=cfg)
+        assert client._rate_limiter is not None
+
+    def test_no_rate_limiter_by_default(self):
+        client = HttpClient()
+        assert client._rate_limiter is None
+
+    @pytest.mark.asyncio
+    async def test_ua_rotation_uses_stealth_pool(self):
+        client = HttpClient(config=self._stealth_config())
+        first = client._get_next_user_agent()
+        second = client._get_next_user_agent()
+        assert first in STEALTH_USER_AGENTS
+        assert second in STEALTH_USER_AGENTS
+        assert first != second
+
+    def test_stealth_pool_size_at_least_50(self):
+        assert len(STEALTH_USER_AGENTS) >= 50

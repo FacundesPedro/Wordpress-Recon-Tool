@@ -128,6 +128,7 @@ class Runner:
         async with HttpClient(
             timeout=self.config.timeout,
             insecure=self.config.insecure,
+            config=self.config,
         ) as self._http:
             for tier in sorted(RISK_TIERS.keys()):
                 modules_in_tier = tier_modules.get(tier, [])

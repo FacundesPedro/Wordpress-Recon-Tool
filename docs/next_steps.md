@@ -1,8 +1,8 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-07-23  
+**Last Updated:** 2026-07-24  
 **Current Branch:** `main`  
-**HEAD:** `5952286` — Session 14: Config/CLI/edge case unit tests (1138 tests, all layers tested)
+**HEAD:** `(pending)` — Stealth Mode: timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit (1162 tests)
 
 ---
 
@@ -36,8 +36,9 @@
 | 24 | `f54c316` | Session 12: Core layer unit tests (163 tests, 885 total) |
 | 25 | `01cea35` | Session 13: Base infrastructure tests (153 tests, 1038 total) |
 | 26 | `5952286` | Session 14: Config/CLI/edge case tests (100 tests, 1138 total) |
+| 27 | (pending) | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit (24 tests, 1162 total) |
 
-**Current state:** 12 modules, 60 steps, 1138 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. See AGENTS.md for full commit history.
+**Current state:** 12 modules, 60 steps, 1162 tests passing (60/60 steps covered, 100%). Stealth mode added — see AGENTS.md for config reference.
 
 ---
 

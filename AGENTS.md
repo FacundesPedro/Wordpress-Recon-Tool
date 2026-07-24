@@ -6,7 +6,9 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 1138 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
+**Current state:** 12 modules, 60 steps, 1162 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
+
+**Latest feature: Stealth Mode** — timing jitter (configurable min/max delay), expanded UA pool (50+ real browser UAs), referer header spoofing, request deduplication, rate limit integration. Toggle via `WP_STEALTH_ENABLED=true`.
 
 ## Agent Working Protocol
 
@@ -30,7 +32,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (28 on main)
+## Commit History (29 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -62,7 +64,8 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 26 | `f54c316` | **Session 12: Core layer unit tests — target, http_client, auth, vulndb (163 new tests, 885 total)** |
 | 27 | `01cea35` | **Session 13: Base infrastructure unit tests — tool_runner, step, http_step, dependencies, runner (153 new tests, 1038 total)** |
 | 28 | `5952286` | **Session 14: Config, CLI, edge case unit tests — config, exceptions, logger, whois_parser, main_cli (100 new tests, 1138 total)** |
-| 29 | — | **HTML Dashboard Report** — dark theme, health score, SVG donut chart, metric cards, collapsible findings, responsive layout |
+| 29 | `18730f5` | **HTML Dashboard Report** — dark theme, health score, SVG donut chart, metric cards, collapsible findings, responsive layout |
+| 30 | — | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit integration (24 new tests, 1162 total) |
 
 ## Roadmap Status — ✅ All 9 items implemented (plus 1 enhancement)
 
@@ -109,8 +112,23 @@ See `wordlists/README.md` for full resolution chain.
 
 | Feature | Effort | Impact | Notes |
 |---------|--------|--------|-------|
-| **Stealth** | High | High | Timing jitter, user-agent pool, request deduplication, distributed scanning |
-| **PyPI package** | Medium | Low | `pyproject.toml`, entry point, versioning |
+| **Stealth** | High | High | ✅ Implemented — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit integration |
+| **VulnDB alignment** | Low | Medium | Share `HttpClient` with `WPVulnerabilityClient`/`WPScanClient` for stealth consistency |
+| **PyPI package** | Medium | Low | `pyproject.toml`, entry point, versioning — config exists, needs publish workflow |
 | **Plugin architecture** | High | High | Dynamic step loading from external packages, CLI `--plugin` flag |
+
+### Config Reference — Stealth Mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_STEALTH_ENABLED` | `false` | Enable stealth mode |
+| `WP_STEALTH_MIN_DELAY` | `1.0` | Minimum delay between requests (seconds) |
+| `WP_STEALTH_MAX_DELAY` | `3.0` | Maximum delay between requests (seconds) |
+| `WP_STEALTH_ROTATE_UA` | `true` | Rotate User-Agent per request |
+| `WP_STEALTH_ROTATE_REFERER` | `true` | Spoof random Referer headers |
+| `WP_STEALTH_DEDUP_REQUESTS` | `true` | Skip duplicate HTTP requests |
+| `WP_STEALTH_RATE_LIMIT` | `0.0` | Max requests/second (0 = unlimited) |
+
+Key files: `core/http_client.py` (UA pool, jitter, referer, dedup), `config.py` (stealth fields), `utils/rate_limiter.py` (rate limiter wired into client).
 
 See `docs/next_steps.md` for implementation details and `docs/references.md` for external API/tool URLs.
