@@ -29,10 +29,10 @@ SOLID principles + Atomic Design layered on Python async (httpx, asyncio).
 Finding ──────────────────────────────────────┐
 HttpClient ──────────────────────────────────┐│
 Target ─────────────────────────────────────┐││
-Logger ────────────────────────────────────┐││
-SsrfProtection ─────────────┐              │││
-RateLimiter ───────────────┐│              │││
-XmlParser ────────────────┐││              │││
+Logger ────────────────────────────────────┐││|
+SsrfProtection ─────────────┐              │││|
+RateLimiter ───────────────┐│              │││|
+XmlParser ────────────────┐││              │││|
                            ↓↓↓              ↓↓↓
                     BaseStep (ABC) ──► Finding[]
                     │              │
