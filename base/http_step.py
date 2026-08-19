@@ -14,7 +14,7 @@ import httpx
 
 from base.step import BaseStep
 from config import Config
-from core.http_client import HttpClient
+from core.http_client import HttpClient, friendly_network_error
 from core.target import Target
 
 
@@ -52,7 +52,11 @@ class BaseHttpStep(BaseStep):
             httpx.Response object
         """
         url = self.target.url.rstrip("/") + "/" + path.lstrip("/")
-        return await self.http.request(method, url, **kwargs)
+        try:
+            return await self.http.request(method, url, **kwargs)
+        except (httpx.TransportError, OSError) as exc:
+            self.logger.debug(f"Request failed for {url}: {friendly_network_error(exc)}")
+            raise
 
     async def get(self, path: str, **kwargs) -> httpx.Response:
         """Convenience method for GET requests."""
