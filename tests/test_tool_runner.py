@@ -340,9 +340,7 @@ class TestAsyncToolRunner:
     @patch("base.tool.shutil.which", return_value=None)
     def test_run_binary_not_found(self, _):
         with pytest.raises(ToolNotFoundError):
-            asyncio.get_event_loop().run_until_complete(
-                AsyncToolRunner("missing").run(["missing"])
-            )
+            asyncio.run(AsyncToolRunner("missing").run(["missing"]))
 
     @patch("base.tool.shutil.which", return_value="/usr/bin/mytool")
     @patch("base.tool.asyncio.create_subprocess_exec")
@@ -351,9 +349,7 @@ class TestAsyncToolRunner:
         proc.communicate = AsyncMock(return_value=(b"ok", b""))
         proc.returncode = 0
         mock_proc.return_value = proc
-        result = asyncio.get_event_loop().run_until_complete(
-            AsyncToolRunner("mytool").run(["mytool"])
-        )
+        result = asyncio.run(AsyncToolRunner("mytool").run(["mytool"]))
         assert result.success is True
         assert result.stdout == "ok"
 
@@ -364,18 +360,14 @@ class TestAsyncToolRunner:
         proc.communicate = AsyncMock(return_value=(b"", b"err"))
         proc.returncode = 1
         mock_proc.return_value = proc
-        result = asyncio.get_event_loop().run_until_complete(
-            AsyncToolRunner("mytool").run(["mytool"])
-        )
+        result = asyncio.run(AsyncToolRunner("mytool").run(["mytool"]))
         assert result.success is False
 
     @patch("base.tool.shutil.which", return_value="/usr/bin/mytool")
     @patch("base.tool.asyncio.create_subprocess_exec", side_effect=OSError("fail"))
     def test_run_os_error(self, mock_proc, _):
         with pytest.raises(RuntimeError, match="Error executing"):
-            asyncio.get_event_loop().run_until_complete(
-                AsyncToolRunner("mytool").run(["mytool"])
-            )
+            asyncio.run(AsyncToolRunner("mytool").run(["mytool"]))
 
     @patch("base.tool.shutil.which", return_value="/usr/bin/mytool")
     @patch("base.tool.asyncio.create_subprocess_exec")
@@ -386,9 +378,7 @@ class TestAsyncToolRunner:
         proc.returncode = None
         mock_proc.return_value = proc
         with pytest.raises(ToolTimeoutError):
-            asyncio.get_event_loop().run_until_complete(
-                AsyncToolRunner("mytool").run(["mytool"], timeout=1)
-            )
+            asyncio.run(AsyncToolRunner("mytool").run(["mytool"], timeout=1))
 
     @patch("base.tool.shutil.which", return_value="/usr/bin/mytool")
     @patch("base.tool.asyncio.create_subprocess_exec")
@@ -397,8 +387,6 @@ class TestAsyncToolRunner:
         proc.communicate = AsyncMock(return_value=(b"out", b"err"))
         proc.returncode = None
         mock_proc.return_value = proc
-        result = asyncio.get_event_loop().run_until_complete(
-            AsyncToolRunner("mytool").run(["mytool"])
-        )
+        result = asyncio.run(AsyncToolRunner("mytool").run(["mytool"]))
         assert result.returncode == -1
         assert result.success is False
