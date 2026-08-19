@@ -44,8 +44,8 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 6 | `b7491fd` | Fix `utcnow()` deprecation (3 files, 13 pytest warnings) |
 | 7 | `836b50e` | Add Shodan intelligence gathering step |
 | 8 | `4571726` | Add authenticated REST API module (plugins, themes, users via App Passwords) |
-| 9 | — | Add `docs/next_steps.md` — prioritized roadmap |
-| 10 | — | Add `docs/references.md` — indexed external URLs |
+| 9 | — | Add `docs/NEXT_STEPS.md` — prioritized roadmap |
+| 10 | — | Add `docs/REFERENCES.md` — indexed external URLs |
 | 11 | `c646dd3` | **Plugin/Theme brute-force** — response-code oracle with fallback wordlists |
 | 12 | `f1520dd` | **CVE correlation** — VulnDB client + 3 vuln lookup steps (core, plugin, theme) |
 | 13 | `f5c4d85` | **Inactive plugin file accessibility** — probe readme.txt for deactivated plugins |
@@ -132,4 +132,4 @@ See `wordlists/README.md` for full resolution chain.
 
 Key files: `core/http_client.py` (UA pool, jitter, referer, dedup), `config.py` (stealth fields), `utils/rate_limiter.py` (rate limiter wired into client).
 
-See `docs/next_steps.md` for implementation details and `docs/references.md` for external API/tool URLs.
+See `docs/NEXT_STEPS.md` for implementation details and `docs/REFERENCES.md` for external API/tool URLs.

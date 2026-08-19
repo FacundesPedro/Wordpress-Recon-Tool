@@ -15,7 +15,7 @@
 | `tests/test_whois_parser.py` | **NEW** | 25 tests — tld detection, parse output, to_finding_dict |
 | `tests/test_main_cli.py` | **NEW** | 15 tests — resolve_domain, get_module_names, build_modules, _save_report |
 | `AGENTS.md` | **UPDATED** | Commit #28; test count 1038→1138 |
-| `docs/next_steps.md` | **UPDATED** | HEAD, current state, session history |
+| `docs/NEXT_STEPS.md` | **UPDATED** | HEAD, current state, session history |
 
 ### S13 - Base Infrastructure Unit Tests (2026-07-23)
 | File | Change | Notes |
@@ -97,8 +97,8 @@
 | `wordlists/plugins/plugin_fallback.txt` | **NEW** | 30-entry default plugin wordlist (warns to use SecLists for production) |
 | `wordlists/plugins/theme_fallback.txt` | **NEW** | 15-entry default theme wordlist |
 | `AGENTS.md` | **NEW** | Session anchor file for AI agents |
-| `docs/next_steps.md` | **UPDATED** | Tier 1 item 2 marked done; HEAD updated |
-| `docs/references.md` | **UPDATED** | Added SecLists raw download URL |
+| `docs/NEXT_STEPS.md` | **UPDATED** | Tier 1 item 2 marked done; HEAD updated |
+| `docs/REFERENCES.md` | **UPDATED** | Added SecLists raw download URL |
 
 ### P0 - Authenticated REST API Enumeration (2026-06-17)
 | File | Change | Notes |
@@ -130,7 +130,7 @@
 | File | Change | Notes |
 |------|--------|-------|
 | `MODULES.md`, `SECURITY.md`, etc. | **MOVED** | Root docs moved to docs/ directory |
-| `docs/code.md` | **NEW** | Code abstraction documentation |
+| `docs/CODE.md` | **NEW** | Code abstraction documentation |
 
 ### P0 - API Module Implementation (2026-05-12)
 | File | Change | Notes |

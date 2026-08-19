@@ -65,7 +65,7 @@
 |-----|----------------|
 | [SecLists — Web Content — CMS](https://github.com/danielmiessler/SecLists/tree/master/Discovery/Web-Content/CMS) | **Wordlist source for plugin/theme brute-force (planned).** Contains `wordpress-plugins.fuzz.txt` (~20k plugins), `wp-plugins.fuzz.txt`, and common WP paths. Referenced in `wordlists/README.md` (commit `8abb857`). |
 | [WPScan WordPress Detection Patterns](https://github.com/wpscanteam/wpscan/tree/master/app/views/json) | Reference for WP version fingerprinting patterns. The existing `WpVersionStep` uses similar techniques. |
-| [WPProbe Plugin→Endpoint DB](https://github.com/Chocapikk/wpprobe) | REST API stealth detection DB mapping ~5k plugins to their exposed REST routes. Relevant if implementing REST API-based detection (Tier 1, item 2 in `next_steps.md`). |
+| [WPProbe Plugin→Endpoint DB](https://github.com/Chocapikk/wpprobe) | REST API stealth detection DB mapping ~5k plugins to their exposed REST routes. Relevant if implementing REST API-based detection (Tier 1, item 2 in `NEXT_STEPS.md`). |
 
 ## Competitor / Reference Tools
 

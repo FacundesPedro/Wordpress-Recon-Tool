@@ -331,7 +331,7 @@ wordpress_testing_tool/
 - [Architecture Plan](docs/architecture_plan.md) - Project architecture
 - [Security Documentation](docs/SECURITY.md) - Security features
 - [Changelog](CHANGELOG.md) - Change history
-- [Code Documentation](docs/code.md) - Code abstractions and execution flow
+- [Code Documentation](docs/CODE.md) - Code abstractions and execution flow
 - [Wordlists Guide](wordlists/README.md) - Wordlist configuration and production setup
 
 ## License

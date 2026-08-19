@@ -1548,6 +1548,6 @@ Quick scan configurations:
 
 - [Architecture Plan](./architecture_plan.md) - Technical design
 - [Security Documentation](./SECURITY.md) - Security features
-- [Code Documentation](./code.md) - Code abstractions and execution flow
+- [Code Documentation](./CODE.md) - Code abstractions and execution flow
 - [Changelog](../CHANGELOG.md) - Version history
 - [Wordlists Guide](../wordlists/README.md) - Wordlist configuration and production setup
