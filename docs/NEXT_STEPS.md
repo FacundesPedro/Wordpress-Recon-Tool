@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-08-19  
 **Current Branch:** `main`  
-**HEAD:** `(pending)` — Unreachable-target resilience: reachability pre-check, circuit breaker, graceful PDF degradation, report noise cleanup (1189 tests)
+**HEAD:** `a432066` — Fix event-loop ordering in AsyncToolRunner tests (1191 tests passing)
 
 ---
 
@@ -36,10 +36,19 @@
 | 24 | `f54c316` | Session 12: Core layer unit tests (163 tests, 885 total) |
 | 25 | `01cea35` | Session 13: Base infrastructure tests (153 tests, 1038 total) |
 | 26 | `5952286` | Session 14: Config/CLI/edge case tests (100 tests, 1138 total) |
-| 27 | (pending) | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit (24 tests, 1162 total) |
-| 28 | (pending) | **Unreachable-target resilience** — reachability pre-check, circuit breaker, graceful PDF degradation, report noise cleanup (27 tests, 1189 total) |
+| 27 | `2dad206` | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit (24 tests, 1162 total) |
+| 28 | `71776d3` | Rename `docs/architecture_plan.md` → `docs/ARCHITECTURE.md` |
+| 29 | `f2f856f` | **Convert noise findings to warnings** — config/absence issues no longer report (10 findings removed) |
+| 30 | `457de8e` | **Pre-flight reachability check** — async DNS/TCP/TLS probe before scan |
+| 31 | `be7f651` | **Graceful report degradation** — formatters wrapped in try/except, PDF ImportError handler |
+| 32 | `3b4385a` | **Circuit breaker** — consecutive transport errors trip `unreachable`, steps/tiers skip |
+| 33 | `d9e03c9` | **Friendly network errors** — `friendly_network_error()` + debug logging in `fetch()` |
+| 34 | `1465323` | Add `weasyprint>=60.0` dependency for PDF report output |
+| 35 | `af8589e` | Update docs: unreachable-target resilience feature and 1189 test count |
+| 36 | `b257fe7` | Rename docs files to uppercase (`code.md`→`CODE.md`, etc.) + update references |
+| 37 | `a432066` | **Fix event-loop ordering in AsyncToolRunner tests** — `asyncio.run()` instead of deprecated `get_event_loop()` (1191 tests passing) |
 
-**Current state:** 12 modules, 60 steps, 1189 tests passing (60/60 steps covered, 100%). Stealth mode and unreachable-target resilience added — see AGENTS.md for config reference.
+**Current state:** 12 modules, 60 steps, 1191 tests passing (60/60 steps covered, 100%). Stealth mode and unreachable-target resilience added — see AGENTS.md for config reference.
 
 ---
 

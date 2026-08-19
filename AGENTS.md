@@ -6,7 +6,7 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 1189 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
+**Current state:** 12 modules, 60 steps, 1191 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
 
 **Latest feature: Unreachable-target resilience** — pre-flight DNS/TCP/TLS reachability probe (`core/reachability.py`), circuit breaker in `HttpClient` (consecutive-error threshold, `WP_UNREACHABLE_THRESHOLD`), graceful report degradation when WeasyPrint is missing, and report noise cleanup (config/absence issues → `logger.warning` instead of findings).
 
@@ -32,7 +32,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (29 on main)
+## Commit History (40 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -65,8 +65,17 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 27 | `01cea35` | **Session 13: Base infrastructure unit tests — tool_runner, step, http_step, dependencies, runner (153 new tests, 1038 total)** |
 | 28 | `5952286` | **Session 14: Config, CLI, edge case unit tests — config, exceptions, logger, whois_parser, main_cli (100 new tests, 1138 total)** |
 | 29 | `18730f5` | **HTML Dashboard Report** — dark theme, health score, SVG donut chart, metric cards, collapsible findings, responsive layout |
-| 30 | — | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit integration (24 new tests, 1162 total) |
-| 31 | — | **Unreachable-target resilience** — reachability pre-check, circuit breaker, graceful PDF degradation, report noise cleanup (27 new tests, 1189 total) |
+| 30 | `2dad206` | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit integration (24 new tests, 1162 total) |
+| 31 | `71776d3` | Rename `docs/architecture_plan.md` → `docs/ARCHITECTURE.md` |
+| 32 | `f2f856f` | **Convert noise findings to warnings** — config/absence issues no longer report (10 findings removed) |
+| 33 | `457de8e` | **Pre-flight reachability check** — async DNS/TCP/TLS probe before scan |
+| 34 | `be7f651` | **Graceful report degradation** — formatters wrapped in try/except, PDF ImportError handler |
+| 35 | `3b4385a` | **Circuit breaker** — consecutive transport errors trip `unreachable`, steps/tiers skip |
+| 36 | `d9e03c9` | **Friendly network errors** — `friendly_network_error()` + debug logging in `fetch()` |
+| 37 | `1465323` | Add `weasyprint>=60.0` dependency for PDF report output |
+| 38 | `af8589e` | Update docs: unreachable-target resilience feature and 1189 test count |
+| 39 | `b257fe7` | Rename docs files to uppercase (`code.md`→`CODE.md`, etc.) + update references |
+| 40 | `a432066` | **Fix event-loop ordering in AsyncToolRunner tests** — `asyncio.run()` instead of deprecated `get_event_loop()` (1191 tests passing) |
 
 ## Roadmap Status — ✅ All 9 items implemented (plus 1 enhancement)
 
@@ -85,7 +94,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 
 ### Priority 1 — Tests (complete)
 
-**Coverage:** 60/60 steps tested (100%), 1189 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
+**Coverage:** 60/60 steps tested (100%), 1191 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 
