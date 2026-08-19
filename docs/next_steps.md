@@ -1,8 +1,8 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-07-24  
+**Last Updated:** 2026-08-19  
 **Current Branch:** `main`  
-**HEAD:** `(pending)` — Stealth Mode: timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit (1162 tests)
+**HEAD:** `(pending)` — Unreachable-target resilience: reachability pre-check, circuit breaker, graceful PDF degradation, report noise cleanup (1189 tests)
 
 ---
 
@@ -37,8 +37,9 @@
 | 25 | `01cea35` | Session 13: Base infrastructure tests (153 tests, 1038 total) |
 | 26 | `5952286` | Session 14: Config/CLI/edge case tests (100 tests, 1138 total) |
 | 27 | (pending) | **Stealth Mode** — timing jitter, 50+ UA pool, referer spoofing, request dedup, rate limit (24 tests, 1162 total) |
+| 28 | (pending) | **Unreachable-target resilience** — reachability pre-check, circuit breaker, graceful PDF degradation, report noise cleanup (27 tests, 1189 total) |
 
-**Current state:** 12 modules, 60 steps, 1162 tests passing (60/60 steps covered, 100%). Stealth mode added — see AGENTS.md for config reference.
+**Current state:** 12 modules, 60 steps, 1189 tests passing (60/60 steps covered, 100%). Stealth mode and unreachable-target resilience added — see AGENTS.md for config reference.
 
 ---
 
@@ -230,6 +231,32 @@ Key files: `utils/report.py` (HtmlFormatter).
 **Status:** Implemented. `SpiderStep` crawls same-origin links from homepage up to configurable depth (default 2) and page limit (default 50). Extracts form actions, upload directories, admin-like paths, and comment sections. Respects `robots.txt` disallow rules.
 
 Key files: `steps/discovery/spider_step.py`, `config.py` (spider_max_depth, spider_max_pages).
+
+---
+
+## Unreachable-Target Resilience ✅
+
+**Why:** Scanning an unreachable target (bad DNS, expired TLS cert, firewalled host) previously wasted 70s–10min on silently failing steps, produced noise findings, then crashed on PDF output when WeasyPrint was missing.
+
+**Status:** Implemented. Four features:
+
+### 1. Pre-flight Reachability Check
+`core/reachability.py` probes DNS → TCP → TLS before the scan starts. On failure, aborts with `typer.Exit(1)` and a friendly message instead of running the full scan. Skip with `--skip-reachability-check`.
+
+### 2. Circuit Breaker
+`HttpClient._execute()` counts consecutive transport-level failures. After `unreachable_threshold` (default 5) consecutive errors, the target is marked unreachable and `Runner` skips remaining steps and tiers. Configurable via `WP_UNREACHABLE_THRESHOLD`.
+
+### 3. Graceful Report Degradation
+`_save_report` wraps every formatter in try/except. A missing WeasyPrint now prints a warning ("install weasyprint") instead of crashing the whole scan. `weasyprint>=60.0` added to `requirements.txt`.
+
+### 4. Report Noise Cleanup
+Config/tool/absence issues are now `logger.warning` only, not findings:
+- Shodan: missing API key, no HTTP client, DNS resolution failure, no data
+- Wayback: no HTTP client, no archives
+- DNS: dig binary missing, no records
+- Plugin/theme vuln: no items detected (skips "no CVEs" finding)
+
+**Key files:** `core/reachability.py`, `core/http_client.py`, `base/runner.py`, `base/http_step.py`, `main.py`, `config.py`, `requirements.txt`.
 
 ---
 
