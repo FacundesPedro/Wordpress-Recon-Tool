@@ -12,6 +12,7 @@ from core.http_client import (
     REFERERS,
     ACCEPT_LANGUAGES,
     HttpClient,
+    friendly_network_error,
 )
 
 
@@ -422,3 +423,121 @@ class TestStealthMode:
 
     def test_stealth_pool_size_at_least_50(self):
         assert len(STEALTH_USER_AGENTS) >= 50
+
+
+class TestCircuitBreaker:
+    """Tests for the circuit breaker (consecutive error tracking)."""
+
+    def test_starts_reachable(self):
+        client = HttpClient()
+        assert client.unreachable is False
+        assert client._consecutive_errors == 0
+
+    def test_threshold_defaults_to_five(self):
+        client = HttpClient()
+        assert client.unreachable_threshold == 5
+
+    def test_threshold_from_config(self):
+        from config import ScanConfig
+        cfg = ScanConfig(unreachable_threshold=3)
+        client = HttpClient(config=cfg)
+        assert client.unreachable_threshold == 3
+
+    @pytest.mark.asyncio
+    async def test_success_resets_error_counter(self):
+        client = HttpClient()
+        client._consecutive_errors = 2
+        async with client:
+            mock_response = MagicMock(spec=httpx.Response)
+            client._client.get = AsyncMock(return_value=mock_response)
+            await client.get("https://example.com")
+        assert client._consecutive_errors == 0
+        assert client.unreachable is False
+
+    @pytest.mark.asyncio
+    async def test_transport_error_increments_counter(self):
+        client = HttpClient()
+        async with client:
+            client._client.get = AsyncMock(
+                side_effect=httpx.ConnectError("boom")
+            )
+            with pytest.raises(httpx.ConnectError):
+                await client.get("https://example.com")
+        assert client._consecutive_errors == 1
+        assert client.unreachable is False
+
+    @pytest.mark.asyncio
+    async def test_threshold_reached_marks_unreachable(self):
+        client = HttpClient()
+        client.unreachable_threshold = 2
+        async with client:
+            client._client.get = AsyncMock(
+                side_effect=httpx.ConnectError("boom")
+            )
+            with pytest.raises(httpx.ConnectError):
+                await client.get("https://example.com")
+            with pytest.raises(httpx.ConnectError):
+                await client.get("https://example.com")
+        assert client.unreachable is True
+        assert client._consecutive_errors == 2
+
+    @pytest.mark.asyncio
+    async def test_unreachable_short_circuits_requests(self):
+        client = HttpClient()
+        client.unreachable = True
+        async with client:
+            client._client.get = AsyncMock()
+            with pytest.raises(RuntimeError, match="unreachable"):
+                await client.get("https://example.com")
+        client._client.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_status_errors_do_not_trip_breaker(self):
+        client = HttpClient()
+        async with client:
+            mock_response = MagicMock(spec=httpx.Response, status_code=500)
+            client._client.get = AsyncMock(return_value=mock_response)
+            await client.get("https://example.com")
+        assert client._consecutive_errors == 0
+        assert client.unreachable is False
+
+
+class TestFriendlyNetworkError:
+    """Tests for friendly_network_error helper."""
+
+    def test_dns_resolution_error(self):
+        exc = httpx.ConnectError(
+            "[Errno 8] nodename nor servname provided, or not known"
+        )
+        msg = friendly_network_error(exc)
+        assert "DNS resolution failed" in msg
+
+    def test_tls_expired_certificate(self):
+        exc = httpx.ConnectError(
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+            "certificate has expired"
+        )
+        msg = friendly_network_error(exc)
+        assert "TLS certificate" in msg
+        assert "expired" in msg.lower()
+
+    def test_connection_refused(self):
+        exc = httpx.ConnectError("[Errno 61] Connection refused")
+        msg = friendly_network_error(exc)
+        assert "Connection refused" in msg
+
+    def test_timeout(self):
+        exc = httpx.ConnectTimeout("timed out")
+        msg = friendly_network_error(exc)
+        assert "timed out" in msg.lower()
+
+    def test_generic_transport_error(self):
+        exc = httpx.RemoteProtocolError("server disconnected")
+        msg = friendly_network_error(exc)
+        assert "Network error" in msg
+
+    def test_unknown_exception(self):
+        exc = ValueError("weird")
+        msg = friendly_network_error(exc)
+        assert "Network error" in msg
+        assert "ValueError" in msg

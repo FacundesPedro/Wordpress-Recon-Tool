@@ -143,6 +143,23 @@ class TestRunModule:
         await r.run_module(mod, sem)
         mod.validate.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_skips_steps_when_unreachable(self, mock_config, mock_target):
+        step_cls = MagicMock()
+        step_cls.__name__ = "SkippedStep"
+        step_instance = MagicMock()
+        step_instance.name = "skipped_step"
+        step_instance.run = AsyncMock(return_value=[])
+        step_cls.return_value = step_instance
+        mod = make_module("passive", [step_cls])
+        r = Runner([mod], mock_config, mock_target)
+        r._http = MagicMock()
+        r._http.unreachable = True
+        sem = MagicMock()
+        findings = await r.run_module(mod, sem)
+        assert findings == []
+        step_cls.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # run_all
@@ -176,6 +193,23 @@ class TestRunAll:
             assert report.domain == "example.com"
             assert report.started_at is not None
             assert report.completed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_breaks_out_of_tiers_when_unreachable(self, mock_config, mock_target):
+        step_cls = MagicMock()
+        step_instance = MagicMock()
+        step_instance.name = "s"
+        step_instance.run = AsyncMock(return_value=[])
+        step_cls.return_value = step_instance
+        mod = make_module("passive", [step_cls])
+        r = Runner([mod], mock_config, mock_target)
+        with patch("base.runner.HttpClient") as mock_http_cls:
+            mock_http_inst = AsyncMock()
+            mock_http_inst.unreachable = True
+            mock_http_cls.return_value.__aenter__.return_value = mock_http_inst
+            report = await r.run_all()
+            assert len(r.modules_run) == 0
+            assert report is not None
 
 
 # ---------------------------------------------------------------------------

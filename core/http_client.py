@@ -9,12 +9,43 @@ SECURITY:
 
 import asyncio
 import random
+import ssl
 from typing import TYPE_CHECKING, Optional
 
 import httpx
 
+from core.logger import Logger
+
 if TYPE_CHECKING:
     from config import ScanConfig
+
+logger = Logger("HttpClient")
+
+
+def friendly_network_error(exc: Exception) -> str:
+    """Produce a human-readable message for a network/transport exception."""
+    name = type(exc).__name__
+    detail = str(exc).strip()
+
+    if isinstance(exc, ssl.SSLError) or "CERTIFICATE_VERIFY_FAILED" in name or "CERTIFICATE_VERIFY_FAILED" in detail:
+        if "certificate has expired" in detail.lower():
+            return f"TLS certificate has expired: {detail}"
+        return f"TLS certificate verification failed: {detail}"
+
+    if isinstance(exc, httpx.ConnectError):
+        if "nodename" in detail or "Name or service not known" in detail:
+            return f"DNS resolution failed — domain may not exist or is unreachable: {detail}"
+        if "Connection refused" in detail:
+            return f"Connection refused — no service listening on target: {detail}"
+        return f"Connection failed: {detail}"
+
+    if isinstance(exc, (httpx.ConnectTimeout, httpx.ReadTimeout, TimeoutError)):
+        return f"Connection timed out — host may be unreachable or firewalled: {detail}"
+
+    if isinstance(exc, httpx.TransportError):
+        return f"Network error: {detail}"
+
+    return f"Network error ({name}): {detail}"
 
 COMMON_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -149,6 +180,11 @@ class HttpClient:
         self._client: Optional[httpx.AsyncClient] = None
         self._current_ua_index = 0
         self._seen_requests: set[tuple[str, str]] = set()
+        self._consecutive_errors = 0
+        self.unreachable = False
+        self.unreachable_threshold = (
+            config.unreachable_threshold if config is not None else 5
+        )
 
         if config is not None and config.stealth_enabled:
             self.stealth_enabled = True
@@ -208,6 +244,32 @@ class HttpClient:
         self._seen_requests.add(key)
         return False
 
+    async def _execute(self, coro):
+        """Run a request coroutine with circuit-breaker tracking.
+
+        Counts consecutive transport-level failures. When the count reaches
+        `unreachable_threshold`, the target is marked unreachable and all
+        further requests raise immediately.
+        """
+        if self.unreachable:
+            raise RuntimeError(
+                "Target marked unreachable — skipping request (circuit breaker open)"
+            )
+        try:
+            result = await coro
+        except (httpx.TransportError, OSError) as exc:
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self.unreachable_threshold:
+                self.unreachable = True
+                logger.warning(
+                    f"Target marked unreachable after {self._consecutive_errors} "
+                    f"consecutive network errors: {friendly_network_error(exc)}"
+                )
+            raise
+        else:
+            self._consecutive_errors = 0
+            return result
+
     async def __aenter__(self):
         default_headers = {
             "User-Agent": self._get_next_user_agent(),
@@ -247,19 +309,19 @@ class HttpClient:
         if not self._client:
             raise RuntimeError("HttpClient must be used as async context manager")
         await self._prepare_request()
-        return await self._client.get(url, **kwargs)
+        return await self._execute(self._client.get(url, **kwargs))
 
     async def post(self, url: str, **kwargs) -> httpx.Response:
         if not self._client:
             raise RuntimeError("HttpClient must be used as async context manager")
         await self._prepare_request()
-        return await self._client.post(url, **kwargs)
+        return await self._execute(self._client.post(url, **kwargs))
 
     async def head(self, url: str, **kwargs) -> httpx.Response:
         if not self._client:
             raise RuntimeError("HttpClient must be used as async context manager")
         await self._prepare_request()
-        return await self._client.head(url, **kwargs)
+        return await self._execute(self._client.head(url, **kwargs))
 
     async def request(
         self,
@@ -270,7 +332,7 @@ class HttpClient:
         if not self._client:
             raise RuntimeError("HttpClient must be used as async context manager")
         await self._prepare_request()
-        return await self._client.request(method, url, **kwargs)
+        return await self._execute(self._client.request(method, url, **kwargs))
 
     async def request_unique(
         self,

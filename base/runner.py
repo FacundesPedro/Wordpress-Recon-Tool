@@ -90,6 +90,11 @@ class Runner:
 
         async with semaphore:
             for step_class in module.steps:
+                if self._http is not None and self._http.unreachable is True:
+                    self.logger.warning(
+                        f"Target unreachable — skipping step {step_class.__name__}"
+                    )
+                    continue
                 try:
                     step = step_class(
                         target=self.target,
@@ -134,6 +139,12 @@ class Runner:
                 modules_in_tier = tier_modules.get(tier, [])
                 if not modules_in_tier:
                     continue
+
+                if self._http is not None and self._http.unreachable is True:
+                    self.logger.warning(
+                        f"Target unreachable — skipping tier {tier} and all remaining tiers"
+                    )
+                    break
 
                 self.logger.info(
                     f"[Tier {tier}] Running {len(modules_in_tier)} module(s) in parallel"
