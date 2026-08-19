@@ -34,7 +34,7 @@ class TestSkipConditions:
         findings = await step.run()
         assert findings == []
 
-    async def test_returns_skip_finding_when_no_http(self):
+    async def test_returns_empty_when_no_http(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
 
@@ -43,10 +43,7 @@ class TestSkipConditions:
         step = WaymachineStep(target=mock_target, http=None)
         findings = await step.run()
 
-        assert len(findings) == 1
-        assert findings[0].title == "Wayback Machine skipped"
-        assert findings[0].module == "passive"
-        assert findings[0].severity == "low"
+        assert findings == []
 
 
 class TestUrlBuilding:
@@ -104,7 +101,7 @@ class TestQueryAndParse:
         assert len(sensitive) == 1
         assert sensitive[0].severity == "medium"
 
-    async def test_empty_response_returns_no_archives(self):
+    async def test_empty_response_returns_empty(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_http = MagicMock()
@@ -117,8 +114,7 @@ class TestQueryAndParse:
         step = WaymachineStep(target=mock_target, http=mock_http)
         findings = await step.run()
 
-        no_archives = [f for f in findings if f.title == "No Wayback archives found"]
-        assert len(no_archives) == 1
+        assert len(findings) == 0
 
     async def test_timeout_handled_gracefully(self):
         mock_target = MagicMock()

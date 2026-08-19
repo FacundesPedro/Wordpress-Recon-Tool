@@ -45,7 +45,7 @@ class TestSkipConditions:
         findings = await step.run()
         assert findings == []
 
-    async def test_returns_skip_finding_when_no_http(self):
+    async def test_returns_empty_when_no_http(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_config = MagicMock()
@@ -55,12 +55,9 @@ class TestSkipConditions:
         step = ShodanStep(target=mock_target, config=mock_config, http=None)
         findings = await step.run()
 
-        assert len(findings) == 1
-        assert findings[0].title == "Shodan lookup skipped"
-        assert findings[0].module == "passive"
-        assert findings[0].severity == "low"
+        assert findings == []
 
-    async def test_returns_skip_finding_when_no_api_key(self):
+    async def test_returns_empty_when_no_api_key(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_http = MagicMock()
@@ -72,11 +69,9 @@ class TestSkipConditions:
         step = ShodanStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
 
-        assert len(findings) == 1
-        assert findings[0].title == "Shodan API key not configured"
-        assert findings[0].severity == "low"
+        assert findings == []
 
-    async def test_returns_resolution_failed_when_dns_fails(self):
+    async def test_returns_empty_when_dns_fails(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_http = MagicMock()
@@ -89,8 +84,7 @@ class TestSkipConditions:
             step = ShodanStep(target=mock_target, config=mock_config, http=mock_http)
             findings = await step.run()
 
-        assert len(findings) == 1
-        assert findings[0].title == "Domain resolution failed"
+        assert findings == []
 
 
 class TestHostQuery:
@@ -218,7 +212,7 @@ class TestSearchQuery:
 class TestEmptyFallback:
     """Tests for no-data-found fallback."""
 
-    async def test_no_shodan_data_found(self):
+    async def test_no_shodan_data_returns_empty(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_config = MagicMock()
@@ -236,6 +230,4 @@ class TestEmptyFallback:
             step = ShodanStep(target=mock_target, config=mock_config, http=mock_http)
             findings = await step.run()
 
-        nodata = [f for f in findings if f.title == "No Shodan data found"]
-        assert len(nodata) == 1
-        assert nodata[0].severity == "info"
+        assert len(findings) == 0

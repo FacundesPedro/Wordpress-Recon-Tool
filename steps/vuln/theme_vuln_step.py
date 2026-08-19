@@ -31,6 +31,10 @@ class ThemeVulnStep(BaseHttpStep):
 
         themes = await self._detect_themes()
 
+        if not themes:
+            self.logger.debug("No themes detected — skipping CVE check")
+            return self.findings
+
         all_vulns = []
         try:
             for slug, ver in themes:

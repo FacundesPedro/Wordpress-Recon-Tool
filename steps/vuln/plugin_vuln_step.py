@@ -31,6 +31,10 @@ class PluginVulnStep(BaseHttpStep):
 
         plugins = await self._detect_plugins()
 
+        if not plugins:
+            self.logger.debug("No plugins detected — skipping CVE check")
+            return self.findings
+
         all_vulns = []
         try:
             for slug, ver in plugins:

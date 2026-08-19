@@ -86,9 +86,7 @@ class TestRunWithVulnDB:
 
             findings = await step.run()
 
-        assert len(findings) == 1
-        assert findings[0].severity == "info"
-        assert "0 theme" in findings[0].description
+        assert len(findings) == 0
 
     async def test_themes_without_vulns_creates_info_finding(self, mock_http, mock_target):
         mock_config = MagicMock()

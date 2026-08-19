@@ -61,27 +61,11 @@ class ShodanStep(BaseStep):
 
         if not self.http:
             self.logger.warning("HTTP client not available, skipping Shodan lookup")
-            self._add_finding(
-                module=self.MODULE,
-                severity="low",
-                title="Shodan lookup skipped",
-                description="HTTP client not available",
-                evidence="Cannot query Shodan API without HTTP client",
-                recommendation="Ensure HTTP client is properly initialized",
-            )
             return self.findings
 
         self._api_key = self._get_api_key()
         if not self._api_key:
-            self.logger.warning("Shodan API key not configured - skipping")
-            self._add_finding(
-                module=self.MODULE,
-                severity="low",
-                title="Shodan API key not configured",
-                description="No Shodan API key found in configuration",
-                evidence="Set WP_SHODAN_API_KEY env var or shodan_api_key in config",
-                recommendation="Sign up for Shodan at https://account.shodan.io/ and set the API key via WP_SHODAN_API_KEY",
-            )
+            self.logger.warning("Shodan API key not configured — skipping")
             return self.findings
 
         domain = self.target.domain
@@ -98,15 +82,7 @@ class ShodanStep(BaseStep):
             self._emit_search_findings(domain, search_results)
 
         if not self.findings and not self._errors:
-            self._add_finding(
-                module=self.MODULE,
-                severity="info",
-                title="No Shodan data found",
-                description=f"No information found on Shodan for {domain}",
-                evidence=f"Domain: {domain}, IP: {ip_address}",
-                recommendation="The domain or IP may not be indexed by Shodan",
-                raw={"domain": domain, "ip": ip_address},
-            )
+            self.logger.debug(f"No Shodan data found for {domain}")
 
         return self.findings
 
@@ -124,14 +100,6 @@ class ShodanStep(BaseStep):
             return ip
         except socket.gaierror as e:
             self.logger.warning(f"Could not resolve domain {domain}: {e}")
-            self._add_finding(
-                module=self.MODULE,
-                severity="low",
-                title="Domain resolution failed",
-                description=f"Could not resolve {domain} to an IP address for Shodan lookup",
-                evidence=str(e),
-                recommendation="Verify the domain is valid and publicly accessible",
-            )
             return None
 
     async def _query_host_info(self, ip: str) -> Optional[dict]:

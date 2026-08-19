@@ -65,14 +65,6 @@ class WaymachineStep(BaseStep):
 
         if not self.http:
             self.logger.warning("HTTP client not available, skipping Wayback lookup")
-            self._add_finding(
-                module=self.MODULE,
-                severity="low",
-                title="Wayback Machine skipped",
-                description="HTTP client not available",
-                evidence="Cannot query Wayback Machine API without HTTP client",
-                recommendation="Ensure HTTP client is properly initialized",
-            )
             return self.findings
 
         domain = self.target.domain
@@ -101,15 +93,7 @@ class WaymachineStep(BaseStep):
         if self._urls:
             self._create_findings(domain)
         elif not self._errors:
-            self._add_finding(
-                module=self.MODULE,
-                severity="info",
-                title="No Wayback archives found",
-                description="No archived pages found for this domain",
-                evidence=f"Domain: {domain}",
-                recommendation="The domain may be new or not archived by the Wayback Machine",
-                raw={"domain": domain},
-            )
+            self.logger.debug(f"No Wayback archives found for {domain}")
 
         return self.findings
 

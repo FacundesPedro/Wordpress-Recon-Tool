@@ -98,15 +98,6 @@ class DnsStep(BaseToolStep):
             self.logger.warning(
                 "Install dig: 'brew install bind' (macOS) or 'apt install dnsutils' (Linux)"
             )
-            self._add_finding(
-                module=self.MODULE,
-                severity="low",
-                title="DNS check skipped",
-                description="The 'dig' binary is not installed on this system",
-                evidence=error or "Binary not found in PATH",
-                recommendation="Install dig to enable DNS enumeration",
-                raw={"binary": self._tool_binary, "error": error},
-            )
             return self.findings
 
         if not self.target or not self.target.domain:
@@ -130,15 +121,7 @@ class DnsStep(BaseToolStep):
         self._analyze_intelligence(domain, all_findings)
 
         if not all_findings:
-            self._add_finding(
-                module=self.MODULE,
-                severity="info",
-                title="No DNS records found",
-                description="Could not enumerate DNS records for the target domain",
-                evidence=f"Domain: {domain}",
-                recommendation="Verify the domain exists and DNS is accessible",
-                raw={"domain": domain, "record_types_queried": self.RECORD_TYPES},
-            )
+            self.logger.debug(f"No DNS records found for {domain}")
 
         self.findings.extend(all_findings)
         return self.findings

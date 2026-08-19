@@ -12,7 +12,7 @@ pytestmark = pytest.mark.asyncio
 class TestSkipConditions:
     """Tests for early return conditions."""
 
-    async def test_returns_skip_finding_when_dig_not_found(self):
+    async def test_returns_empty_when_dig_not_found(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_config = MagicMock()
@@ -25,10 +25,7 @@ class TestSkipConditions:
         with patch.object(DnsStep, "check_binary", return_value=(False, "not found")):
             findings = await step.run()
 
-        assert len(findings) == 1
-        assert findings[0].title == "DNS check skipped"
-        assert findings[0].module == "passive"
-        assert findings[0].severity == "low"
+        assert findings == []
 
     async def test_returns_empty_when_no_domain(self):
         mock_target = MagicMock()
@@ -89,7 +86,7 @@ class TestRecordQuery:
         record_findings = [f for f in findings if "Records Found" in f.title]
         assert len(record_findings) == 6
 
-    async def test_no_records_found_finding(self):
+    async def test_no_records_returns_empty(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_config = MagicMock()
@@ -106,9 +103,7 @@ class TestRecordQuery:
             findings = await step.run()
 
         no_dns = [f for f in findings if f.title == "No DNS records found"]
-        assert len(no_dns) == 1
-        assert no_dns[0].severity == "info"
-        assert no_dns[0].module == "passive"
+        assert len(no_dns) == 0
 
 
 class TestParseOutput:
