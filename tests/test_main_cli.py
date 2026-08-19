@@ -1,7 +1,7 @@
 # tests/test_main_cli.py
 """Unit tests for main.py — CLI helpers and Typer commands."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -153,3 +153,53 @@ class TestSaveReport:
             sarif_save.assert_called_once()
             html_save.assert_called_once()
             pdf_save.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Reachability pre-flight abort
+# ---------------------------------------------------------------------------
+class TestReachabilityAbort:
+    def test_unreachable_target_exits_with_error(self, tmp_path):
+        from typer.testing import CliRunner
+
+        from core.reachability import ReachabilityResult
+        from main import app
+
+        runner = CliRunner()
+        with patch(
+            "core.reachability.check_reachability",
+            new=AsyncMock(
+                return_value=ReachabilityResult(
+                    reachable=False,
+                    domain="example.com",
+                    error="DNS resolution failed — domain may not exist",
+                    error_category="dns",
+                )
+            ),
+        ):
+            result = runner.invoke(
+                app, ["main", "--target", "https://example.com", "-o", str(tmp_path)]
+            )
+        assert result.exit_code == 1
+
+    def test_skip_reachability_check_does_not_probe(self, tmp_path):
+        from typer.testing import CliRunner
+
+        from main import app
+
+        runner = CliRunner()
+        with patch("core.reachability.check_reachability") as mock_probe, \
+             patch("main.build_modules", return_value=[]):
+            result = runner.invoke(
+                app,
+                [
+                    "main",
+                    "--target",
+                    "https://example.com",
+                    "-o",
+                    str(tmp_path),
+                    "--skip-reachability-check",
+                ],
+            )
+        mock_probe.assert_not_called()
+        assert result.exit_code == 1  # no modules selected → exit 1

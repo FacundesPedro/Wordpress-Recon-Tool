@@ -164,6 +164,14 @@ class ScanConfig(BaseSettings):
         description="Max requests per second (0 = unlimited, uses jitter only)"
     )
 
+    skip_reachability_check: bool = Field(
+        default=False, description="Skip pre-flight DNS/TCP/TLS reachability probe"
+    )
+    unreachable_threshold: int = Field(
+        default=5, ge=1,
+        description="Consecutive network errors before marking target unreachable and aborting",
+    )
+
     def mkdir_output(self) -> None:
         """Ensure output directory exists."""
         self.output_dir.mkdir(parents=True, exist_ok=True)

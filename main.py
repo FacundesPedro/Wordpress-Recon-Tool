@@ -175,6 +175,13 @@ def main(
         str,
         typer.Option("--wp-auth-method", help="Auth method: app_password or cookie"),
     ] = "app_password",
+    skip_reachability_check: Annotated[
+        bool,
+        typer.Option(
+            "--skip-reachability-check",
+            help="Skip pre-flight DNS/TCP/TLS reachability probe",
+        ),
+    ] = False,
 ):
     """Run WordPress reconnaissance scan."""
     config = ScanConfig()
@@ -220,6 +227,7 @@ def main(
     config.skip_version_check = skip_version_check
     config.require_version = require_version
     config.verbose_version_check = verbose_version_check
+    config.skip_reachability_check = skip_reachability_check
 
     main_logger = Logger("Main", config.log_level)
 
@@ -234,6 +242,17 @@ def main(
 
     if not config.quiet:
         main_logger.info(f"Target: {target_obj.url} (domain: {target_obj.domain})")
+
+    # ── Pre-flight reachability probe ────────────────────────────────
+    if not config.skip_reachability_check:
+        from core.reachability import check_reachability
+
+        probe = asyncio.run(
+            check_reachability(target_obj.url, timeout=config.timeout, insecure=config.insecure)
+        )
+        if not probe.reachable:
+            main_logger.error(probe.error or "Target is unreachable")
+            raise typer.Exit(code=1)
 
     module_names = get_module_names(profile, modules, wpscan, nuclei, ffuf, opendoor)
 
