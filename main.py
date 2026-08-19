@@ -384,29 +384,49 @@ def _save_report(
     )
 
     if config.output_format in ("json", "both", "all"):
-        json_path = output / f"{filename_base}.json"
-        JsonFormatter.save(report, json_path)
-        console.print(f"[green]JSON report: {json_path}[/green]")
+        try:
+            json_path = output / f"{filename_base}.json"
+            JsonFormatter.save(report, json_path)
+            console.print(f"[green]JSON report: {json_path}[/green]")
+        except Exception as exc:
+            console.print(f"[yellow]Warning: JSON report failed ({exc})[/yellow]")
 
     if config.output_format in ("markdown", "both", "all"):
-        md_path = output / f"{filename_base}.md"
-        MarkdownFormatter.save(report, md_path)
-        console.print(f"[green]Markdown report: {md_path}[/green]")
+        try:
+            md_path = output / f"{filename_base}.md"
+            MarkdownFormatter.save(report, md_path)
+            console.print(f"[green]Markdown report: {md_path}[/green]")
+        except Exception as exc:
+            console.print(f"[yellow]Warning: Markdown report failed ({exc})[/yellow]")
 
     if config.output_format in ("sarif", "all"):
-        sarif_path = output / f"{filename_base}.sarif"
-        SarifFormatter.save(report, sarif_path)
-        console.print(f"[green]SARIF report: {sarif_path}[/green]")
+        try:
+            sarif_path = output / f"{filename_base}.sarif"
+            SarifFormatter.save(report, sarif_path)
+            console.print(f"[green]SARIF report: {sarif_path}[/green]")
+        except Exception as exc:
+            console.print(f"[yellow]Warning: SARIF report failed ({exc})[/yellow]")
 
     if config.output_format in ("html", "all"):
-        html_path = output / f"{filename_base}.html"
-        HtmlFormatter.save(report, html_path)
-        console.print(f"[green]HTML report: {html_path}[/green]")
+        try:
+            html_path = output / f"{filename_base}.html"
+            HtmlFormatter.save(report, html_path)
+            console.print(f"[green]HTML report: {html_path}[/green]")
+        except Exception as exc:
+            console.print(f"[yellow]Warning: HTML report failed ({exc})[/yellow]")
 
     if config.output_format in ("pdf", "all"):
-        pdf_path = output / f"{filename_base}.pdf"
-        PdfFormatter.save(report, pdf_path)
-        console.print(f"[green]PDF report: {pdf_path}[/green]")
+        try:
+            pdf_path = output / f"{filename_base}.pdf"
+            PdfFormatter.save(report, pdf_path)
+            console.print(f"[green]PDF report: {pdf_path}[/green]")
+        except ImportError:
+            console.print(
+                "[yellow]Warning: PDF report skipped — install weasyprint "
+                "(pip install weasyprint)[/yellow]"
+            )
+        except Exception as exc:
+            console.print(f"[yellow]Warning: PDF report failed ({exc})[/yellow]")
 
 
 if __name__ == "__main__":

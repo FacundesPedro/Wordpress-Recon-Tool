@@ -140,6 +140,21 @@ class TestSaveReport:
             _save_report(report, config, None, tmp_path)
             mock_save.assert_called_once()
 
+    def test_pdf_import_error_does_not_crash(self, report, config, tmp_path):
+        config.output_format = "pdf"
+        with patch("main.PdfFormatter.save", side_effect=ImportError("No module named weasyprint")):
+            _save_report(report, config, None, tmp_path)
+
+    def test_pdf_generic_error_does_not_crash(self, report, config, tmp_path):
+        config.output_format = "pdf"
+        with patch("main.PdfFormatter.save", side_effect=RuntimeError("boom")):
+            _save_report(report, config, None, tmp_path)
+
+    def test_json_error_does_not_crash(self, report, config, tmp_path):
+        config.output_format = "json"
+        with patch("main.JsonFormatter.save", side_effect=RuntimeError("boom")):
+            _save_report(report, config, None, tmp_path)
+
     def test_saves_all_formats(self, report, config, tmp_path):
         config.output_format = "all"
         with patch("main.JsonFormatter.save") as json_save, \
