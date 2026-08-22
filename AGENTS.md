@@ -6,9 +6,9 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 1191 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
+**Current state:** 12 modules, 60 steps, 1200 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
 
-**Latest feature: Unreachable-target resilience** — pre-flight DNS/TCP/TLS reachability probe (`core/reachability.py`), circuit breaker in `HttpClient` (consecutive-error threshold, `WP_UNREACHABLE_THRESHOLD`), graceful report degradation when WeasyPrint is missing, and report noise cleanup (config/absence issues → `logger.warning` instead of findings).
+**Latest feature: Brute-force concurrency + progress** — `PluginBruteforceStep` and `ThemeBruteforceStep` now use bounded concurrency (`asyncio.Semaphore` + batched `gather`), progress logging every 500 probes, early abort on `http.unreachable`, and `WP_BRUTEFORCE_MAX_PROBES` cap. `LoginBruteforceStep` has progress logging. `HttpClient._execute` closes un-awaited coroutines when unreachable (fixes RuntimeWarning).
 
 ## Agent Working Protocol
 
@@ -32,7 +32,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (40 on main)
+## Commit History (45 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -76,6 +76,11 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 38 | `af8589e` | Update docs: unreachable-target resilience feature and 1189 test count |
 | 39 | `b257fe7` | Rename docs files to uppercase (`code.md`→`CODE.md`, etc.) + update references |
 | 40 | `a432066` | **Fix event-loop ordering in AsyncToolRunner tests** — `asyncio.run()` instead of deprecated `get_event_loop()` (1191 tests passing) |
+| 41 | `a6ccdd9` | Add `bruteforce_concurrency` and `bruteforce_max_probes` config fields |
+| 42 | `5d2e8ec` | Fix un-awaited coroutine in HttpClient when target unreachable |
+| 43 | `b82436a` | Add concurrency, progress logging, early abort and probe cap to plugin/theme brute-force |
+| 44 | `be43873` | Add progress logging to login brute-force step |
+| 45 | `443702e` | Update brute-force and http_client tests for concurrency and progress features |
 
 ## Roadmap Status — ✅ All 9 items implemented (plus 1 enhancement)
 
@@ -94,7 +99,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 
 ### Priority 1 — Tests (complete)
 
-**Coverage:** 60/60 steps tested (100%), 1191 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
+**Coverage:** 60/60 steps tested (100%), 1200 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 
@@ -140,5 +145,14 @@ See `wordlists/README.md` for full resolution chain.
 | `WP_STEALTH_RATE_LIMIT` | `0.0` | Max requests/second (0 = unlimited) |
 
 Key files: `core/http_client.py` (UA pool, jitter, referer, dedup), `config.py` (stealth fields), `utils/rate_limiter.py` (rate limiter wired into client).
+
+### Config Reference — Brute-Force
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_BRUTEFORCE_CONCURRENCY` | `4` | Max parallel probes per brute-force step (1-20) |
+| `WP_BRUTEFORCE_MAX_PROBES` | `0` | Hard cap on total probes (0 = unlimited) |
+
+Key files: `steps/discovery/plugin_bruteforce_step.py`, `steps/discovery/theme_bruteforce_step.py`, `steps/access/login_bruteforce_step.py`.
 
 See `docs/NEXT_STEPS.md` for implementation details and `docs/REFERENCES.md` for external API/tool URLs.

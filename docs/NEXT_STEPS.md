@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-08-19  
 **Current Branch:** `main`  
-**HEAD:** `a432066` — Fix event-loop ordering in AsyncToolRunner tests (1191 tests passing)
+**HEAD:** `443702e` — Update brute-force and http_client tests for concurrency and progress features (1200 tests passing)
 
 ---
 
@@ -47,8 +47,13 @@
 | 35 | `af8589e` | Update docs: unreachable-target resilience feature and 1189 test count |
 | 36 | `b257fe7` | Rename docs files to uppercase (`code.md`→`CODE.md`, etc.) + update references |
 | 37 | `a432066` | **Fix event-loop ordering in AsyncToolRunner tests** — `asyncio.run()` instead of deprecated `get_event_loop()` (1191 tests passing) |
+| 38 | `a6ccdd9` | Add `bruteforce_concurrency` and `bruteforce_max_probes` config fields |
+| 39 | `5d2e8ec` | Fix un-awaited coroutine in HttpClient when target unreachable |
+| 40 | `b82436a` | Add concurrency, progress logging, early abort and probe cap to plugin/theme brute-force |
+| 41 | `be43873` | Add progress logging to login brute-force step |
+| 42 | `443702e` | Update brute-force and http_client tests for concurrency and progress features |
 
-**Current state:** 12 modules, 60 steps, 1191 tests passing (60/60 steps covered, 100%). Stealth mode and unreachable-target resilience added — see AGENTS.md for config reference.
+**Current state:** 12 modules, 60 steps, 1200 tests passing (60/60 steps covered, 100%). Brute-force concurrency, progress logging, unreachable-target resilience, and stealth mode added — see AGENTS.md for config reference.
 
 ---
 
@@ -120,6 +125,8 @@ GET https://wpscan.com/api/v3/wordpresses/{version_no_dots}/
 
 **Status:** Implemented. `PluginBruteforceStep` and `ThemeBruteforceStep` probe `/wp-content/plugins/{slug}/` and `/wp-content/themes/{slug}/` with wordlist fallbacks (30 plugins / 15 themes). Steps log a WARNING when using the small fallback list and advise downloading SecLists for production use.
 
+**Concurrency & Progress (commit `b82436a`):** Both steps now use bounded concurrency via `asyncio.Semaphore` + batched `asyncio.gather` (`WP_BRUTEFORCE_CONCURRENCY`, default 4). Progress logs every 500 probes. Steps abort early when `http.unreachable` trips the circuit breaker. A configurable probe cap (`WP_BRUTEFORCE_MAX_PROBES`, default 0 = unlimited) allows limiting scan scope on large wordlists.
+
 #### Detection Methods
 
 | Mode | Method | Requests | Coverage | Stealth |
@@ -184,7 +191,7 @@ GET https://wpscan.com/api/v3/wordpresses/{version_no_dots}/
 
 ### 4. Login Brute-Force Step ✅
 
-**Status:** Implemented. `LoginBruteforceStep` probes `POST /wp-login.php` with credential pairs via `resolve_credentials_with_fallback()`, detects success via 302 redirect to `/wp-admin/`, and emits high-severity findings for valid credentials.
+**Status:** Implemented. `LoginBruteforceStep` probes `POST /wp-login.php` with credential pairs via `resolve_credentials_with_fallback()`, detects success via 302 redirect to `/wp-admin/`, and emits high-severity findings for valid credentials. Progress logging every 5 attempts (commit `be43873`).
 
 Key files: `steps/access/login_bruteforce_step.py`, registered in `AccessModule`.
 
@@ -266,6 +273,34 @@ Config/tool/absence issues are now `logger.warning` only, not findings:
 - Plugin/theme vuln: no items detected (skips "no CVEs" finding)
 
 **Key files:** `core/reachability.py`, `core/http_client.py`, `base/runner.py`, `base/http_step.py`, `main.py`, `config.py`, `requirements.txt`.
+
+---
+
+## Brute-Force Concurrency & Progress ✅
+
+**Why:** With SecLists wordlists (13k+ plugins), sequential brute-force takes 15-60+ minutes with zero progress output — scan appears frozen. Circuit breaker can't rescue because requests succeed (200/404) rather than fail.
+
+**Status:** Implemented across 3 commits:
+
+### 1. Config Fields (commit `a6ccdd9`)
+- `WP_BRUTEFORCE_CONCURRENCY` — max parallel probes (default 4, range 1-20)
+- `WP_BRUTEFORCE_MAX_PROBES` — hard cap on total probes (default 0 = unlimited)
+
+### 2. Coroutine Cleanup (commit `5d2e8ec`)
+`HttpClient._execute()` now closes un-awaited coroutines when raising `UnreachableError`, fixing RuntimeWarning on shutdown.
+
+### 3. Plugin/Theme Concurrency (commit `b82436a`)
+Both brute-force steps use `asyncio.Semaphore` + batched `asyncio.gather` for bounded concurrency. Features:
+- Start log with wordlist size and scale ("probing 13370 plugins × 4 concurrent")
+- Progress logging every 500 probes with elapsed time and hit count
+- Early abort when `http.unreachable` (circuit breaker trip)
+- Hard probe cap via `WP_BRUTEFORCE_MAX_PROBES`
+- Graceful fallback to sequential if concurrency=1
+
+### 4. Login Progress (commit `be43873`)
+`LoginBruteforceStep` logs progress every 5 attempts (sequential + sleep preserved).
+
+**Key files:** `config.py`, `core/http_client.py`, `steps/discovery/plugin_bruteforce_step.py`, `steps/discovery/theme_bruteforce_step.py`, `steps/access/login_bruteforce_step.py`.
 
 ---
 
