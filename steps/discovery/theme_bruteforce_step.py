@@ -2,7 +2,9 @@
 # HOW: HTTP GET to known theme paths — 200/301/403 confirms existence
 # WHY: Identifies active and deactivated themes for vulnerability matching
 
+import asyncio
 import re
+import time
 from typing import Optional
 
 from base.dependencies import WordlistDependencyMixin
@@ -16,6 +18,21 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
     severity = "info"
     MODULE = "discovery"
 
+    CONCURRENCY_DEFAULT = 4
+    PROGRESS_EVERY = 500
+
+    def _config_int(self, key: str, default: int) -> int:
+        """Read an integer config value, falling back to default on missing/invalid."""
+        if self.config is None:
+            return default
+        value = getattr(self.config, key, None)
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
     async def run(self) -> list[Finding]:
         self.logger.info("Brute-forcing WordPress themes...")
 
@@ -28,6 +45,19 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         if not slugs:
             return self.findings
 
+        concurrency = self._config_int(
+            "bruteforce_concurrency", self.CONCURRENCY_DEFAULT
+        )
+        max_probes = self._config_int("bruteforce_max_probes", 0)
+        if max_probes > 0:
+            slugs = slugs[:max_probes]
+
+        slugs = [
+            s.strip()
+            for s in slugs
+            if s and s.strip() and not s.startswith("#")
+        ]
+
         if len(slugs) <= 15:
             self.logger.warning(
                 "Using small fallback theme list (15 entries). "
@@ -35,15 +65,45 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                 "~/.config/recon-wp/wordlists/plugins/theme_fallback.txt"
             )
 
+        self.logger.info(
+            f"Brute-forcing {len(slugs)} theme(s) with concurrency {concurrency}..."
+        )
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def probe(slug: str):
+            async with semaphore:
+                return await self._probe_theme(slug)
+
         found = []
-        for slug in slugs:
-            slug = slug.strip()
-            if not slug or slug.startswith("#"):
-                continue
-            exists, version, status = await self._probe_theme(slug)
-            if exists:
-                found.append({"slug": slug, "version": version, "status": status})
-                self.logger.debug(f"Found theme: {slug} (v{version or 'unknown'})")
+        total = len(slugs)
+        processed = 0
+        start = time.monotonic()
+        batch_size = concurrency * 10
+
+        for offset in range(0, total, batch_size):
+            if self.http.unreachable:
+                self.logger.warning(
+                    "Target unreachable — aborting theme brute-force"
+                )
+                break
+            batch = slugs[offset : offset + batch_size]
+            results = await asyncio.gather(*(probe(s) for s in batch))
+            for slug, (exists, version, status) in zip(batch, results):
+                processed += 1
+                if exists:
+                    found.append(
+                        {"slug": slug, "version": version, "status": status}
+                    )
+                    self.logger.debug(
+                        f"Found theme: {slug} (v{version or 'unknown'})"
+                    )
+            if processed % self.PROGRESS_EVERY == 0 or processed >= total:
+                elapsed = time.monotonic() - start
+                self.logger.info(
+                    f"Brute-force progress: {processed}/{total} theme(s) "
+                    f"probed, {len(found)} found ({elapsed:.1f}s)"
+                )
 
         if not found:
             self.logger.info("No additional themes found via brute-force")
