@@ -141,6 +141,15 @@ class ScanConfig(BaseSettings):
         default=50, ge=1, le=500, description="Maximum pages to crawl"
     )
 
+    bruteforce_concurrency: int = Field(
+        default=4, ge=1, le=20,
+        description="Concurrent probes for plugin/theme brute-force steps",
+    )
+    bruteforce_max_probes: int = Field(
+        default=0, ge=0,
+        description="Maximum brute-force probes (0 = unlimited)",
+    )
+
     stealth_enabled: bool = Field(
         default=False, description="Enable stealth mode (jitter, UA pool, referer spoofing, dedup)"
     )
