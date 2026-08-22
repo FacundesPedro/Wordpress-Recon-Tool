@@ -252,6 +252,7 @@ class HttpClient:
         further requests raise immediately.
         """
         if self.unreachable:
+            coro.close()
             raise RuntimeError(
                 "Target marked unreachable — skipping request (circuit breaker open)"
             )
