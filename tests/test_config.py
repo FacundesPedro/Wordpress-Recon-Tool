@@ -108,6 +108,24 @@ class TestScanConfig:
         config = ScanConfig()
         assert config.spider_max_pages == 50
 
+    def test_bruteforce_concurrency_default(self):
+        config = ScanConfig()
+        assert config.bruteforce_concurrency == 4
+
+    def test_bruteforce_max_probes_default_zero(self):
+        config = ScanConfig()
+        assert config.bruteforce_max_probes == 0
+
+    def test_bruteforce_concurrency_env_override(self, monkeypatch):
+        monkeypatch.setenv("WP_BRUTEFORCE_CONCURRENCY", "8")
+        config = ScanConfig()
+        assert config.bruteforce_concurrency == 8
+
+    def test_bruteforce_max_probes_env_override(self, monkeypatch):
+        monkeypatch.setenv("WP_BRUTEFORCE_MAX_PROBES", "100")
+        config = ScanConfig()
+        assert config.bruteforce_max_probes == 100
+
     def test_ffuf_rate_limit_default_zero(self):
         config = ScanConfig()
         assert config.ffuf_rate_limit == 0

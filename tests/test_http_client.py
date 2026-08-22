@@ -7,10 +7,10 @@ import httpx
 import pytest
 
 from core.http_client import (
-    COMMON_USER_AGENTS,
-    STEALTH_USER_AGENTS,
-    REFERERS,
     ACCEPT_LANGUAGES,
+    COMMON_USER_AGENTS,
+    REFERERS,
+    STEALTH_USER_AGENTS,
     HttpClient,
     friendly_network_error,
 )
@@ -490,6 +490,19 @@ class TestCircuitBreaker:
             with pytest.raises(RuntimeError, match="unreachable"):
                 await client.get("https://example.com")
         client._client.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unreachable_closes_created_coroutine(self):
+        client = HttpClient()
+        client.unreachable = True
+
+        async def dummy():
+            return None
+
+        coro = dummy()
+        with pytest.raises(RuntimeError, match="unreachable"):
+            await client._execute(coro)
+        assert coro.cr_frame is None
 
     @pytest.mark.asyncio
     async def test_http_status_errors_do_not_trip_breaker(self):

@@ -94,6 +94,7 @@ def unsafe_urls():
 def mock_http():
     """Mock HttpClient for step testing."""
     http = MagicMock()
+    http.unreachable = False
     http.get = AsyncMock(
         return_value=MagicMock(status_code=200, text="Mock response text")
     )
@@ -111,7 +112,10 @@ def mock_target():
 @pytest.fixture
 def mock_config():
     """Mock Config for step testing."""
-    return MagicMock()
+    config = MagicMock()
+    config.bruteforce_concurrency = 4
+    config.bruteforce_max_probes = 0
+    return config
 
 
 @pytest.fixture
