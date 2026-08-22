@@ -31,13 +31,19 @@ class LoginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         )
 
         found = []
+        total = len(credentials)
         for i, (username, password) in enumerate(credentials):
             success, detail = await self._try_login(username, password)
             if success:
                 found.append({"username": username, "password": password, "detail": detail})
                 self.logger.warning(f"Valid credentials found: {username}:{password}")
 
-            if i < len(credentials) - 1:
+            if (i + 1) % 5 == 0 or i == total - 1:
+                self.logger.info(
+                    f"Login brute-force progress: {i + 1}/{total} attempt(s)"
+                )
+
+            if i < total - 1:
                 await asyncio.sleep(self.SLEEP_BETWEEN_ATTEMPTS)
 
         if found:
