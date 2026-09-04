@@ -16,7 +16,7 @@ SOLID principles + Atomic Design layered on Python async (httpx, asyncio).
 |-------|---------|-----------------|
 | **Atoms** | `core/` | `Finding`, `HttpClient`, `Target`, `Logger`, `SsrfProtection`, exceptions |
 | **Molecules** | `base/` | `BaseStep`, `BaseHttpStep`, `BaseToolStep`, `Runner`, `ToolRunner`/`AsyncToolRunner`, dependency mixins |
-| **Organisms** | `steps/` | 60 concrete step implementations across 12 modules |
+| **Organisms** | `steps/` | 70 concrete step implementations across 13 modules |
 | **Modules** | `modules/` | `Module` container, `MODULE_REGISTRY`, `PROFILES` |
 | **Pipeline** | `main.py` | `Validator → Runner → Aggregator → Report` |
 | **Output** | `utils/report.py` | `JsonFormatter`, `MarkdownFormatter` |
@@ -352,13 +352,15 @@ MODULE_REGISTRY = {
     "xmlrpc":          XmlrpcModule,         # XmlrpcDetectStep, XmlrpcMethodsStep, XmlrpcCredsStep, XmlrpcMulticallStep, XmlrpcSsrfStep
     "secrets":         SecretsModule,        # WpConfigBackupStep, EnvFileStep, GitExposureStep, DebugLogStep, PhpinfoStep
     "ssrf":            SsrfModule,           # OembedProxyStep, PingbackSsrfStep
-    "tools":           ToolsModule,          # WpscanStep, NucleiStep, FfufDirectoryStep, FfufFilesStep, FfufWpStep, OpenDoorStep
+    "webapp":          WebappModule,         # SourceReviewStep, SourcemapStep, HttpMethodsStep, CookieFlagsStep, CorsStep, StackTraceStep, ContentLeakStep, HeaderQualityStep
+    "tools":           ToolsModule,          # WpscanStep, NucleiStep, FfufDirectoryStep, FfufFilesStep, FfufWpStep, OpenDoorStep, NmapPortScanStep, NmapScriptScanStep
 }
 PROFILES = {
     "passive": ["passive"],
     "light": ["passive", "infrastructure", "discovery", "fingerprint"],
     "standard": ["passive", "infrastructure", "discovery", "fingerprint",
                  "users", "api", "xmlrpc", "secrets", "ssrf"],
+    "web": ["passive", "infrastructure", "webapp", "secrets", "tools"],
     "full": list(MODULE_REGISTRY.keys()),
     "aggressive": ["users", "xmlrpc", "secrets", "tools"],
 }
@@ -375,7 +377,7 @@ class Module:
     def steps(self) -> list[Type]: ...
 ```
 
-**Role:** Pure container. No execution logic — that's the Runner's job. Tools module is special — it conditionally registers steps based on CLI flags (--wpscan, --nuclei, --ffuf, --opendoor).
+**Role:** Pure container. No execution logic — that's the Runner's job. Tools module is special — it conditionally registers steps based on CLI flags (--wpscan, --nuclei, --ffuf, --opendoor, --nmap, --nmap-scripts).
 
 ---
 
@@ -600,7 +602,7 @@ python main.py list-modules       # Rich table of modules
 | `--insecure` | False | Skip TLS verification |
 | `--debug` / `-d` | False | Debug logging |
 
-**Module resolution logic:** If `--modules` given, use that. Otherwise resolve from profile name. Tools module is only included if at least one `--wpscan/--nuclei/--ffuf/--opendoor` flag is set.
+**Module resolution logic:** If `--modules` given, use that. Otherwise resolve from profile name. Tools module is only included if at least one `--wpscan/--nuclei/--ffuf/--opendoor/--nmap/--nmap-scripts` flag is set.
 
 ---
 

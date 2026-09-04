@@ -54,7 +54,7 @@ wordpress_testing_tool/
 │   ├── runner.py                   # Async orchestrator (risk-tier parallel execution)
 │   └── aggregator.py               # Collects + deduplicates all findings
 │
-├── steps/                          # ── ORGANISMS (61 steps across 12 modules) ──
+├── steps/                          # ── ORGANISMS (70 steps across 13 modules) ──
 │   │
 │   ├── access/                     # Authenticated REST API + login + hardening (7)
 │   │   ├── plugins_step.py         # WpJsonPluginsStep
@@ -128,17 +128,28 @@ wordpress_testing_tool/
 │   │   ├── debug_log_step.py
 │   │   └── phpinfo_step.py
 │   │
-│   ├── ssrf/                       # SSRF vulnerability testing (2)
-│   │   ├── oembed_proxy_step.py
-│   │   └── pingback_ssrf_step.py
-│   │
-│   └── tools/                      # External tool integrations (6)
-│       ├── wpscan_step.py
-│       ├── nuclei_step.py
-│       ├── ffuf_directory_step.py
-│       ├── ffuf_files_step.py
-│       ├── ffuf_wp_step.py
-│       └── opendoor_step.py
+ │   ├── ssrf/                       # SSRF vulnerability testing (2)
+ │   │   ├── oembed_proxy_step.py
+ │   │   └── pingback_ssrf_step.py
+ │   │
+ │   ├── webapp/                     # Generic web app checks, non-WP targets (8)
+ │   │   ├── source_review_step.py
+ │   │   ├── sourcemap_step.py
+ │   │   ├── http_methods_step.py
+ │   │   ├── cookie_flags_step.py
+ │   │   ├── cors_step.py
+ │   │   ├── stack_trace_step.py
+ │   │   ├── content_leak_step.py
+ │   │   └── header_quality_step.py
+ │   │
+ │   └── tools/                      # External tool integrations (8)
+ │       ├── wpscan_step.py
+ │       ├── nuclei_step.py
+ │       ├── ffuf_directory_step.py
+ │       ├── ffuf_files_step.py
+ │       ├── ffuf_wp_step.py
+ │       ├── opendoor_step.py
+ │       └── nmap_step.py
 │
 ├── modules/                        # ── MODULES (grouped steps) ──
 │   ├── module.py                   # Module(name, steps[]) container
@@ -153,8 +164,9 @@ wordpress_testing_tool/
 │   ├── api_module.py
 │   ├── xmlrpc_module.py
 │   ├── secrets_module.py
-│   ├── ssrf_module.py
-│   └── tools_module.py
+ │   ├── ssrf_module.py
+ │   ├── webapp_module.py
+ │   └── tools_module.py
 │
 ├── utils/                          # ── UTILITIES ──
 │   ├── report.py                   # JsonFormatter, MarkdownFormatter, SarifFormatter
@@ -167,8 +179,9 @@ wordpress_testing_tool/
 └── wordlists/                      # ── BUILT-IN WORDLISTS ──
     ├── ffuf/                       # directories, files, wp_paths, plugins, themes
     ├── opendoor/                   # wp_paths, backups, configs, sensitive
-    ├── credentials/                # Common WP credential pairs
-    └── whois/                      # TLD-specific WHOIS patterns
+     ├── credentials/                # Common WP credential pairs
+     ├── whois/                      # TLD-specific WHOIS patterns
+     └── webapp/                     # Common asset paths for source discovery fuzzing
 ```
 
 ---
@@ -395,7 +408,8 @@ MODULE_REGISTRY = {
     "xmlrpc":          XmlrpcModule,         # 5 steps — detect, methods, creds, multicall, SSRF
     "secrets":         SecretsModule,        # 5 steps — config backup, .env, .git, debug log, phpinfo
     "ssrf":            SsrfModule,           # 2 steps — oEmbed proxy, pingback SSRF
-    "tools":           ToolsModule,          # 6 steps — WPScan, Nuclei, FFUF (3), OpenDoor
+    "webapp":          WebappModule,         # 8 steps — source review, CORS, cookies, methods, headers, ...
+    "tools":           ToolsModule,          # 8 steps — WPScan, Nuclei, FFUF (3), OpenDoor, Nmap (2)
 }
 
 PROFILES = {
@@ -403,6 +417,7 @@ PROFILES = {
     "light":      ["passive", "infrastructure", "discovery", "fingerprint"],
     "standard":   ["passive", "infrastructure", "discovery", "fingerprint",
                    "users", "api", "xmlrpc", "secrets", "ssrf"],
+    "web":        ["passive", "infrastructure", "webapp", "secrets", "tools"],
     "full":       list(MODULE_REGISTRY.keys()),
     "aggressive": ["users", "xmlrpc", "secrets", "tools"],
 }
