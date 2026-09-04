@@ -1,6 +1,6 @@
 # WordPress Reconnaissance Tool
 
-A security-focused WordPress reconnaissance and vulnerability scanning tool with passive reconnaissance, security hardening features, and comprehensive report generation.
+A security-focused WordPress reconnaissance and vulnerability scanning tool with passive reconnaissance, security hardening features, and comprehensive report generation. Also usable for generic (non-WordPress) web security assessments via the `webapp` module and the `web` profile.
 
 ## Quick Setup
 
@@ -48,6 +48,15 @@ python main.py main --target https://example.com --nuclei
 python main.py main --target https://example.com --wpscan --nuclei
 ```
 
+### Generic Web Security Scan (non-WordPress targets)
+```bash
+# webapp module: source credential review, CORS, cookies, HTTP methods, headers, ...
+python main.py main --target https://client-site.com --modules webapp
+
+# web profile + Nmap port scan and NSE script scan
+python main.py main --target https://client-site.com --profile web --nmap --nmap-scripts
+```
+
 ### Authenticated Scan (requires WP >= 5.6 with Application Password)
 ```bash
 python main.py main --target https://example.com --profile full \
@@ -85,6 +94,21 @@ python main.py list-modules
   - Configurable severity filtering (critical, high, medium)
   - Fast concurrent scanning
 
+### Generic Web App Security (`webapp` module)
+Non-WordPress, non-intrusive checks for internal client assessments (OWASP WSTG-based):
+- **Source credential review** — Scans HTML/JS/sourcemaps for embedded credentials (AWS, GitHub, Slack, JWT, PEM keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, DB connection strings, basic-auth URLs) and info leaks; gitleaks-derived rules, secrets masked in evidence
+- **Sourcemap detection** — Exposed `.js.map` files leaking original source
+- **HTTP methods audit** — TRACE/PUT/DELETE/PROPFIND enabled, missing `Allow` header
+- **Cookie flags audit** — `Secure`/`HttpOnly`/`SameSite` on entry paths
+- **CORS misconfiguration** — Wildcard origin, origin reflection, reflection with credentials
+- **Stack trace exposure** — Framework error signatures on malformed-input probes (recon only)
+- **Content information leakage** — Internal IPs/hostnames, emails, meta generator, config-like comments
+- **Header quality** — Weak-but-present headers (HSTS max-age, `X-Frame-Options: NONE`, CSP without `frame-ancestors`)
+
+### Port Scanning (Nmap, optional)
+- **Nmap port scan** — Top-N ports with service version detection (`-sT -sV --top-ports`), JSON output, risky-service severity escalation
+- **Nmap NSE script scan** — Default Nmap scripts (`-sC`) with notable-script mapping and CVE vulnerability entries
+
 ### Plugin & Theme Discovery
 - **Response-code oracle brute-force** — Probes `/wp-content/plugins/{slug}/` and `/wp-content/themes/{slug}/`
   - 200/301/403 = exists, 404 = absent
@@ -117,9 +141,9 @@ python main.py list-modules
 ### Concurrency
 - **Risk Tier Parallel Execution**
   - Tier 1 (parallel): passive
-  - Tier 2 (parallel): infrastructure, discovery, fingerprint, access, vuln
+  - Tier 2 (parallel): infrastructure, discovery, fingerprint, access, vuln, webapp
   - Tier 3 (parallel): users, api, xmlrpc, secrets, ssrf
-  - Tier 4 (parallel): tools (wpscan, nuclei)
+  - Tier 4 (parallel): tools (wpscan, nuclei, nmap)
 
 ## Docker
 
@@ -150,14 +174,14 @@ Reports are written to `./reports/` (mounted as a volume).
 
 ### External Tools (Optional)
 
-For WPScan, Nuclei, FFUF, OpenDoor, and DNS modules:
+For WPScan, Nuclei, FFUF, OpenDoor, Nmap, and DNS modules:
 
 ```bash
 # macOS
-brew install wpscan nuclei bind  # whois included
+brew install wpscan nuclei bind nmap  # whois included
 
 # Ubuntu/Debian
-apt install whois dnsutils
+apt install whois dnsutils nmap
 gem install wpscan
 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 ```
@@ -185,7 +209,7 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--target` / `-t` | Target WordPress URL (required) | - |
-| `--profile` / `-p` | Scan profile (passive, light, standard, full, aggressive) | light |
+| `--profile` / `-p` | Scan profile (passive, light, standard, full, aggressive, web) | light |
 | `--modules` / `-m` | Specific modules to run | profile default |
 | `--output` / `-o` | Output directory | ./reports |
 | `--format` / `-f` | Output format (json, markdown, sarif, all) | markdown |
@@ -201,6 +225,11 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | `--wpscan-timeout` | WPScan timeout in seconds | 600 |
 | `--nuclei` | Enable Nuclei vulnerability scanner | false |
 | `--nuclei-severity` | Nuclei severity filter (critical,high,medium) | medium,high,critical |
+| `--nmap` | Enable Nmap port scan with service version detection | false |
+| `--nmap-scripts` | Enable Nmap NSE script scan (`-sC`) | false |
+| `--nmap-top-ports` | Nmap top-N ports to scan | 100 |
+| `--nmap-ports` | Custom Nmap port list (overrides top ports) | - |
+| `--nmap-timeout` | Nmap execution timeout in seconds | 300 |
 | `--wp-user` | WordPress username for authenticated scan | env: WP_USER |
 | `--wp-app-password` | WordPress Application Password (WP >= 5.6) | env: WP_APPLICATION_PASSWORD |
 | `--wp-auth-method` | Auth method: `app_password` or `cookie` | app_password |
@@ -212,7 +241,8 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | `passive` | passive |
 | `light` | passive, infrastructure, discovery, fingerprint |
 | `standard` | passive, infrastructure, discovery, fingerprint, users, api, xmlrpc, secrets, ssrf |
-| `full` | All 12 modules including access and vuln |
+| `web` | passive, infrastructure, webapp, secrets, tools (generic non-WP assessments) |
+| `full` | All 13 modules including access and vuln |
 | `aggressive` | users, xmlrpc, secrets, tools |
 
 ## Modules
@@ -230,7 +260,8 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | `xmlrpc` | 5 | XML-RPC detection, methods, credentials, multicall, SSRF |
 | `secrets` | 5 | Config backups, .env files, git exposure, debug logs |
 | `ssrf` | 2 | oEmbed proxy, pingback SSRF |
-| `tools` | 6 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor) |
+| `webapp` | 8 | Generic web app checks (source credential review, CORS, cookies, HTTP methods, headers, stack traces) |
+| `tools` | 8 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor, Nmap) |
 
 ## Environment Variables
 
@@ -259,6 +290,14 @@ export WP_WP_AUTH_METHOD=app_password
 # Content spider
 export WP_SPIDER_MAX_DEPTH=2
 export WP_SPIDER_MAX_PAGES=50
+
+# Nmap
+export WP_ENABLE_NMAP=true
+export WP_NMAP_TOP_PORTS=100
+
+# Webapp source scan
+export WP_SOURCE_SCAN_MAX_JS=20
+export WP_SOURCE_SCAN_FUZZ=true
 ```
 
 Or via `.env` file in project root:
@@ -318,7 +357,8 @@ wordpress_testing_tool/
 │   ├── xmlrpc/            # XML-RPC checks
 │   ├── secrets/           # Secret exposure checks
 │   ├── ssrf/              # SSRF vulnerability checks
-│   └── tools/             # External tool integrations (WPScan, Nuclei)
+│   ├── webapp/            # Generic web app security checks (non-WP targets)
+│   └── tools/             # External tool integrations (WPScan, Nuclei, Nmap)
 ├── modules/                # Module definitions
 ├── utils/                  # Utilities (report, rate_limiter, etc.)
 ├── tests/                  # Test suite
@@ -327,8 +367,8 @@ wordpress_testing_tool/
 
 ## Documentation
 
-- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 12 modules
-- [Architecture Plan](docs/architecture_plan.md) - Project architecture
+- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 13 modules
+- [Architecture Plan](docs/ARCHITECTURE.md) - Project architecture
 - [Security Documentation](docs/SECURITY.md) - Security features
 - [Changelog](CHANGELOG.md) - Change history
 - [Code Documentation](docs/CODE.md) - Code abstractions and execution flow
