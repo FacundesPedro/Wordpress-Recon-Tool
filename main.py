@@ -151,6 +151,26 @@ def main(
         str,
         typer.Option("--opendoor-mode", help="OpenDoor mode (wp_paths, backup, config, sensitive)"),
     ] = "wp_paths",
+    nmap: Annotated[
+        bool,
+        typer.Option("--nmap", help="Enable Nmap port scan with version detection"),
+    ] = False,
+    nmap_scripts: Annotated[
+        bool,
+        typer.Option("--nmap-scripts", help="Enable Nmap default NSE script scan (-sC)"),
+    ] = False,
+    nmap_top_ports: Annotated[
+        int,
+        typer.Option("--nmap-top-ports", help="Nmap top ports to scan"),
+    ] = 100,
+    nmap_ports: Annotated[
+        str,
+        typer.Option("--nmap-ports", help="Custom Nmap port list (overrides top ports)"),
+    ] = "",
+    nmap_timeout: Annotated[
+        int,
+        typer.Option("--nmap-timeout", help="Nmap timeout in seconds"),
+    ] = 300,
     skip_version_check: Annotated[
         bool,
         typer.Option("--skip-version-check", help="Skip version checking for external tools"),
@@ -216,6 +236,12 @@ def main(
     config.opendoor_rate_limit = opendoor_rate_limit
     config.opendoor_mode = opendoor_mode
 
+    config.enable_nmap = nmap
+    config.enable_nmap_scripts = nmap_scripts
+    config.nmap_top_ports = nmap_top_ports
+    config.nmap_ports = nmap_ports
+    config.nmap_timeout = nmap_timeout
+
     if wp_user:
         config.wp_user = wp_user
     if wp_app_password:
@@ -254,12 +280,16 @@ def main(
             main_logger.error(probe.error or "Target is unreachable")
             raise typer.Exit(code=1)
 
-    module_names = get_module_names(profile, modules, wpscan, nuclei, ffuf, opendoor)
+    module_names = get_module_names(
+        profile, modules, wpscan, nuclei, ffuf, opendoor, nmap, nmap_scripts
+    )
 
     if not config.quiet:
         main_logger.info(f"Selected modules: {', '.join(module_names)}")
 
-    built_modules = build_modules(module_names, wpscan, nuclei, ffuf, opendoor, config)
+    built_modules = build_modules(
+        module_names, wpscan, nuclei, ffuf, opendoor, nmap, nmap_scripts, config
+    )
     if not built_modules:
         main_logger.error("No valid modules selected")
         raise typer.Exit(code=1)
@@ -278,7 +308,9 @@ def main(
         summary = report.get_summary()
         main_logger.info("Scan complete")
         main_logger.info(
-            f"Total: {summary['total']} | Info: {summary['info']} | Low: {summary['low']} | Medium: {summary['medium']} | High: {summary['high']} | Critical: {summary['critical']}"
+            f"Total: {summary['total']} | Info: {summary['info']} | "
+            f"Low: {summary['low']} | Medium: {summary['medium']} | "
+            f"High: {summary['high']} | Critical: {summary['critical']}"
         )
 
     config.mkdir_output()
@@ -335,6 +367,8 @@ def get_module_names(
     enable_nuclei: bool = False,
     enable_ffuf: bool = False,
     enable_opendoor: bool = False,
+    enable_nmap: bool = False,
+    enable_nmap_scripts: bool = False,
 ) -> list[str]:
     """Resolve module names from profile or --modules argument."""
     if modules_arg:
@@ -348,6 +382,8 @@ def build_modules(
     enable_nuclei: bool = False,
     enable_ffuf: bool = False,
     enable_opendoor: bool = False,
+    enable_nmap: bool = False,
+    enable_nmap_scripts: bool = False,
     config: ScanConfig = None,
 ):
     """Instantiate module classes."""
@@ -359,8 +395,18 @@ def build_modules(
             logger.warning(f"Unknown module '{name}', skipping")
             continue
 
-        if name == "tools" and not enable_wpscan and not enable_nuclei and not enable_ffuf and not enable_opendoor:
-            logger.debug("Skipping tools module (--wpscan, --nuclei, --ffuf, --opendoor not specified)")
+        if name == "tools" and not (
+            enable_wpscan
+            or enable_nuclei
+            or enable_ffuf
+            or enable_opendoor
+            or enable_nmap
+            or enable_nmap_scripts
+        ):
+            logger.debug(
+                "Skipping tools module "
+                "(--wpscan, --nuclei, --ffuf, --opendoor, --nmap not specified)"
+            )
             continue
 
         module_cls = MODULE_REGISTRY[name]

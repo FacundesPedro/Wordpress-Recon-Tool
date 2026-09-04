@@ -11,7 +11,7 @@ from modules.module import Module
 
 class ToolsModule(Module):
     name = "tools"
-    description = "External tool integrations (wpscan, nuclei, ffuf, opendoor)"
+    description = "External tool integrations (wpscan, nuclei, ffuf, opendoor, nmap)"
 
     def __init__(self, config: ScanConfig = None):
         super().__init__(self.name, self.description)
@@ -43,3 +43,13 @@ class ToolsModule(Module):
             from steps.tools.opendoor_step import OpenDoorStep
 
             self.add_step(OpenDoorStep)
+
+        if self.config.enable_nmap:
+            from steps.tools.nmap_step import NmapPortScanStep
+
+            self.add_step(NmapPortScanStep)
+
+        if self.config.enable_nmap_scripts:
+            from steps.tools.nmap_step import NmapScriptScanStep
+
+            self.add_step(NmapScriptScanStep)

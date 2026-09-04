@@ -169,6 +169,7 @@ class VersionChecker:
             "nuclei": r"nuclei version (\d+\.\d+\.\d+)",
             "ffuf": r"FFUF:\s+(\d+\.\d+\.\d+)",
             "opendoor": r"OpenDoor\s+(\d+\.\d+\.\d+)",
+            "nmap": r"Nmap version (\d+\.\d+(?:\.\d+)?)",
             "default": r"(\d+\.\d+\.\d+)",
         }
 
