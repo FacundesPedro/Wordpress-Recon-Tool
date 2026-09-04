@@ -20,7 +20,8 @@
 10. [Module: XML-RPC](#module-xml-rpc)
 11. [Module: Secrets](#module-secrets)
 12. [Module: SSRF](#module-ssrf)
-13. [Module: Tools](#module-tools)
+13. [Module: Webapp](#module-webapp)
+14. [Module: Tools](#module-tools)
 14. [Dependency Matrix](#dependency-matrix)
 15. [Severity Levels](#severity-levels)
 16. [Common Patterns](#common-patterns)
@@ -29,7 +30,7 @@
 
 ## Overview
 
-The tool is organized into **12 modules** containing **60 steps** total:
+The tool is organized into **13 modules** containing **70 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|
@@ -44,7 +45,8 @@ The tool is organized into **12 modules** containing **60 steps** total:
 | [xmlrpc](#module-xml-rpc) | 5 | XML-RPC testing (methods, SSRF, brute force) |
 | [secrets](#module-secrets) | 5 | Sensitive file exposure (config, .env, .git) |
 | [ssrf](#module-ssrf) | 2 | SSRF vulnerability testing |
-| [tools](#module-tools) | 6 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor) |
+| [webapp](#module-webapp) | 8 | Generic web app security checks (non-WordPress targets) |
+| [tools](#module-tools) | 8 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor, Nmap) |
 
 ---
 
@@ -1241,6 +1243,122 @@ Both steps use built-in SSRF protection that blocks:
 
 ---
 
+## Module: Webapp
+
+**Profile:** `web` (generic non-WordPress assessments)  
+**Risk Level:** Low (non-intrusive HTTP checks)  
+**Purpose:** Generic web application security checks for non-WordPress targets (OWASP WSTG-based)
+
+Source discovery is shared via `utils/source_discovery.py`: static asset/link extraction from HTML, a wordlist fuzzing pass over `wordlists/webapp/assets.txt` (resolvable via `WP_SOURCE_ASSETS`), same-origin normalization, and bounded fetching.
+
+### Steps
+
+#### SourceReviewStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/source_review_step.py` |
+| **Base Class** | `BaseHttpStep`, `WordlistDependencyMixin` |
+| **Inputs** | Homepage + JS/sourcemap assets from source discovery |
+| **Severity** | Varies by rule (info–critical) |
+| **Config** | `WP_SOURCE_SCAN_MAX_JS` (default 20), `WP_SOURCE_SCAN_MAX_BYTES` (default 1000000) |
+
+**What it does:**
+- Scans HTML/JS/sourcemap content for embedded credentials: AWS, GitHub, Slack, JWT, PEM private keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, DB connection strings, basic-auth URLs, hardcoded passwords
+- Info-leak rules: internal/private IPs, cloud metadata endpoints, email addresses
+- Rules adapted from gitleaks (Go RE2 → Python `re`)
+- Secrets masked in evidence, full value in `raw`
+
+#### SourcemapStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/sourcemap_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Medium |
+| **Config** | `WP_SOURCE_SCAN_SOURCEMAPS` (default true) |
+
+**What it does:**
+- Probes for `.js.map` sourcemaps alongside discovered JS files
+- Sourcemaps expose the original unminified source code
+
+#### HttpMethodsStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/http_methods_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Methods** | TRACE, PUT, DELETE, PROPFIND |
+| **Severity** | Varies (info–medium) |
+
+**What it does:**
+- Probes unsafe/verbose HTTP methods (WSTG 4.2.6)
+- Reports missing `Allow` header on OPTIONS
+
+#### CookieFlagsStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/cookie_flags_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Low–Medium |
+
+**What it does:**
+- Audits `Set-Cookie` attributes (WSTG 4.6.2) on common entry paths
+- Reports missing `Secure`, `HttpOnly`, and `SameSite` flags
+
+#### CorsStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/cors_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Medium (credentials), Info (wildcard) |
+
+**What it does:**
+- Canary-Origin CORS probes (WSTG 4.11.7)
+- Wildcard `Access-Control-Allow-Origin`, origin reflection, reflection with `Access-Control-Allow-Credentials`
+
+#### StackTraceStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/stack_trace_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Medium |
+
+**What it does:**
+- Recon-only malformed-shape probes plus framework error signature scanning (WSTG 4.8)
+- Detects Python, PHP, Django, Rails, .NET, Spring, and SQL error traces
+
+#### ContentLeakStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/content_leak_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Info–Low |
+| **Config** | `WP_WEBAPP_MAX_PAGES` (default 10) |
+
+**What it does:**
+- Reviews homepage + discovered same-origin links for information leakage (WSTG 4.1.5)
+- Internal IPs/hostnames, email addresses, meta generator, config-like HTML comments
+
+#### HeaderQualityStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/header_quality_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Info–Medium |
+
+**What it does:**
+- Audits present-but-weak security headers (WSTG 4.2.7/4.2.12/4.2.14)
+- HSTS without sufficient `max-age`/`includeSubDomains`, `X-Frame-Options: NONE`, CSP without `frame-ancestors`
+- Complements `infrastructure` module's missing-header checks
+
+---
+
 ## Module: Tools
 
 **Profile:** `tools`  
@@ -1342,6 +1460,55 @@ Recommendation: Disable WordPress debug logging in production
 ```bash
 # Via environment variable
 export WP_NUCLEI_SEVERITY=critical,high
+```
+
+---
+
+#### NmapPortScanStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/tools/nmap_step.py` |
+| **Base Class** | `BaseToolStep` |
+| **Binary** | `nmap` (min version 7.92) |
+| **Command** | `nmap -oJ - -Pn -sT -T4 -sV --top-ports 100 <host>` |
+| **Severity** | Info (open ports), Medium (risky services: SSH, RDP, VNC, DBs) |
+| **Enable Flag** | `--nmap` |
+| **Config** | `WP_NMAP_TOP_PORTS` (default 100), `WP_NMAP_PORTS`, `WP_NMAP_TIMEOUT` (default 300) |
+
+**What it does:**
+- Direct connect port scan (`-sT`, no root required) with service version detection
+- JSON output via `-oJ -`, no temp files
+- Custom port list via `WP_NMAP_PORTS` overrides top ports
+- Direct host scan (no SSRF blocklist) — authorized targets only
+
+#### NmapScriptScanStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/tools/nmap_step.py` |
+| **Base Class** | `BaseToolStep` |
+| **Binary** | `nmap` (min version 7.92) |
+| **Command** | `nmap -oJ - -Pn -sT -T4 -sC --top-ports 100 <host>` |
+| **Severity** | Info (notable scripts), High (NSE `vulns` entries) |
+| **Enable Flag** | `--nmap-scripts` |
+
+**What it does:**
+- Runs default Nmap Scripting Engine scripts (`-sC`)
+- Parses notable script output (ftp-anon, http-headers, ssl-cert, ...) and NSE `vulns` entries with CVE identifiers
+
+**Installation:**
+```bash
+brew install nmap        # macOS
+apt install nmap         # Ubuntu/Debian
+```
+
+**Configuration:**
+```bash
+# Via environment variables
+export WP_ENABLE_NMAP=true
+export WP_NMAP_TOP_PORTS=100
+export WP_NMAP_TIMEOUT=300
 ```
 
 ---
@@ -1539,6 +1706,7 @@ Quick scan configurations:
 | `passive` | passive | External intel only |
 | `light` | passive, infrastructure, discovery, fingerprint | Quick scan |
 | `standard` | passive, infrastructure, discovery, fingerprint, users, api, xmlrpc, secrets, ssrf | Full scan |
+| `web` | passive, infrastructure, webapp, secrets, tools | Generic non-WP assessments |
 | `full` | All modules including tools | Comprehensive |
 | `aggressive` | users, xmlrpc, secrets, tools | High-impact only |
 
@@ -1546,7 +1714,7 @@ Quick scan configurations:
 
 ## See Also
 
-- [Architecture Plan](./architecture_plan.md) - Technical design
+- [Architecture Plan](./ARCHITECTURE.md) - Technical design
 - [Security Documentation](./SECURITY.md) - Security features
 - [Code Documentation](./CODE.md) - Code abstractions and execution flow
 - [Changelog](../CHANGELOG.md) - Version history
