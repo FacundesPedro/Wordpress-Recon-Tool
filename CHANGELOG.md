@@ -1,10 +1,26 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-07-23
+## Last Updated: 2026-09-04
 
 ---
 
 ## Recent Changes
+
+### S15 - Generic Web Security: webapp module + web profile + Nmap (2026-09-04)
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/webapp/` | **NEW** (8 steps) | Generic non-WP checks: source credential review (gitleaks-derived rules), sourcemaps, HTTP methods, cookie flags, CORS, stack traces, content leaks, header quality (OWASP WSTG-based) |
+| `utils/source_discovery.py` | **NEW** | Static asset/link extraction + wordlist fuzzing + bounded same-origin fetch, shared by webapp steps |
+| `modules/webapp_module.py` | **NEW** | `WebappModule` (tier 2); registered in `MODULE_REGISTRY` |
+| `steps/tools/nmap_step.py` | **NEW** | `NmapPortScanStep` (`-sT -sV --top-ports`) + `NmapScriptScanStep` (`-sC`), `-oJ` JSON, min version 7.92 |
+| `wordlists/webapp/assets.txt` | **NEW** | ~44 common asset paths for source discovery fuzzing |
+| `config.py` | **ADDED** | Nmap (5) + source scan (5) config fields |
+| `modules/__init__.py` | **UPDATED** | `webapp` in registry + tier 2; new `web` profile |
+| `modules/tools_module.py` | **UPDATED** | Nmap steps registered on `--nmap` / `--nmap-scripts` |
+| `main.py` | **UPDATED** | `--nmap`, `--nmap-scripts`, `--nmap-top-ports`, `--nmap-ports`, `--nmap-timeout` |
+| `utils/tool_version_checker.py` | **UPDATED** | nmap version pattern |
+| 11 test files | **NEW** | 139 tests; suite 1339 passing (4 pre-existing weasyprint env failures) |
+| `README.md`, `docs/MODULES.md`, `docs/ARCHITECTURE.md`, `docs/CODE.md`, `docs/NEXT_STEPS.md`, `docs/REFERENCES.md`, `AGENTS.md`, `.env.example`, `wordlists/README.md` | **UPDATED** | webapp/nmap/web-profile documentation + external references |
 
 ### S14 - Config/CLI/Edge Case Unit Tests (2026-07-23)
 | File | Change | Notes |

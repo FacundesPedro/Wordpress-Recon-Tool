@@ -303,6 +303,29 @@ EOF
 
 ---
 
+## Webapp Asset Wordlist (Source Discovery Fuzzing)
+
+Used by the `webapp` module's source discovery (`utils/source_discovery.py`)
+to fuzz common static asset paths when `WP_SOURCE_SCAN_FUZZ=true` (default).
+
+**Built-in file**: `wordlists/webapp/assets.txt` (~44 common JS/CSS/config paths)
+
+### Custom list
+
+```bash
+# Via config key (highest priority)
+export WP_SOURCE_ASSETS=/path/to/my-assets.txt
+
+# Or persistent override
+mkdir -p ~/.config/recon-wp/wordlists/webapp
+cp my-assets.txt ~/.config/recon-wp/wordlists/webapp/assets.txt
+```
+
+One asset path per line; `#` comments and blank lines are ignored. Paths are
+resolved relative to the target origin (absolute or root-relative).
+
+---
+
 ## External Wordlist Directory (Persistent Overrides)
 
 Place files at `~/.config/recon-wp/wordlists/<path>` to override both
@@ -323,11 +346,13 @@ CLI flags:
 │   ├── wp_paths.txt
 │   ├── wp_plugins.txt
 │   └── wp_themes.txt
-└── opendoor/
+├── opendoor/
     ├── backup_files.txt
     ├── config_files.txt
     ├── sensitive_paths.txt
     └── wp_paths.txt
+└── webapp/
+    └── assets.txt
 ```
 
 ---
