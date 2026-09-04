@@ -1,6 +1,6 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-08-19  
+**Last Updated:** 2026-09-04  
 **Current Branch:** `main`  
 **HEAD:** `443702e` — Update brute-force and http_client tests for concurrency and progress features (1200 tests passing)
 
@@ -52,8 +52,9 @@
 | 40 | `b82436a` | Add concurrency, progress logging, early abort and probe cap to plugin/theme brute-force |
 | 41 | `be43873` | Add progress logging to login brute-force step |
 | 42 | `443702e` | Update brute-force and http_client tests for concurrency and progress features |
+| 43 | — | **Generic web security: `webapp` module + `web` profile + Nmap integration** — 10 new steps, 139 new tests (see "Generic Web App Security ✅" below) |
 
-**Current state:** 12 modules, 60 steps, 1200 tests passing (60/60 steps covered, 100%). Brute-force concurrency, progress logging, unreachable-target resilience, and stealth mode added — see AGENTS.md for config reference.
+**Current state:** 13 modules, 70 steps, 1339 tests passing (4 pre-existing weasyprint environment failures unrelated to code). Generic web app security module (`webapp`), `web` profile for non-WordPress targets, and Nmap port/NSE scanning added — see AGENTS.md for config reference.
 
 ---
 
@@ -301,6 +302,48 @@ Both brute-force steps use `asyncio.Semaphore` + batched `asyncio.gather` for bo
 `LoginBruteforceStep` logs progress every 5 attempts (sequential + sleep preserved).
 
 **Key files:** `config.py`, `core/http_client.py`, `steps/discovery/plugin_bruteforce_step.py`, `steps/discovery/theme_bruteforce_step.py`, `steps/access/login_bruteforce_step.py`.
+
+---
+
+## Generic Web App Security ✅
+
+**Why:** Reuse this tool for web security analysis of internal clients that are not WordPress sites. Extends the tool from "WP recon" to "general web security assessment" with non-intrusive, reusable checks.
+
+**Status:** Implemented. Two new areas: a `webapp` module (8 pure-HTTP steps) and Nmap integration (2 tool steps), plus a `web` scan profile.
+
+### 1. `webapp` Module (tier 2, 8 steps)
+
+| Step | WSTG ref | What it checks |
+|------|----------|----------------|
+| `SourceReviewStep` | 4.1.5 | Scans HTML/JS/sourcemaps for embedded credentials (AWS, GitHub, Slack, JWT, PEM keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, DB connection strings, basic-auth URLs, hardcoded passwords) + info leaks (internal IPs, cloud metadata, emails). Rules adapted from gitleaks (Go RE2 → Python `re`). Secrets masked in evidence, full value in `raw`. |
+| `SourcemapStep` | 4.1.5 | Detects exposed `.js.map` files (original unminified source). |
+| `HttpMethodsStep` | 4.2.6 | TRACE/PUT/DELETE/PROPFIND enabled; missing `Allow` header. |
+| `CookieFlagsStep` | 4.6.2 | Set-Cookie audit: `Secure`/`HttpOnly`/`SameSite` on common entry paths. |
+| `CorsStep` | 4.11.7 | Canary-Origin probes: wildcard `ACAO`, origin reflection, reflection with credentials. |
+| `StackTraceStep` | 4.8 | Malformed-shape probes (recon only) + framework error signatures (Python, PHP, Django, Rails, .NET, Spring, SQL). |
+| `ContentLeakStep` | 4.1.5 | Homepage + discovered links: internal IPs, internal hostnames, emails, meta generator, config-like HTML comments. |
+| `HeaderQualityStep` | 4.2.7/4.2.12/4.2.14 | Present-but-weak headers: HSTS max-age/includeSubDomains, `X-Frame-Options: NONE`, CSP without `frame-ancestors`. Complements `infrastructure`'s missing-header check. |
+
+**Source discovery** (`utils/source_discovery.py`): static asset extraction from HTML (`<script src>`, `<link>`, CSS `url()`, inline JS literals, `<a href>`) + a built-in fuzzing pass over `wordlists/webapp/assets.txt` (resolvable via `WP_SOURCE_ASSETS`), same-origin normalization, and bounded fetching (`WP_SOURCE_SCAN_MAX_JS` / `WP_SOURCE_SCAN_MAX_BYTES`).
+
+### 2. Nmap Integration (`tools` module, tier 4)
+
+| Step | Command | Output |
+|------|---------|--------|
+| `NmapPortScanStep` (`--nmap`) | `nmap -oJ - -Pn -sT -T4 -sV --top-ports 100 <host>` | Open ports + service versions; `medium` severity when risky services exposed (SSH, RDP, VNC, DBs). |
+| `NmapScriptScanStep` (`--nmap-scripts`) | `nmap -oJ - -Pn -sT -T4 -sC --top-ports 100 <host>` | Notable NSE script output (ftp-anon, http-headers, ssl-cert, …) + NSE `vulns` entries with CVE ids. |
+
+Connect scan (`-sT`) works without root; direct host scan (no SSRF blocklist — intended for authorized targets). Requires nmap >= 7.92 (version-checked like other tools).
+
+### 3. `web` Profile
+
+`-p web` → `passive, infrastructure, webapp, secrets, tools` — a generic (non-WP) assessment profile. `tools` is a no-op unless a tool flag (`--nmap`, `--nuclei`, …) is passed. WP-specific probes in `secrets`/`infrastructure` 404 harmlessly on non-WP targets.
+
+**Usage:** `python main.py -t https://client-site.com -p web --nmap --nmap-scripts -f all`
+
+**Config:** `WP_ENABLE_NMAP`, `WP_ENABLE_NMAP_SCRIPTS`, `WP_NMAP_TOP_PORTS`, `WP_NMAP_PORTS`, `WP_NMAP_TIMEOUT`, `WP_SOURCE_SCAN_MAX_JS`, `WP_SOURCE_SCAN_MAX_BYTES`, `WP_SOURCE_SCAN_SOURCEMAPS`, `WP_SOURCE_SCAN_FUZZ`, `WP_WEBAPP_MAX_PAGES`.
+
+**Key files:** `steps/webapp/*`, `steps/tools/nmap_step.py`, `utils/source_discovery.py`, `modules/webapp_module.py`, `modules/__init__.py`, `modules/tools_module.py`, `main.py`, `config.py`, `wordlists/webapp/assets.txt`, `utils/tool_version_checker.py` (nmap version pattern).
 
 ---
 

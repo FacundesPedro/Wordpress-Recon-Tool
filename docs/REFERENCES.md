@@ -2,7 +2,7 @@
 
 **Purpose:** Index of external APIs, tools, wordlists, and documentation that this project depends on or integrates with. Keep this up to date as dependencies change.
 
-**Last Updated:** 2026-07-23
+**Last Updated:** 2026-09-04
 
 ---
 
@@ -31,6 +31,25 @@
 | [Nuclei — Fuzzing Templates](https://github.com/projectdiscovery/nuclei-templates/tree/main/http/fuzzing) | Fuzzing templates including `wordpress-plugins-detect.yaml` for plugin brute-force. |
 | [FFUF](https://github.com/ffuf/ffuf) | **Integrated in `tools` module.** Directory/file fuzzer. Invoked via `steps/tools/ffuf_*_step.py`. Used for wordlist-based path discovery. |
 | [OpenDoor](https://github.com/stanislav-web/OpenDoor) | **Integrated in `tools` module.** WordPress-focused path scanner. Invoked via `steps/tools/opendoor_step.py`. Includes WP-specific mode. |
+| [Nmap](https://nmap.org/) | **Integrated in `tools` module** via `steps/tools/nmap_step.py` (`NmapPortScanStep`, `NmapScriptScanStep`). Direct host port scanning (`-sT -sV --top-ports`) and default NSE scripts (`-sC`). JSON output to stdout with `-oJ -`. Requires nmap >= 7.92. |
+| [Nmap Reference Guide — Output Formats](https://nmap.org/book/output.html) | Reference for the `-oJ` JSON output format used by `nmap_step.py` (`nmap-run.host[].ports[]` with `portid`, `state`, `service`, `scripts`). |
+| [Nmap Reference Guide — NSE](https://nmap.org/book/nse.html) | Nmap Scripting Engine reference. `-sC` runs default scripts; structured output (`scripts{}`) is parsed by `NmapScriptScanStep`. |
+
+## Generic Web App References (`webapp` module)
+
+| URL | Why It Matters |
+|-----|----------------|
+| [OWASP WSTG — Test HTTP Methods (4.2.6)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/06-Test_HTTP_Methods) | Methodology reference for `HttpMethodsStep` (TRACE/PUT/DELETE/PROPFIND). |
+| [OWASP WSTG — Testing for Cookies Attributes (4.6.2)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes) | Methodology reference for `CookieFlagsStep` (Secure/HttpOnly/SameSite). |
+| [OWASP WSTG — Testing Cross Origin Resource Sharing (4.11.7)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/07-Testing_Cross_Origin_Resource_Sharing) | Methodology reference for `CorsStep` (wildcard origin, origin reflection, credentials). |
+| [OWASP WSTG — Error Handling (4.8)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/) | Methodology reference for `StackTraceStep` (stack traces, verbose errors). |
+| [OWASP WSTG — Review Web Page Content for Information Leakage (4.1.5)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Web_Page_Content_for_Information_Leakage) | Methodology reference for `ContentLeakStep` and `SourceReviewStep` info-leak rules. |
+| [OWASP WSTG — HSTS (4.2.7) / CSP (4.2.12) / Other Headers (4.2.14)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/) | Methodology reference for `HeaderQualityStep` (HSTS max-age, X-Frame-Options, CSP frame-ancestors). Complements `infrastructure/headers_step.py` (missing-header check). |
+| [gitleaks — default rules config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) | **Source of the secret-detection regex rules** in `steps/webapp/source_review_step.py` (AWS, GitHub, Slack, JWT, PEM keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, DB connection strings, basic-auth URLs). Rules are adapted from Go RE2 to Python `re` syntax (gitleaks `(?-i)` flag-scopes are not supported by Python). |
+| [gitleaks — documentation](https://github.com/gitleaks/gitleaks) | Secret scanner used as the pattern reference. Rule structure (`id`, `description`, `regex`, `keywords`, `entropy`) inspired the `SECRET_RULES` design. |
+| [MDN — Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie) | Cookie attribute reference (`Secure`, `HttpOnly`, `SameSite`) for `CookieFlagsStep` parsing. |
+| [MDN — Access-Control-Allow-Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Origin) | CORS response header reference for `CorsStep` evaluation logic. |
+| [Sourcemaps (source map spec)](https://docs.google.com/document/d/1g5kRt-i0SwhXf0kl1qz_w12F7Qw3fDnqhURxeYa2RKQ) | Source map v3 spec. `.js.map` files expose original unminified source — the target of `SourcemapStep`. |
 
 ## External APIs (Existing)
 

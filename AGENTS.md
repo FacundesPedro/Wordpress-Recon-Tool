@@ -6,9 +6,11 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 12 modules, 60 steps, 1200 tests passing (60/60 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
+**Current state:** 13 modules, 70 steps, 1339 tests passing (70/70 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`. Note: 4 PDF tests fail in environments where weasyprint's native libs (pango/cairo) are missing — pre-existing environment issue, not a code bug.
 
-**Latest feature: Brute-force concurrency + progress** — `PluginBruteforceStep` and `ThemeBruteforceStep` now use bounded concurrency (`asyncio.Semaphore` + batched `gather`), progress logging every 500 probes, early abort on `http.unreachable`, and `WP_BRUTEFORCE_MAX_PROBES` cap. `LoginBruteforceStep` has progress logging. `HttpClient._execute` closes un-awaited coroutines when unreachable (fixes RuntimeWarning).
+**Latest feature: Generic web security (`webapp` module + `web` profile + Nmap)** — New `webapp` module (tier 2, 8 steps) for non-WordPress web app checks: `SourceReviewStep` (credentials/info leaks in HTML/JS/sourcemaps, gitleaks-derived rules), `SourcemapStep`, `HttpMethodsStep`, `CookieFlagsStep`, `CorsStep`, `StackTraceStep`, `ContentLeakStep`, `HeaderQualityStep`. Shared discovery helper `utils/source_discovery.py` (static asset extraction + wordlist fuzzing via `wordlists/webapp/assets.txt` + bounded same-origin fetch). Nmap integration in `tools` module: `NmapPortScanStep` (`-sT -sV --top-ports`) and `NmapScriptScanStep` (`-sC`), both `-oJ` JSON, min version 7.92. New `-p web` profile for generic (non-WP) client assessments: `passive, infrastructure, webapp, secrets, tools`.
+
+**Previous feature: Brute-force concurrency + progress** — `PluginBruteforceStep` and `ThemeBruteforceStep` now use bounded concurrency (`asyncio.Semaphore` + batched `gather`), progress logging every 500 probes, early abort on `http.unreachable`, and `WP_BRUTEFORCE_MAX_PROBES` cap. `LoginBruteforceStep` has progress logging. `HttpClient._execute` closes un-awaited coroutines when unreachable (fixes RuntimeWarning).
 
 ## Agent Working Protocol
 
@@ -99,7 +101,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 
 ### Priority 1 — Tests (complete)
 
-**Coverage:** 60/60 steps tested (100%), 1200 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
+**Coverage:** 70/70 steps tested (100%), 1339 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 
@@ -155,4 +157,32 @@ Key files: `core/http_client.py` (UA pool, jitter, referer, dedup), `config.py` 
 
 Key files: `steps/discovery/plugin_bruteforce_step.py`, `steps/discovery/theme_bruteforce_step.py`, `steps/access/login_bruteforce_step.py`.
 
-See `docs/NEXT_STEPS.md` for implementation details and `docs/REFERENCES.md` for external API/tool URLs.
+### Config Reference — Nmap
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_ENABLE_NMAP` | `false` | Enable `NmapPortScanStep` (top-ports + `-sV` version detection) |
+| `WP_ENABLE_NMAP_SCRIPTS` | `false` | Enable `NmapScriptScanStep` (default NSE scripts, `-sC`) |
+| `WP_NMAP_TOP_PORTS` | `100` | Top-N ports to scan (1-65535) |
+| `WP_NMAP_PORTS` | `""` | Custom port list, overrides top ports (e.g. `80,443,8080`) |
+| `WP_NMAP_TIMEOUT` | `300` | Nmap execution timeout (seconds) |
+
+CLI: `--nmap`, `--nmap-scripts`, `--nmap-top-ports`, `--nmap-ports`, `--nmap-timeout`. Key files: `steps/tools/nmap_step.py`, `modules/tools_module.py`. Direct host scan (connect scan, no root, no SSRF blocklist) — authorized targets only.
+
+### Config Reference — Webapp / Source Scan
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_SOURCE_SCAN_MAX_JS` | `20` | Max JS/asset files to fetch for source review |
+| `WP_SOURCE_SCAN_MAX_BYTES` | `1000000` | Max bytes kept per asset file |
+| `WP_SOURCE_SCAN_SOURCEMAPS` | `true` | Probe for `.js.map` sourcemaps |
+| `WP_SOURCE_SCAN_FUZZ` | `true` | Fuzz common asset paths (`wordlists/webapp/assets.txt`, config key `source_assets`) |
+| `WP_WEBAPP_MAX_PAGES` | `10` | Max pages analyzed by `ContentLeakStep` |
+
+Key files: `steps/webapp/*`, `utils/source_discovery.py`, `modules/webapp_module.py`, `wordlists/webapp/assets.txt`.
+
+### Scan Profiles
+
+`-p web` → `passive, infrastructure, webapp, secrets, tools` — generic (non-WP) web security profile. `tools` is a no-op unless a tool flag is passed. Usage: `python main.py -t https://site.com -p web --nmap --nmap-scripts -f all`.
+
+See `docs/NEXT_STEPS.md` for implementation details and `docs/REFERENCES.md` for external API/tool URLs (nmap, OWASP WSTG test mappings, gitleaks rules source).
