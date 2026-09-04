@@ -78,8 +78,12 @@ class ScanConfig(BaseSettings):
 
     shodan_api_key: str = Field(default="", description="Shodan API key")
 
-    wp_user: str = Field(default="", description="WordPress username for authenticated REST API scan")
-    wp_application_password: str = Field(default="", description="WordPress application password (WP >= 5.6)")
+    wp_user: str = Field(
+        default="", description="WordPress username for authenticated REST API scan"
+    )
+    wp_application_password: str = Field(
+        default="", description="WordPress application password (WP >= 5.6)"
+    )
     wp_auth_method: Literal["app_password", "cookie"] = Field(
         default="app_password",
         description="Authentication method for admin-area steps (app_password or cookie)",
@@ -171,6 +175,43 @@ class ScanConfig(BaseSettings):
     stealth_rate_limit: float = Field(
         default=0.0, ge=0.0,
         description="Max requests per second (0 = unlimited, uses jitter only)"
+    )
+
+    # Nmap settings
+    enable_nmap: bool = Field(
+        default=False, description="Enable Nmap port scan step (tools module)"
+    )
+    enable_nmap_scripts: bool = Field(
+        default=False, description="Enable Nmap default NSE script scan step (tools module)"
+    )
+    nmap_top_ports: int = Field(
+        default=100, ge=1, le=65535, description="Number of top ports for Nmap scan"
+    )
+    nmap_ports: str = Field(
+        default="", description="Custom Nmap port list (overrides top ports, e.g. '80,443,8080')"
+    )
+    nmap_timeout: int = Field(
+        default=300, ge=60, description="Nmap timeout in seconds"
+    )
+
+    # Webapp / source review settings
+    source_scan_max_js: int = Field(
+        default=20, ge=1, le=200,
+        description="Max JS/asset files to fetch for source review",
+    )
+    source_scan_max_bytes: int = Field(
+        default=1000000, ge=1024,
+        description="Max bytes per asset file for source review",
+    )
+    source_scan_sourcemaps: bool = Field(
+        default=True, description="Probe for JS sourcemaps during source review"
+    )
+    source_scan_fuzz: bool = Field(
+        default=True, description="Fuzz common asset paths during source discovery"
+    )
+    webapp_max_pages: int = Field(
+        default=10, ge=1, le=100,
+        description="Max pages to analyze for the content leak step",
     )
 
     skip_reachability_check: bool = Field(

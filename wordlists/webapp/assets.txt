@@ -1,0 +1,44 @@
+# Common JavaScript / asset paths for source discovery fuzzing.
+# One path per line, relative to the site root. Paths that return HTTP 200
+# are fetched and scanned for secrets/leaks.
+app.js
+bundle.js
+main.js
+main.min.js
+app.min.js
+index.js
+runtime.js
+vendor.js
+static/js/main.js
+static/js/app.js
+static/js/bundle.js
+assets/js/app.js
+assets/js/main.js
+assets/js/bundle.js
+js/app.js
+js/main.js
+js/bundle.js
+js/vendor.js
+scripts/app.js
+scripts/main.js
+build/app.js
+build/bundle.js
+dist/app.js
+dist/bundle.js
+dist/main.js
+static/app.js
+static/main.js
+public/js/app.js
+public/js/main.js
+static/js/main.min.js
+static/js/app.min.js
+manifest.json
+wp-content/themes/twentytwentyfour/style.css
+wp-content/themes/twentytwentythree/style.css
+wp-content/themes/twentytwentytwo/style.css
+wp-content/themes/twentytwentyone/style.css
+wp-content/themes/twentynineteen/style.css
+wp-content/themes/twentyseventeen/style.css
+wp-includes/js/wp-emoji-release.min.js
+wp-includes/js/jquery/jquery.min.js
+wp-includes/js/dist/vendor/wp-polyfill.min.js
