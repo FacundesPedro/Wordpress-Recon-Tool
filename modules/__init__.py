@@ -12,6 +12,7 @@ from modules.ssrf_module import SsrfModule
 from modules.tools_module import ToolsModule
 from modules.users_module import UsersModule
 from modules.vuln_module import VulnModule
+from modules.webapp_module import WebappModule
 from modules.xmlrpc_module import XmlrpcModule
 
 MODULE_REGISTRY = {
@@ -26,6 +27,7 @@ MODULE_REGISTRY = {
     "xmlrpc": XmlrpcModule,
     "secrets": SecretsModule,
     "ssrf": SsrfModule,
+    "webapp": WebappModule,
     "tools": ToolsModule,
 }
 
@@ -44,6 +46,7 @@ PROFILES = {
         "secrets",
         "ssrf",
     ],
+    "web": ["passive", "infrastructure", "webapp", "secrets", "tools"],
     "full": list(MODULE_REGISTRY.keys()),
     "aggressive": ["users", "xmlrpc", "secrets", "tools"],
 }
@@ -53,7 +56,7 @@ AVAILABLE_MODULES = list(MODULE_REGISTRY.keys())
 
 RISK_TIERS: dict[int, list[str]] = {
     1: ["passive"],
-    2: ["infrastructure", "discovery", "fingerprint", "access", "vuln"],
+    2: ["infrastructure", "discovery", "fingerprint", "access", "vuln", "webapp"],
     3: ["users", "api", "xmlrpc", "secrets", "ssrf"],
     4: ["tools"],
 }
@@ -72,7 +75,10 @@ def validate_tier_coverage() -> None:
         )
     extraneous = tiered - registered
     if extraneous:
-        print(f"Warning: RISK_TIERS references non-existent modules: {', '.join(sorted(extraneous))}")
+        print(
+            "Warning: RISK_TIERS references non-existent modules: "
+            + ", ".join(sorted(extraneous))
+        )
 
 
 validate_tier_coverage()
