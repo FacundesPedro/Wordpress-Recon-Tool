@@ -74,6 +74,28 @@ class TestSourcemapStep:
         findings = await step.run()
         assert len(findings) == 2
 
+    async def test_sourcemap_url_comment_detected(self, mock_http, mock_target, mock_config):
+        html = '<html><head><script src="/static/app.js"></script></head><body></body></html>'
+        js = "console.log('app');\n//# sourceMappingURL=app.a1b2c3.js.map\n"
+        map_body = '{"version":3,"sources":["app.ts"]}'
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": MagicMock(status_code=200, text=html),
+                    "/static/app.js": MagicMock(status_code=200, text=js),
+                    "/static/app.a1b2c3.js.map": MagicMock(
+                        status_code=200, text=map_body
+                    ),
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        assert len(findings) == 1
+        assert "/static/app.a1b2c3.js.map" in findings[0].evidence
+        assert findings[0].raw["discovery"] == "source_mapping_url"
+
     async def test_disabled_by_config(self, mock_http, mock_target, mock_config):
         step = make_step(mock_http, mock_target, mock_config, enabled=False)
         findings = await step.run()

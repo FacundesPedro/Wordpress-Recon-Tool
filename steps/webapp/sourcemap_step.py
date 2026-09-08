@@ -7,14 +7,32 @@ a frequent source of leaked secrets and internal structure.
 """
 
 # WHAT: Detects exposed .js.map sourcemap files
-# HOW: Extracts JS asset URLs from homepage, probes <file>.map variants
+# HOW: Fetches JS assets, parses sourceMappingURL= comments, probes the
+#      referenced maps (falling back to the <file>.map suffix convention)
 # WHY: Exposed sourcemaps leak original source code, comments, and configs
 
-from urllib.parse import urlsplit
+import re
+from urllib.parse import urljoin, urlsplit
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
-from utils.source_discovery import extract_asset_urls, strip_query
+from utils.source_discovery import (
+    extract_asset_urls,
+    fetch_assets,
+    normalize_url,
+    strip_query,
+)
+
+_SOURCE_MAPPING_URL_RE = re.compile(
+    r"^\s*//#\s*sourceMappingURL=(\S+)\s*$", re.MULTILINE
+)
+
+
+def extract_sourcemap_urls(js_content: str) -> list[str]:
+    """Extract sourceMappingURL comment targets from JS content."""
+    if not js_content or not isinstance(js_content, str):
+        return []
+    return [m.strip() for m in _SOURCE_MAPPING_URL_RE.findall(js_content)]
 
 
 class SourcemapStep(BaseHttpStep):
@@ -44,20 +62,50 @@ class SourcemapStep(BaseHttpStep):
         js_urls = [u for u in assets if strip_query(u).endswith(".js")]
 
         max_js = getattr(self.config, "source_scan_max_js", 20)
-        found_maps: list[tuple[str, int]] = []
+        js_assets = await fetch_assets(self.http, base_url, js_urls, max_files=max_js)
+        fetched_urls = {url for url, _text in js_assets}
 
+        map_candidates: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for js_url, js_text in js_assets:
+            referenced = extract_sourcemap_urls(js_text)
+            if referenced:
+                for raw in referenced:
+                    if raw.startswith("data:"):
+                        continue
+                    # sourceMappingURL is relative to the JS file, not the page
+                    candidate = urljoin(js_url, raw)
+                    map_url = normalize_url(candidate, base_url)
+                    if map_url and map_url not in seen:
+                        seen.add(map_url)
+                        map_candidates.append((map_url, "source_mapping_url"))
+            else:
+                fallback = strip_query(js_url) + ".map"
+                if fallback not in seen:
+                    seen.add(fallback)
+                    map_candidates.append((fallback, "map_suffix"))
+
+        # JS that could not be fetched: fall back to the .map suffix probe
         for js_url in js_urls[:max_js]:
-            map_url = strip_query(js_url) + ".map"
+            if js_url in fetched_urls:
+                continue
+            fallback = strip_query(js_url) + ".map"
+            if fallback not in seen:
+                seen.add(fallback)
+                map_candidates.append((fallback, "map_suffix"))
+
+        found_maps: list[tuple[str, int, str]] = []
+        for map_url, origin in map_candidates:
             try:
                 response = await self.http.request("GET", map_url)
             except Exception:
                 continue
             if getattr(response, "status_code", None) == 200:
                 text = getattr(response, "text", "") or ""
-                found_maps.append((map_url, len(text.splitlines())))
+                found_maps.append((map_url, len(text.splitlines()), origin))
                 self.logger.info(f"Exposed sourcemap: {map_url}")
 
-        for map_url, line_count in found_maps:
+        for map_url, line_count, origin in found_maps:
             self._add_finding(
                 module=self.MODULE,
                 severity=self.severity,
@@ -71,7 +119,11 @@ class SourcemapStep(BaseHttpStep):
                     "Disable sourcemap generation in production builds "
                     "(or serve them only with authentication)"
                 ),
-                raw={"map_url": map_url, "source_lines": line_count},
+                raw={
+                    "map_url": map_url,
+                    "source_lines": line_count,
+                    "discovery": origin,
+                },
             )
 
         if found_maps:
