@@ -114,6 +114,42 @@ class TestContentLeakStep:
         findings = await step.run()
         assert findings == []
 
+    async def test_crawls_second_level_links(self, mock_http, mock_target, mock_config):
+        home = '<html><body><a href="/about">About</a></body></html>'
+        about = '<html><body><a href="/team">Team</a></body></html>'
+        team = "<html><body>ops at 10.9.8.7</body></html>"
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(200, home),
+                    "/about": response(200, about),
+                    "/team": response(200, team),
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert any("Internal IP addresses" in f.title for f in findings)
+
+    async def test_mixed_content_flagged(self, mock_http, mock_target, mock_config):
+        html = '<html><body><img src="http://cdn.example.com/pic.png"></body></html>'
+        mock_http.request = AsyncMock(return_value=response(200, html))
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        mixed = [f for f in findings if "Mixed content" in f.title]
+        assert mixed
+        assert mixed[0].severity == "low"
+        assert "http://cdn.example.com/pic.png" in mixed[0].evidence
+
+    async def test_mixed_content_skipped_for_http_target(self, mock_http, mock_target, mock_config):
+        mock_target.url = "http://example.com"
+        html = '<html><body><img src="http://cdn.example.com/pic.png"></body></html>'
+        mock_http.request = AsyncMock(return_value=response(200, html))
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not any("Mixed content" in f.title for f in findings)
+
     async def test_homepage_failure(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(side_effect=ConnectionError("down"))
         step = make_step(mock_http, mock_target, mock_config)

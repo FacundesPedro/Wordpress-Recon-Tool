@@ -3,19 +3,24 @@
 Content information leak check - reviews HTML pages for leaked information.
 
 Covers WSTG 4.1.5 (Review Web Page Content for Information Leakage):
-emails, internal IPs/hostnames, framework generator meta, and config-like
-HTML comments.
+emails, internal IPs/hostnames, framework generator meta, config-like
+HTML comments, and plain-HTTP resources on HTTPS pages (mixed content).
 """
 
 # WHAT: Scans rendered HTML pages for information leakage
-# HOW: Fetches homepage + discovered internal links, applies content rules
+# HOW: Crawls homepage plus two link levels (bounded), applies content rules
 # WHY: Page content often leaks infrastructure details useful for attacks
 
 import re
+from typing import Optional
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 from utils.source_discovery import extract_link_urls
+
+# Home page + up to N levels of discovered links
+_MAX_LINK_LEVELS = 2
+_MAX_MIXED_CONTENT_EXAMPLES = 10
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _EMAIL_SKIP_TLDS = {
@@ -42,6 +47,11 @@ _COMMENT_CONFIG_RE = re.compile(
     r"|\bTODO\b|\bFIXME\b|config|secret)[^>]*?)-->",
     re.IGNORECASE,
 )
+_MIXED_CONTENT_RE = re.compile(
+    r"""(?:src|action)\s*=\s*["'](http://[^"']+)["']"""
+    r"""|<link[^>]+href=["'](http://[^"']+)["']""",
+    re.IGNORECASE,
+)
 
 
 class ContentLeakStep(BaseHttpStep):
@@ -56,25 +66,11 @@ class ContentLeakStep(BaseHttpStep):
         self.logger.info("Reviewing page content for information leakage...")
 
         base_url = self.target.url
-        pages: list[tuple[str, str]] = []
-
-        try:
-            response = await self.fetch("/")
-            pages.append(("/", getattr(response, "text", "") or ""))
-        except Exception as e:
-            self.logger.debug(f"Failed to fetch homepage: {e}")
-            return self.findings
-
         max_pages = getattr(self.config, "webapp_max_pages", 10)
-        links = extract_link_urls(pages[0][1], base_url)
-        for link in links:
-            if len(pages) >= max_pages:
-                break
-            try:
-                response = await self.fetch(link[len(base_url):] or "/")
-            except Exception:
-                continue
-            pages.append((link, getattr(response, "text", "") or ""))
+
+        pages = await self._crawl(base_url, max_pages)
+        if not pages:
+            return self.findings
 
         self.logger.debug(f"Analyzing {len(pages)} page(s)")
 
@@ -176,4 +172,75 @@ class ContentLeakStep(BaseHttpStep):
                 raw={"comments": config_comments},
             )
 
+        self._check_mixed_content(base_url, pages)
+
         return self.findings
+
+    async def _crawl(self, base_url: str, max_pages: int) -> list[tuple[str, str]]:
+        """BFS-crawl same-origin pages from the homepage (depth-bounded)."""
+        pages: list[tuple[str, str]] = []
+        queued: set[str] = {base_url}
+        frontier: list[str] = [base_url]
+
+        for _level in range(_MAX_LINK_LEVELS + 1):
+            if len(pages) >= max_pages:
+                break
+            next_frontier: list[str] = []
+            for url in frontier:
+                if len(pages) >= max_pages:
+                    break
+                text = await self._fetch_page(url)
+                if text is None:
+                    continue
+                pages.append((url, text))
+                for link in extract_link_urls(text, base_url):
+                    if link not in queued:
+                        queued.add(link)
+                        next_frontier.append(link)
+            frontier = next_frontier
+
+        return pages
+
+    async def _fetch_page(self, url: str) -> Optional[str]:
+        """Fetch one page, returning its text or None on failure."""
+        try:
+            response = await self.fetch(url[len(self.target.url):] or "/")
+        except Exception as e:
+            self.logger.debug(f"Failed to fetch {url}: {e}")
+            return None
+        return getattr(response, "text", "") or ""
+
+    def _check_mixed_content(
+        self, base_url: str, pages: list[tuple[str, str]]
+    ) -> None:
+        """Flag plain-HTTP subresources referenced from an HTTPS site."""
+        if not base_url.lower().startswith("https"):
+            return
+
+        refs: list[str] = []
+        for _page, text in pages:
+            for first, second in _MIXED_CONTENT_RE.findall(text):
+                url = first or second
+                if url not in refs:
+                    refs.append(url)
+                if len(refs) >= _MAX_MIXED_CONTENT_EXAMPLES:
+                    break
+            if len(refs) >= _MAX_MIXED_CONTENT_EXAMPLES:
+                break
+
+        if refs:
+            self._add_finding(
+                module=self.MODULE,
+                severity="low",
+                title="Mixed content: plain-HTTP resources on HTTPS page",
+                description=(
+                    f"Page(s) reference {len(refs)} plain-HTTP resource(s), which "
+                    "can be intercepted or blocked by browsers: " + ", ".join(refs[:5])
+                ),
+                evidence=", ".join(refs[:10]),
+                recommendation=(
+                    "Serve all subresources over HTTPS "
+                    "(or add upgrade-insecure-requests to the CSP)"
+                ),
+                raw={"references": refs},
+            )
