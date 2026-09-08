@@ -213,6 +213,26 @@ class ScanConfig(BaseSettings):
         default=10, ge=1, le=100,
         description="Max pages to analyze for the content leak step",
     )
+    webapp_open_redirect: bool = Field(
+        default=True,
+        description="Probe for open redirects with canary URLs (open_redirect step)",
+    )
+    webapp_redirect_max_requests: int = Field(
+        default=60, ge=10, le=500,
+        description="Max canary requests for the open redirect step",
+    )
+    webapp_host_probe: bool = Field(
+        default=True,
+        description="Probe Host/X-Forwarded-Host headers with canary values (host_header step)",
+    )
+    webapp_max_api_paths: int = Field(
+        default=30, ge=5, le=200,
+        description="Max API/documentation paths to probe (api_surface step)",
+    )
+    webapp_max_admin_paths: int = Field(
+        default=40, ge=5, le=300,
+        description="Max admin/management paths to probe (admin_surface step)",
+    )
 
     skip_reachability_check: bool = Field(
         default=False, description="Skip pre-flight DNS/TCP/TLS reachability probe"
