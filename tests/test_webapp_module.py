@@ -23,6 +23,7 @@ EXPECTED_WEBAPP_STEPS = [
     "CspAuditStep",
     "ApiSurfaceStep",
     "AdminSurfaceStep",
+    "OpenRedirectStep",
 ]
 
 

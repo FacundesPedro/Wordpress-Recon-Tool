@@ -9,7 +9,8 @@ security assessments (e.g. internal clients that are not WordPress sites).
 
 # WHAT: Generic web app checks - source review, sourcemaps, HTTP methods,
 #       cookie flags, CORS, stack traces, content leaks, header quality
-# HOW: Non-intrusive HTTP probing (GET/OPTIONS/TRACE/PUT/DELETE/PROPFIND)
+# HOW: Non-intrusive HTTP probing (GET/OPTIONS/TRACE/PUT/DELETE/PROPFIND),
+#      plus canary-value probes (redirect params)
 # WHY: Extends the tool beyond WordPress for general web security analysis
 # STEPS: SourceReviewStep, SourcemapStep, HttpMethodsStep, CookieFlagsStep,
 #        CorsStep, StackTraceStep, ContentLeakStep, HeaderQualityStep
@@ -24,6 +25,7 @@ from steps.webapp import (
     CspAuditStep,
     HeaderQualityStep,
     HttpMethodsStep,
+    OpenRedirectStep,
     SourcemapStep,
     SourceReviewStep,
     StackTraceStep,
@@ -47,3 +49,4 @@ class WebappModule(Module):
         self.add_step(CspAuditStep)
         self.add_step(ApiSurfaceStep)
         self.add_step(AdminSurfaceStep)
+        self.add_step(OpenRedirectStep)
