@@ -8,6 +8,7 @@ from steps.webapp.cookie_flags_step import CookieFlagsStep
 from steps.webapp.cors_step import CorsStep
 from steps.webapp.csp_audit_step import CspAuditStep
 from steps.webapp.header_quality_step import HeaderQualityStep
+from steps.webapp.host_header_step import HostHeaderStep
 from steps.webapp.http_methods_step import HttpMethodsStep
 from steps.webapp.open_redirect_step import OpenRedirectStep
 from steps.webapp.source_review_step import SourceReviewStep
@@ -27,4 +28,5 @@ __all__ = [
     "ApiSurfaceStep",
     "AdminSurfaceStep",
     "OpenRedirectStep",
+    "HostHeaderStep",
 ]

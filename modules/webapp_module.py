@@ -8,12 +8,15 @@ security assessments (e.g. internal clients that are not WordPress sites).
 """
 
 # WHAT: Generic web app checks - source review, sourcemaps, HTTP methods,
-#       cookie flags, CORS, stack traces, content leaks, header quality
-# HOW: Non-intrusive HTTP probing (GET/OPTIONS/TRACE/PUT/DELETE/PROPFIND),
-#      plus canary-value probes (redirect params)
+#       cookie flags, CORS, stack traces, content leaks, header quality,
+#       CSP audit, API surface, admin surface, open redirects, host headers
+# HOW: Non-intrusive HTTP probing (GET/OPTIONS/TRACE/PUT/DELETE/PROPFIND)
+#      plus canary-value probes (redirect params, Host/X-Forwarded-Host)
 # WHY: Extends the tool beyond WordPress for general web security analysis
 # STEPS: SourceReviewStep, SourcemapStep, HttpMethodsStep, CookieFlagsStep,
-#        CorsStep, StackTraceStep, ContentLeakStep, HeaderQualityStep
+#        CorsStep, StackTraceStep, ContentLeakStep, HeaderQualityStep,
+#        CspAuditStep, ApiSurfaceStep, AdminSurfaceStep, OpenRedirectStep,
+#        HostHeaderStep
 
 from modules.module import Module
 from steps.webapp import (
@@ -24,6 +27,7 @@ from steps.webapp import (
     CorsStep,
     CspAuditStep,
     HeaderQualityStep,
+    HostHeaderStep,
     HttpMethodsStep,
     OpenRedirectStep,
     SourcemapStep,
@@ -34,7 +38,10 @@ from steps.webapp import (
 
 class WebappModule(Module):
     name = "webapp"
-    description = "Generic web app checks (source review, CORS, cookies, methods, leaks)"
+    description = (
+        "Generic web app checks (source review, CORS, cookies, methods, leaks, "
+        "CSP, API/admin surface, open redirects, host headers)"
+    )
 
     def __init__(self):
         super().__init__(self.name, self.description)
@@ -50,3 +57,4 @@ class WebappModule(Module):
         self.add_step(ApiSurfaceStep)
         self.add_step(AdminSurfaceStep)
         self.add_step(OpenRedirectStep)
+        self.add_step(HostHeaderStep)

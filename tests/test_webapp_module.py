@@ -24,6 +24,7 @@ EXPECTED_WEBAPP_STEPS = [
     "ApiSurfaceStep",
     "AdminSurfaceStep",
     "OpenRedirectStep",
+    "HostHeaderStep",
 ]
 
 
