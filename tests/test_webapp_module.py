@@ -22,6 +22,7 @@ EXPECTED_WEBAPP_STEPS = [
     "HeaderQualityStep",
     "CspAuditStep",
     "ApiSurfaceStep",
+    "AdminSurfaceStep",
 ]
 
 

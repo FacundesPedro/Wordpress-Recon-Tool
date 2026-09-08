@@ -16,6 +16,7 @@ security assessments (e.g. internal clients that are not WordPress sites).
 
 from modules.module import Module
 from steps.webapp import (
+    AdminSurfaceStep,
     ApiSurfaceStep,
     ContentLeakStep,
     CookieFlagsStep,
@@ -45,3 +46,4 @@ class WebappModule(Module):
         self.add_step(HeaderQualityStep)
         self.add_step(CspAuditStep)
         self.add_step(ApiSurfaceStep)
+        self.add_step(AdminSurfaceStep)

@@ -1,0 +1,50 @@
+# Admin / management / service console paths for surface enumeration.
+# One path per line, relative to the site root. Used by AdminSurfaceStep
+# (webapp module) via the `admin_paths` config key.
+#
+# HTTP 200/30x -> reported as exposed (severity per path class)
+# HTTP 401/403 -> reported as protected (info)
+# HTTP 404    -> ignored
+admin
+admin/
+administrator
+manager/html
+catalina
+grafana
+grafana/login
+jenkins
+jenkins/login
+kibana
+solr
+solr/admin
+nagios
+zabbix
+airflow
+superset
+minio
+registry/v2/
+console
+phpmyadmin
+phpmyadmin/index.php
+pma
+adminer
+horizon
+webconsole
+actuator
+actuator/health
+actuator/env
+actuator/heapdump
+actuator/mappings
+actuator/configprops
+debug
+debug/vars
+trace
+error
+server-status
+server-info
+status
+health
+metrics
+prometheus
+node_modules
+.well-known/security.txt
