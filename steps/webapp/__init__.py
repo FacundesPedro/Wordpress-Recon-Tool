@@ -1,6 +1,7 @@
 # recon_wp/steps/webapp/__init__.py
 """Webapp module - generic web application security checks (non-WordPress)."""
 
+from steps.webapp.api_surface_step import ApiSurfaceStep
 from steps.webapp.content_leak_step import ContentLeakStep
 from steps.webapp.cookie_flags_step import CookieFlagsStep
 from steps.webapp.cors_step import CorsStep
@@ -21,4 +22,5 @@ __all__ = [
     "ContentLeakStep",
     "HeaderQualityStep",
     "CspAuditStep",
+    "ApiSurfaceStep",
 ]

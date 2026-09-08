@@ -1,0 +1,33 @@
+# API surface discovery paths — API roots, documentation, and metadata.
+# One path per line, relative to the site root. Used by ApiSurfaceStep
+# (webapp module) via the `api_paths` config key.
+#
+# Special handling:
+#   robots.txt / sitemap.xml  -> parsed for Disallow/Sitemap/URL inventory
+#   graphql / api/graphql     -> GraphQL introspection probe (POST)
+#   *.json / openapi / swagger -> OpenAPI/Swagger documentation check
+robots.txt
+sitemap.xml
+sitemap_index.xml
+api
+api/
+api/v1
+api/v2
+api/v3
+api/graphql
+graphql
+rest
+rest/api
+v1
+v2
+swagger.json
+swagger-ui.html
+swagger-ui/
+swagger-ui/index.html
+api-docs
+openapi.json
+openapi.yaml
+v2/api-docs
+v3/api-docs
+docs
+redoc
