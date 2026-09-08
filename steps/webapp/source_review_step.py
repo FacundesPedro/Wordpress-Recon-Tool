@@ -62,7 +62,27 @@ SECRET_RULES: list[dict] = [
         "severity": "critical",
         "description": "AWS secret access key",
         "recommendation": "Rotate the exposed key in IAM and remove it from source code",
-        "pattern": re.compile(r"(?i)aws[^=;\s]{0,20}['\"][0-9a-zA-Z/]{40}['\"]"),
+        "pattern": re.compile(
+            r"(?i)aws[_-]?secret[_-]?(?:access[_-]?)?key['\"]?\s*[:=]\s*['\"]?"
+            r"[0-9a-zA-Z/]{40}['\"]?"
+        ),
+    },
+    {
+        "id": "openai-api-key",
+        "severity": "critical",
+        "description": "OpenAI API key",
+        "recommendation": "Revoke the key in the OpenAI dashboard and remove it from source",
+        "pattern": re.compile(
+            r"\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{58,74}T3BlbkFJ[A-Za-z0-9_-]{58,74}\b"
+            r"|\bsk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20}\b"
+        ),
+    },
+    {
+        "id": "anthropic-api-key",
+        "severity": "high",
+        "description": "Anthropic API key",
+        "recommendation": "Revoke the key in the Anthropic console and remove it from source",
+        "pattern": re.compile(r"\bsk-ant-(?:api|admin)0[13]-[a-zA-Z0-9_-]{50,110}AA\b"),
     },
     {
         "id": "github-token",
@@ -164,6 +184,58 @@ SECRET_RULES: list[dict] = [
         "pattern": re.compile(r"\b(?:key|pubkey)-[0-9a-f]{32}\b"),
     },
     {
+        "id": "gitlab-pat",
+        "severity": "high",
+        "description": "GitLab personal access token",
+        "recommendation": "Revoke the token in GitLab user settings and remove it from source",
+        "pattern": re.compile(r"\bglpat-[0-9A-Za-z_-]{20}\b"),
+    },
+    {
+        "id": "notion-api-token",
+        "severity": "high",
+        "description": "Notion API token",
+        "recommendation": "Revoke the token in Notion integrations and remove it from source",
+        "pattern": re.compile(r"\bntn_[0-9]{11}[0-9A-Za-z]{35}\b"),
+    },
+    {
+        "id": "telegram-bot-token",
+        "severity": "high",
+        "description": "Telegram bot API token",
+        "recommendation": "Revoke the token via the BotFather and remove it from source",
+        "pattern": re.compile(r"\b[0-9]{8,10}:AA[0-9a-zA-Z_-]{33}\b"),
+    },
+    {
+        "id": "discord-webhook",
+        "severity": "high",
+        "description": "Discord webhook URL",
+        "recommendation": "Delete the webhook in Discord and remove the URL from source",
+        "pattern": re.compile(r"discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+"),
+    },
+    {
+        "id": "heroku-api-key",
+        "severity": "high",
+        "description": "Heroku API key",
+        "recommendation": "Rotate the API key in the Heroku dashboard and remove it from source",
+        "pattern": re.compile(r"\bHRKU-AA[0-9A-Za-z_-]{58}\b"),
+    },
+    {
+        "id": "terraform-api-token",
+        "severity": "high",
+        "description": "HashiCorp Terraform API token",
+        "recommendation": "Rotate the token in HashiCorp and remove it from source",
+        "pattern": re.compile(r"\b[0-9a-z]{14}\.atlasv1\.[0-9A-Za-z_\-]{60,70}\b"),
+    },
+    {
+        "id": "azure-storage-account-key",
+        "severity": "high",
+        "description": "Azure storage account key",
+        "recommendation": (
+            "Rotate the storage account keys in the Azure portal "
+            "and remove them from source"
+        ),
+        "pattern": re.compile(r"(?i)\baccountkey\s*[:=]\s*[0-9a-zA-Z+/]{80,90}={0,2}\b"),
+    },
+    {
         "id": "basic-auth-url",
         "severity": "high",
         "description": "Credentials embedded in a URL",
@@ -220,6 +292,10 @@ SECRET_RULES: list[dict] = [
     },
 ]
 
+# Rules that only apply to code sources (JS/CSS/maps) — page-level rules for
+# HTML are owned by ContentLeakStep to avoid duplicate findings.
+_PAGE_ONLY_RULES = {"email-address", "internal-ip"}
+
 _SKIP_PASSWORD_VALUES = {
     "yourpassword", "your_password", "password", "passwd", "changeme", "change_me",
     "xxx", "xxxx", "example", "placeholder", "123456", "12345678", "123456789",
@@ -249,12 +325,14 @@ def _is_skip_value(value: str) -> bool:
     return len(set(value)) <= 1
 
 
-def scan_for_secrets(content: str, source: str) -> list[dict]:
+def scan_for_secrets(content: str, source: str, skip_page_rules: bool = False) -> list[dict]:
     """Scan content with all secret/info-leak rules.
 
     Args:
         content: Text content to scan
         source: Human-readable source identifier (URL or path)
+        skip_page_rules: When True, skip HTML-page-level rules (email, internal
+            IP) that are owned by ContentLeakStep
 
     Returns:
         List of hit dicts: rule, value, masked, line
@@ -264,6 +342,8 @@ def scan_for_secrets(content: str, source: str) -> list[dict]:
 
     hits: list[dict] = []
     for rule in SECRET_RULES:
+        if skip_page_rules and rule["id"] in _PAGE_ONLY_RULES:
+            continue
         found = 0
         for match in rule["pattern"].finditer(content):
             if found >= MAX_HITS_PER_RULE:
@@ -342,7 +422,9 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
 
         hits = 0
         for source_name, content in sources:
-            for hit in scan_for_secrets(content, source_name):
+            # HTML pages are covered by ContentLeakStep for email/IP rules
+            skip_page_rules = source_name == "/"
+            for hit in scan_for_secrets(content, source_name, skip_page_rules):
                 if hits >= MAX_TOTAL_HITS:
                     break
                 self._add_finding(
