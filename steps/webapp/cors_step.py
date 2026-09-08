@@ -14,7 +14,16 @@ from base.http_step import BaseHttpStep
 from core.finding import Finding
 
 CANARY_ORIGIN = "https://evil.attacker.example"
-CORS_PROBE_PATHS = ["/", "/api"]
+CORS_PROBE_PATHS = [
+    "/",
+    "/api",
+    "/api/v1",
+    "/graphql",
+    "/account",
+    "/me",
+    "/user",
+    "/profile",
+]
 
 
 class CorsStep(BaseHttpStep):
@@ -50,9 +59,12 @@ class CorsStep(BaseHttpStep):
                 acac = (
                     response.headers.get("access-control-allow-credentials") or ""
                 ).strip().lower()
+                acam = (
+                    response.headers.get("access-control-allow-methods") or ""
+                ).strip()
                 if not acao:
                     continue
-                findings_here += self._evaluate(path, label, acao, acac)
+                findings_here += self._evaluate(path, label, acao, acac, acam)
 
         if checked == 0:
             self.logger.info("CORS check: no CORS headers observed")
@@ -65,7 +77,7 @@ class CorsStep(BaseHttpStep):
             self.logger.debug(f"CORS probe failed for {path} ({method}): {e}")
             return None
 
-    def _evaluate(self, path: str, label: str, acao: str, acac: str) -> int:
+    def _evaluate(self, path: str, label: str, acao: str, acac: str, acam: str = "") -> int:
         """Evaluate one CORS response; emit finding(s) and return count."""
         credentials = acac == "true"
         full_path = f"{self.target.url}{path} ({label})"
@@ -83,7 +95,7 @@ class CorsStep(BaseHttpStep):
                     ),
                     evidence=f"{full_path}: ACAO=*, ACAC=true",
                     recommendation="Use an explicit allowlist of trusted origins instead of *",
-                    raw={"acao": acao, "acac": acac, "path": path},
+                    raw={"acao": acao, "acac": acac, "acam": acam, "path": path},
                 )
             else:
                 self._add_finding(
@@ -99,7 +111,7 @@ class CorsStep(BaseHttpStep):
                         "Restrict Access-Control-Allow-Origin to trusted origins "
                         "where responses contain sensitive data"
                     ),
-                    raw={"acao": acao, "acac": acac, "path": path},
+                    raw={"acao": acao, "acac": acac, "acam": acam, "path": path},
                 )
             return 1
 
@@ -122,7 +134,7 @@ class CorsStep(BaseHttpStep):
                     "Validate the Origin against an explicit allowlist before "
                     "setting Access-Control-Allow-Origin"
                 ),
-                raw={"acao": acao, "acac": acac, "path": path},
+                    raw={"acao": acao, "acac": acac, "acam": acam, "path": path},
             )
             return 1
 

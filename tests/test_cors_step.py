@@ -129,6 +129,34 @@ class TestCorsStep:
         findings = await step.run()
         assert findings == []
 
+    async def test_allow_methods_recorded_in_raw(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(
+                        200,
+                        {
+                            "access-control-allow-origin": "https://evil.attacker.example",
+                            "access-control-allow-credentials": "true",
+                            "access-control-allow-methods": "GET, POST, PUT, DELETE",
+                        },
+                    )
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        finding = [f for f in findings if "reflection" in f.title][0]
+        assert finding.raw["acam"] == "GET, POST, PUT, DELETE"
+
+    async def test_expanded_paths_probed(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(side_effect=responder({}))
+        step = make_step(mock_http, mock_target, mock_config)
+        await step.run()
+        probed = [c.args[1] for c in mock_http.request.call_args_list]
+        assert any(url.endswith("/graphql") for url in probed)
+        assert any(url.endswith("/account") for url in probed)
+
     async def test_exceptions_tolerated(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(side_effect=ConnectionError("down"))
         step = make_step(mock_http, mock_target, mock_config)
