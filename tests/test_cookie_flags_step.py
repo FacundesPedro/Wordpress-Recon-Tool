@@ -67,6 +67,15 @@ class TestParseSetCookie:
         cookie = parse_set_cookie("id=xyz; SameSite=Strict")
         assert cookie["samesite"] is True
 
+    def test_samesite_value_captured(self):
+        cookie = parse_set_cookie("id=xyz; SameSite=None")
+        assert cookie["samesite"] is True
+        assert cookie["samesite_value"] == "none"
+
+    def test_samesite_value_absent(self):
+        cookie = parse_set_cookie("id=xyz")
+        assert cookie["samesite_value"] == ""
+
 
 class TestCookieFlagsStep:
     async def test_insecure_cookie_flagged(self, mock_http, mock_target, mock_config):
@@ -130,6 +139,42 @@ class TestCookieFlagsStep:
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert findings == []
+
+    async def test_samesite_none_without_secure(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(
+                        200,
+                        {"set-cookie": "session=abc123; Path=/; HttpOnly; SameSite=None"},
+                    )
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        titles = {f.title for f in findings}
+        assert "Cookies with SameSite=None but no Secure flag" in titles
+        samesite = [f for f in findings if "SameSite=None" in f.title][0]
+        assert samesite.severity == "medium"
+
+    async def test_samesite_none_with_secure_ok(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(
+                        200,
+                        {
+                            "set-cookie": "session=abc123; Path=/; HttpOnly; Secure; SameSite=None"
+                        },
+                    )
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not any("SameSite=None" in f.title for f in findings)
 
     async def test_http_target_skips_secure_check(self, mock_http, mock_target, mock_config):
         mock_target.url = "http://example.com"

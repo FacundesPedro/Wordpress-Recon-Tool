@@ -18,7 +18,11 @@ COOKIE_SCAN_PATHS = ["/", "/login", "/signin", "/wp-login.php"]
 
 
 def parse_set_cookie(header: str) -> dict:
-    """Parse a Set-Cookie header into name/value and boolean attributes."""
+    """Parse a Set-Cookie header into name/value and boolean attributes.
+
+    Returns a dict with `name`, `secure`, `httponly`, `samesite` (boolean:
+    attribute present), and `samesite_value` (lowercased value or "").
+    """
     parts = [p.strip() for p in header.split(";")]
     name_value = parts[0] if parts else ""
     if "=" in name_value:
@@ -26,12 +30,17 @@ def parse_set_cookie(header: str) -> dict:
     else:
         name = name_value
     attrs = {p.lower() for p in parts[1:]}
+    samesite_value = ""
+    for attr in attrs:
+        if attr.startswith("samesite="):
+            samesite_value = attr.split("=", 1)[1].strip().lower()
 
     return {
         "name": name.strip(),
         "secure": any(a == "secure" for a in attrs),
         "httponly": any(a == "httponly" for a in attrs),
         "samesite": any(a.startswith("samesite=") for a in attrs),
+        "samesite_value": samesite_value,
     }
 
 
@@ -137,6 +146,30 @@ class CookieFlagsStep(BaseHttpStep):
                 evidence=", ".join(missing_samesite),
                 recommendation="Set SameSite=Lax (or Strict) on session cookies",
                 raw={"cookies": missing_samesite},
+            )
+
+        samesite_none_insecure = [
+            f"{cookie['name']} ({key.split(':')[0]})"
+            for key, cookie in seen.items()
+            if cookie["samesite_value"] == "none" and not cookie["secure"]
+        ]
+
+        if samesite_none_insecure:
+            self._add_finding(
+                module=self.MODULE,
+                severity="medium",
+                title="Cookies with SameSite=None but no Secure flag",
+                description=(
+                    "Cookie(s) use SameSite=None without the Secure flag, which "
+                    "browsers reject and which indicates a broken CSRF "
+                    "mitigation: " + ", ".join(samesite_none_insecure)
+                ),
+                evidence=", ".join(samesite_none_insecure),
+                recommendation=(
+                    "Add the Secure attribute to cookies using SameSite=None "
+                    "(or switch to SameSite=Lax/Strict)"
+                ),
+                raw={"cookies": samesite_none_insecure},
             )
 
         return self.findings
