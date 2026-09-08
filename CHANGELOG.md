@@ -1,10 +1,32 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-04
+## Last Updated: 2026-09-08
 
 ---
 
 ## Recent Changes
+
+### S16 - Webapp Research Expansion: 5 new steps + 6 refinements (2026-09-08)
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/webapp/csp_audit_step.py` | **NEW** | `CspAuditStep` (WSTG 4.2.12) — parses a present CSP; flags `unsafe-inline`/`unsafe-eval`/unsafe hashes and missing `object-src 'none'`/`base-uri`/`form-action`/`script-src`/violation reporting |
+| `steps/webapp/api_surface_step.py` | **NEW** | `ApiSurfaceStep` (WSTG 4.12.1/4.12.99/4.1.4) — robots.txt + sitemap discovery, OpenAPI/Swagger detection with endpoint/sensitive-path counts, GraphQL introspection probe, API path fuzzing |
+| `steps/webapp/admin_surface_step.py` | **NEW** | `AdminSurfaceStep` (WSTG 4.2.5/4.2.13) — 46 console/monitoring/debug paths; per-path severity (heapdump/actuator = high), aggregated "behind auth" finding, security.txt |
+| `steps/webapp/open_redirect_step.py` | **NEW** | `OpenRedirectStep` (WSTG 4.11.4) — 16 paths × 15 redirect params with canary URLs, `follow_redirects=False`, request-capped; high on auth paths |
+| `steps/webapp/host_header_step.py` | **NEW** | `HostHeaderStep` (WSTG 4.7.17) — canary `Host:`/`X-Forwarded-Host:` vs baseline: unknown vhost, body reflection, XFH reflection (cookie-domain poisoning) |
+| `steps/webapp/source_review_step.py` | **UPDATED** | 9 new gitleaks-verified rules (OpenAI, Anthropic, GitLab, Notion, Telegram, Discord, Heroku, Terraform, Azure); AWS key pattern requires `secret` context; email/IP rules HTML-skipped (`_PAGE_ONLY_RULES`) |
+| `steps/webapp/sourcemap_step.py` | **UPDATED** | Parses `sourceMappingURL=` comments, resolves map URLs relative to JS file; `.js.map` suffix fallback for unfetched sources |
+| `steps/webapp/cookie_flags_step.py` | **UPDATED** | Captures SameSite value; `SameSite=None` without `Secure` → medium finding |
+| `steps/webapp/cors_step.py` | **UPDATED** | 8 API probe paths (was 3); records `Access-Control-Allow-Methods` in raw |
+| `steps/webapp/stack_trace_step.py` | **UPDATED** | Malformed-JSON POST probes to `/api` + `/graphql`; `_scan_response` refactor |
+| `steps/webapp/content_leak_step.py` | **UPDATED** | BFS crawl to 2 link levels (capped `webapp_max_pages`); `http://` mixed-content detection on HTTPS pages |
+| `wordlists/webapp/api_paths.txt` | **NEW** | 27 API/documentation paths for `ApiSurfaceStep` |
+| `wordlists/webapp/admin_paths.txt` | **NEW** | 46 admin/console/debug paths for `AdminSurfaceStep` |
+| `config.py` | **ADDED** | `webapp_open_redirect`, `webapp_redirect_max_requests`, `webapp_host_probe`, `webapp_max_api_paths`, `webapp_max_admin_paths` |
+| `modules/webapp_module.py`, `steps/webapp/__init__.py` | **UPDATED** | 13 steps registered/exported |
+| 5 test files | **NEW** | 57 tests (`test_csp_audit_step.py`, `test_api_surface_step.py`, `test_admin_surface_step.py`, `test_open_redirect_step.py`, `test_host_header_step.py`) |
+| 7 test files | **UPDATED** | 23 new tests in existing webapp suites (source review, sourcemap, cookie flags, CORS, stack trace, content leak, module registry) |
+| `README.md`, `docs/NEXT_STEPS.md`, `docs/REFERENCES.md`, `AGENTS.md`, `wordlists/README.md` | **UPDATED** | webapp expansion documentation: 13 steps, WSTG references, new config vars, new wordlists; suite 1419 passing (4 pre-existing weasyprint env failures) |
 
 ### S15 - Generic Web Security: webapp module + web profile + Nmap (2026-09-04)
 | File | Change | Notes |

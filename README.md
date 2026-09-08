@@ -102,8 +102,13 @@ Non-WordPress, non-intrusive checks for internal client assessments (OWASP WSTG-
 - **Cookie flags audit** — `Secure`/`HttpOnly`/`SameSite` on entry paths
 - **CORS misconfiguration** — Wildcard origin, origin reflection, reflection with credentials
 - **Stack trace exposure** — Framework error signatures on malformed-input probes (recon only)
-- **Content information leakage** — Internal IPs/hostnames, emails, meta generator, config-like comments
+- **Content information leakage** — BFS crawl (2 link levels) for internal IPs/hostnames, emails, meta generator, config-like comments; mixed-content detection on HTTPS pages
 - **Header quality** — Weak-but-present headers (HSTS max-age, `X-Frame-Options: NONE`, CSP without `frame-ancestors`)
+- **CSP audit** — Weak/missing Content-Security-Policy directives (`unsafe-inline`/`unsafe-eval`, no `object-src 'none'`/`base-uri`/`form-action`, no violation reporting)
+- **API surface discovery** — robots.txt/sitemap, OpenAPI/Swagger docs, GraphQL introspection, API endpoint mapping
+- **Admin surface enumeration** — Exposed consoles, monitoring, and debug endpoints (actuator, heapdump, Grafana, …)
+- **Open redirect** — Canary-URL probes on redirect parameters (`?next=`, `?url=`, …) with redirect detection
+- **Host header injection** — Canary `Host:`/`X-Forwarded-Host` probes for unknown vhosts and reflection
 
 ### Port Scanning (Nmap, optional)
 - **Nmap port scan** — Top-N ports with service version detection (`-sT -sV --top-ports`), JSON output, risky-service severity escalation
@@ -260,7 +265,7 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | `xmlrpc` | 5 | XML-RPC detection, methods, credentials, multicall, SSRF |
 | `secrets` | 5 | Config backups, .env files, git exposure, debug logs |
 | `ssrf` | 2 | oEmbed proxy, pingback SSRF |
-| `webapp` | 8 | Generic web app checks (source credential review, CORS, cookies, HTTP methods, headers, stack traces) |
+| `webapp` | 13 | Generic web app checks (source credential review, CORS, cookies, HTTP methods, headers, stack traces, CSP, API surface, admin surface, open redirect, host header) |
 | `tools` | 8 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor, Nmap) |
 
 ## Environment Variables

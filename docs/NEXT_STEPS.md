@@ -1,6 +1,6 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-09-04  
+**Last Updated:** 2026-09-08  
 **Current Branch:** `main`  
 **HEAD:** `443702e` — Update brute-force and http_client tests for concurrency and progress features (1200 tests passing)
 
@@ -53,8 +53,9 @@
 | 41 | `be43873` | Add progress logging to login brute-force step |
 | 42 | `443702e` | Update brute-force and http_client tests for concurrency and progress features |
 | 43 | — | **Generic web security: `webapp` module + `web` profile + Nmap integration** — 10 new steps, 139 new tests (see "Generic Web App Security ✅" below) |
+| 44 | — | **Webapp module expansion: 5 new research steps + 6 refinements** — CSP audit, API surface, admin surface, open redirect, host header; 80 new tests, 1419 total (see "Webapp Research Expansion ✅" below) |
 
-**Current state:** 13 modules, 70 steps, 1339 tests passing (4 pre-existing weasyprint environment failures unrelated to code). Generic web app security module (`webapp`), `web` profile for non-WordPress targets, and Nmap port/NSE scanning added — see AGENTS.md for config reference.
+**Current state:** 13 modules, 75 steps, 1419 tests passing (4 pre-existing weasyprint environment failures unrelated to code). Generic web app security module (`webapp`, now 13 steps), `web` profile for non-WordPress targets, and Nmap port/NSE scanning added — see AGENTS.md for config reference.
 
 ---
 
@@ -309,20 +310,25 @@ Both brute-force steps use `asyncio.Semaphore` + batched `asyncio.gather` for bo
 
 **Why:** Reuse this tool for web security analysis of internal clients that are not WordPress sites. Extends the tool from "WP recon" to "general web security assessment" with non-intrusive, reusable checks.
 
-**Status:** Implemented. Two new areas: a `webapp` module (8 pure-HTTP steps) and Nmap integration (2 tool steps), plus a `web` scan profile.
+**Status:** Implemented. Two new areas: a `webapp` module (13 pure-HTTP steps) and Nmap integration (2 tool steps), plus a `web` scan profile.
 
-### 1. `webapp` Module (tier 2, 8 steps)
+### 1. `webapp` Module (tier 2, 13 steps)
 
 | Step | WSTG ref | What it checks |
 |------|----------|----------------|
-| `SourceReviewStep` | 4.1.5 | Scans HTML/JS/sourcemaps for embedded credentials (AWS, GitHub, Slack, JWT, PEM keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, DB connection strings, basic-auth URLs, hardcoded passwords) + info leaks (internal IPs, cloud metadata, emails). Rules adapted from gitleaks (Go RE2 → Python `re`). Secrets masked in evidence, full value in `raw`. |
-| `SourcemapStep` | 4.1.5 | Detects exposed `.js.map` files (original unminified source). |
+| `SourceReviewStep` | 4.1.5 | Scans HTML/JS/sourcemaps for embedded credentials (AWS, GitHub, Slack, JWT, PEM keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, OpenAI, Anthropic, GitLab, Notion, Telegram, Discord, Heroku, Terraform, Azure, DB connection strings, basic-auth URLs, hardcoded passwords) + info leaks (internal IPs, cloud metadata, emails). Rules adapted from gitleaks (Go RE2 → Python `re`); AWS secret keys require `secret`-context to cut false positives; email/internal-IP rules are JS-only (HTML handled by `ContentLeakStep`). Secrets masked in evidence, full value in `raw`. |
+| `SourcemapStep` | 4.1.5 | Detects sourcemaps via `sourceMappingURL=` comments in fetched JS (map URL resolved relative to the JS file), with a `.js.map` suffix fallback for unfetched sources. |
 | `HttpMethodsStep` | 4.2.6 | TRACE/PUT/DELETE/PROPFIND enabled; missing `Allow` header. |
-| `CookieFlagsStep` | 4.6.2 | Set-Cookie audit: `Secure`/`HttpOnly`/`SameSite` on common entry paths. |
-| `CorsStep` | 4.11.7 | Canary-Origin probes: wildcard `ACAO`, origin reflection, reflection with credentials. |
-| `StackTraceStep` | 4.8 | Malformed-shape probes (recon only) + framework error signatures (Python, PHP, Django, Rails, .NET, Spring, SQL). |
-| `ContentLeakStep` | 4.1.5 | Homepage + discovered links: internal IPs, internal hostnames, emails, meta generator, config-like HTML comments. |
+| `CookieFlagsStep` | 4.6.2 | Set-Cookie audit: `Secure`/`HttpOnly`/`SameSite` on common entry paths; flags `SameSite=None` without `Secure`. |
+| `CorsStep` | 4.11.7 | Canary-Origin probes across 8 API paths: wildcard `ACAO`, origin reflection, reflection with credentials; records `Access-Control-Allow-Methods`. |
+| `StackTraceStep` | 4.8 | Malformed-shape probes (recon only), incl. malformed-JSON POSTs to `/api` and `/graphql` + framework error signatures (Python, PHP, Django, Rails, .NET, Spring, SQL). |
+| `ContentLeakStep` | 4.1.5 | BFS crawl (homepage + 2 link levels, capped at `webapp_max_pages`): internal IPs, internal hostnames, emails, meta generator, config-like HTML comments; plus `http://` mixed-content detection on HTTPS pages. |
 | `HeaderQualityStep` | 4.2.7/4.2.12/4.2.14 | Present-but-weak headers: HSTS max-age/includeSubDomains, `X-Frame-Options: NONE`, CSP without `frame-ancestors`. Complements `infrastructure`'s missing-header check. |
+| `CspAuditStep` | 4.2.12 | Audits a *present* CSP for weak directives (`unsafe-inline`/`unsafe-eval`/unsafe hashes) and missing hardening (`object-src 'none'`, `base-uri`, `form-action`, `script-src`, violation reporting). |
+| `ApiSurfaceStep` | 4.12.1/4.12.99/4.1.4 | Maps API surface: robots.txt + sitemap discovery, OpenAPI/Swagger doc detection (endpoint + sensitive-path count), GraphQL introspection probe, API endpoint discovery over `wordlists/webapp/api_paths.txt` (cap `webapp_max_api_paths`). |
+| `AdminSurfaceStep` | 4.2.5/4.2.13 | Probes `wordlists/webapp/admin_paths.txt` (46 console/monitoring/debug paths, cap `webapp_max_admin_paths`); per-path severity (heapdump/actuator = high, consoles = medium), aggregated "behind authentication" finding, security.txt detection. |
+| `OpenRedirectStep` | 4.11.4 | Canary-URL probes: 16 redirect-capable paths × 15 params (cap `webapp_redirect_max_requests`, `follow_redirects=False`); 3xx `Location` to canary = open redirect (high on auth paths, medium otherwise). |
+| `HostHeaderStep` | 4.7.17 | Canary `Host:` + `X-Forwarded-Host:` probes against a baseline: unknown-vhost response, canary reflected in body, XFH reflection (cookie-domain poisoning surface). |
 
 **Source discovery** (`utils/source_discovery.py`): static asset extraction from HTML (`<script src>`, `<link>`, CSS `url()`, inline JS literals, `<a href>`) + a built-in fuzzing pass over `wordlists/webapp/assets.txt` (resolvable via `WP_SOURCE_ASSETS`), same-origin normalization, and bounded fetching (`WP_SOURCE_SCAN_MAX_JS` / `WP_SOURCE_SCAN_MAX_BYTES`).
 
@@ -341,9 +347,25 @@ Connect scan (`-sT`) works without root; direct host scan (no SSRF blocklist —
 
 **Usage:** `python main.py -t https://client-site.com -p web --nmap --nmap-scripts -f all`
 
-**Config:** `WP_ENABLE_NMAP`, `WP_ENABLE_NMAP_SCRIPTS`, `WP_NMAP_TOP_PORTS`, `WP_NMAP_PORTS`, `WP_NMAP_TIMEOUT`, `WP_SOURCE_SCAN_MAX_JS`, `WP_SOURCE_SCAN_MAX_BYTES`, `WP_SOURCE_SCAN_SOURCEMAPS`, `WP_SOURCE_SCAN_FUZZ`, `WP_WEBAPP_MAX_PAGES`.
+**Config:** `WP_ENABLE_NMAP`, `WP_ENABLE_NMAP_SCRIPTS`, `WP_NMAP_TOP_PORTS`, `WP_NMAP_PORTS`, `WP_NMAP_TIMEOUT`, `WP_SOURCE_SCAN_MAX_JS`, `WP_SOURCE_SCAN_MAX_BYTES`, `WP_SOURCE_SCAN_SOURCEMAPS`, `WP_SOURCE_SCAN_FUZZ`, `WP_WEBAPP_MAX_PAGES`, `WP_WEBAPP_OPEN_REDIRECT`, `WP_WEBAPP_REDIRECT_MAX_REQUESTS`, `WP_WEBAPP_HOST_PROBE`, `WP_WEBAPP_MAX_API_PATHS`, `WP_WEBAPP_MAX_ADMIN_PATHS`.
 
-**Key files:** `steps/webapp/*`, `steps/tools/nmap_step.py`, `utils/source_discovery.py`, `modules/webapp_module.py`, `modules/__init__.py`, `modules/tools_module.py`, `main.py`, `config.py`, `wordlists/webapp/assets.txt`, `utils/tool_version_checker.py` (nmap version pattern).
+**Key files:** `steps/webapp/*`, `steps/tools/nmap_step.py`, `utils/source_discovery.py`, `modules/webapp_module.py`, `modules/__init__.py`, `modules/tools_module.py`, `main.py`, `config.py`, `wordlists/webapp/assets.txt`, `wordlists/webapp/api_paths.txt`, `wordlists/webapp/admin_paths.txt`, `utils/tool_version_checker.py` (nmap version pattern).
+
+### 4. Webapp Research Expansion (5 new steps + 6 refinements)
+
+**New steps** (see table above): `CspAuditStep` (4.2.12), `ApiSurfaceStep` (4.12.1/4.12.99/4.1.4), `AdminSurfaceStep` (4.2.5/4.2.13), `OpenRedirectStep` (4.11.4), `HostHeaderStep` (4.7.17). All are config-gated and request-capped, following the existing non-intrusive convention.
+
+**Refinements to existing steps:**
+- `SourceReviewStep` — 9 new gitleaks-verified rules (OpenAI, Anthropic, GitLab PAT, Notion, Telegram bot token, Discord webhook, Heroku, Terraform, Azure storage account key); AWS secret-key pattern tightened to require `secret` context; email/internal-IP rules skipped for HTML (owned by `ContentLeakStep`).
+- `SourcemapStep` — parses `sourceMappingURL=` comments from fetched JS, resolves map URLs relative to the JS file; `.js.map` fallback for unfetched sources.
+- `CookieFlagsStep` — captures SameSite value; `SameSite=None` without `Secure` → medium finding.
+- `CorsStep` — probes 8 API paths (was 3); records `Access-Control-Allow-Methods`.
+- `StackTraceStep` — adds malformed-JSON POST probes to `/api` and `/graphql`.
+- `ContentLeakStep` — BFS crawl to 2 link levels (was homepage-only) with a `queued` set to avoid dequeue-skip; adds mixed-content (`http://` subresources on HTTPS pages) detection.
+
+**New wordlists:** `wordlists/webapp/api_paths.txt` (27 API/doc paths), `wordlists/webapp/admin_paths.txt` (46 admin/console/debug paths). Both resolvable via the standard wordlist resolution chain.
+
+**Tests:** 80 new tests across 5 new files (`test_csp_audit_step.py`, `test_api_surface_step.py`, `test_admin_surface_step.py`, `test_open_redirect_step.py`, `test_host_header_step.py`) + updates to the 7 existing webapp suites. Suite: 1419 passing.
 
 ---
 

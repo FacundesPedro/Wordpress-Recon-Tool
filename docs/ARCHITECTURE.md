@@ -54,7 +54,7 @@ wordpress_testing_tool/
 │   ├── runner.py                   # Async orchestrator (risk-tier parallel execution)
 │   └── aggregator.py               # Collects + deduplicates all findings
 │
-├── steps/                          # ── ORGANISMS (70 steps across 13 modules) ──
+├── steps/                          # ── ORGANISMS (75 steps across 13 modules) ──
 │   │
 │   ├── access/                     # Authenticated REST API + login + hardening (7)
 │   │   ├── plugins_step.py         # WpJsonPluginsStep
@@ -408,7 +408,7 @@ MODULE_REGISTRY = {
     "xmlrpc":          XmlrpcModule,         # 5 steps — detect, methods, creds, multicall, SSRF
     "secrets":         SecretsModule,        # 5 steps — config backup, .env, .git, debug log, phpinfo
     "ssrf":            SsrfModule,           # 2 steps — oEmbed proxy, pingback SSRF
-    "webapp":          WebappModule,         # 8 steps — source review, CORS, cookies, methods, headers, ...
+    "webapp":          WebappModule,         # 13 steps — source review, CORS, cookies, methods, CSP, API/admin surface, redirects, ...
     "tools":           ToolsModule,          # 8 steps — WPScan, Nuclei, FFUF (3), OpenDoor, Nmap (2)
 }
 

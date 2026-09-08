@@ -30,7 +30,7 @@
 
 ## Overview
 
-The tool is organized into **13 modules** containing **70 steps** total:
+The tool is organized into **13 modules** containing **75 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|
@@ -45,7 +45,7 @@ The tool is organized into **13 modules** containing **70 steps** total:
 | [xmlrpc](#module-xml-rpc) | 5 | XML-RPC testing (methods, SSRF, brute force) |
 | [secrets](#module-secrets) | 5 | Sensitive file exposure (config, .env, .git) |
 | [ssrf](#module-ssrf) | 2 | SSRF vulnerability testing |
-| [webapp](#module-webapp) | 8 | Generic web app security checks (non-WordPress targets) |
+| [webapp](#module-webapp) | 13 | Generic web app security checks (non-WordPress targets) |
 | [tools](#module-tools) | 8 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor, Nmap) |
 
 ---
@@ -1279,7 +1279,8 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 | **Config** | `WP_SOURCE_SCAN_SOURCEMAPS` (default true) |
 
 **What it does:**
-- Probes for `.js.map` sourcemaps alongside discovered JS files
+- Parses `sourceMappingURL=` comments from fetched JS and fetches the referenced map (resolved relative to the JS file)
+- Falls back to probing `.js.map` alongside discovered JS files
 - Sourcemaps expose the original unminified source code
 
 #### HttpMethodsStep
@@ -1306,6 +1307,7 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 **What it does:**
 - Audits `Set-Cookie` attributes (WSTG 4.6.2) on common entry paths
 - Reports missing `Secure`, `HttpOnly`, and `SameSite` flags
+- Flags `SameSite=None` without `Secure` (cookie cross-site exposure)
 
 #### CorsStep
 
@@ -1316,8 +1318,8 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 | **Severity** | Medium (credentials), Info (wildcard) |
 
 **What it does:**
-- Canary-Origin CORS probes (WSTG 4.11.7)
-- Wildcard `Access-Control-Allow-Origin`, origin reflection, reflection with `Access-Control-Allow-Credentials`
+- Canary-Origin CORS probes (WSTG 4.11.7) across 8 API paths
+- Wildcard `Access-Control-Allow-Origin`, origin reflection, reflection with `Access-Control-Allow-Credentials`; records `Access-Control-Allow-Methods`
 
 #### StackTraceStep
 
@@ -1328,7 +1330,7 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 | **Severity** | Medium |
 
 **What it does:**
-- Recon-only malformed-shape probes plus framework error signature scanning (WSTG 4.8)
+- Recon-only malformed-shape probes (incl. malformed-JSON POSTs to `/api` and `/graphql`) plus framework error signature scanning (WSTG 4.8)
 - Detects Python, PHP, Django, Rails, .NET, Spring, and SQL error traces
 
 #### ContentLeakStep
@@ -1341,8 +1343,9 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 | **Config** | `WP_WEBAPP_MAX_PAGES` (default 10) |
 
 **What it does:**
-- Reviews homepage + discovered same-origin links for information leakage (WSTG 4.1.5)
+- BFS crawl (homepage + 2 link levels, capped by `WP_WEBAPP_MAX_PAGES`) for information leakage (WSTG 4.1.5)
 - Internal IPs/hostnames, email addresses, meta generator, config-like HTML comments
+- Mixed-content detection: `http://` subresources on HTTPS pages
 
 #### HeaderQualityStep
 
@@ -1356,6 +1359,80 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 - Audits present-but-weak security headers (WSTG 4.2.7/4.2.12/4.2.14)
 - HSTS without sufficient `max-age`/`includeSubDomains`, `X-Frame-Options: NONE`, CSP without `frame-ancestors`
 - Complements `infrastructure` module's missing-header checks
+
+#### CspAuditStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/csp_audit_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Info–Medium |
+
+**What it does:**
+- Fetches the homepage `Content-Security-Policy` and parses it into directives (WSTG 4.2.12)
+- Weak directives: `unsafe-inline` / `unsafe-eval` in script sources, unsafe hash sources
+- Missing hardening: `object-src 'none'`, `base-uri`, `form-action`, explicit `script-src`, violation reporting (`report-to`/`report-uri`)
+- Only runs when a CSP is present (`HeaderQualityStep` covers weak/missing overlap; `infrastructure` covers absence)
+
+#### ApiSurfaceStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/api_surface_step.py` |
+| **Base Class** | `BaseHttpStep`, `WordlistDependencyMixin` |
+| **Severity** | Info–Medium |
+| **Config** | `WP_WEBAPP_MAX_API_PATHS` (default 30, range 5-200) |
+| **Wordlist** | `wordlists/webapp/api_paths.txt` (27 API/doc paths) |
+
+**What it does:**
+- Maps the API surface (WSTG 4.12.1/4.12.99/4.1.4): probes robots.txt (disallowed API paths), sitemap.xml `<loc>` entries, and a wordlist of API/documentation paths
+- Classifies 200 responses: OpenAPI/Swagger specs (counts operations and sensitive paths like `/auth`, `/admin`, `/user`), Swagger UI/Redoc HTML, GraphQL endpoints
+- POSTs a harmless GraphQL introspection query to detected `/graphql` endpoints
+
+#### AdminSurfaceStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/admin_surface_step.py` |
+| **Base Class** | `BaseHttpStep`, `WordlistDependencyMixin` |
+| **Severity** | Info–High |
+| **Config** | `WP_WEBAPP_MAX_ADMIN_PATHS` (default 40, range 5-300) |
+| **Wordlist** | `wordlists/webapp/admin_paths.txt` (46 admin/service paths) |
+
+**What it does:**
+- Enumerates exposed admin/management/service interfaces (WSTG 4.2.5/4.2.13): consoles (Grafana, Jenkins, phpMyAdmin, Kibana), monitoring/status pages, Spring actuator and heapdump, debug endpoints
+- Per-path severity: heapdump/actuator = high (memory/dump exposure), consoles = medium, status/info pages = info
+- 401/403 responses are aggregated into a single "interfaces behind authentication" info finding
+- Detects `.well-known/security.txt`
+
+#### OpenRedirectStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/open_redirect_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Medium–High |
+| **Config** | `WP_WEBAPP_OPEN_REDIRECT` (default true), `WP_WEBAPP_REDIRECT_MAX_REQUESTS` (default 60, range 10-500) |
+
+**What it does:**
+- Detects open redirects (WSTG 4.11.4): 16 redirect-capable paths (`/login`, `/logout`, `/redirect`, `/oauth/...`, …) × 15 parameter names (`next`, `url`, `redirect_uri`, `dest`, …)
+- Each probe appends a unique canary URL and sends the request with `follow_redirects=False`; a 3xx whose `Location` points at the canary (directly or URL-encoded) is an open redirect
+- High severity on auth-related paths (session-fixation/phishing surface), medium otherwise; capped at 10 findings
+
+#### HostHeaderStep
+
+| Property | Value |
+|----------|-------|
+| **File** | `steps/webapp/host_header_step.py` |
+| **Base Class** | `BaseHttpStep` |
+| **Severity** | Low–Medium |
+| **Config** | `WP_WEBAPP_HOST_PROBE` (default true) |
+
+**What it does:**
+- Host-header injection probes (WSTG 4.7.17): baseline `GET /`, then the same request with canary `Host:` and `X-Forwarded-Host:` headers
+- Unknown virtual host: canary `Host` gets a different/valid response than the 404 baseline (vhost takeover surface)
+- Reflection: canary reflected in response body or in `Set-Cookie` (cookie-domain poisoning → session hijack)
+- `X-Forwarded-Host` reflection is reported as medium (often trusted by app frameworks)
 
 ---
 

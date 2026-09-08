@@ -2,7 +2,7 @@
 
 **Purpose:** Index of external APIs, tools, wordlists, and documentation that this project depends on or integrates with. Keep this up to date as dependencies change.
 
-**Last Updated:** 2026-09-04
+**Last Updated:** 2026-09-08
 
 ---
 
@@ -44,7 +44,11 @@
 | [OWASP WSTG — Testing Cross Origin Resource Sharing (4.11.7)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/07-Testing_Cross_Origin_Resource_Sharing) | Methodology reference for `CorsStep` (wildcard origin, origin reflection, credentials). |
 | [OWASP WSTG — Error Handling (4.8)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/) | Methodology reference for `StackTraceStep` (stack traces, verbose errors). |
 | [OWASP WSTG — Review Web Page Content for Information Leakage (4.1.5)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Web_Page_Content_for_Information_Leakage) | Methodology reference for `ContentLeakStep` and `SourceReviewStep` info-leak rules. |
-| [OWASP WSTG — HSTS (4.2.7) / CSP (4.2.12) / Other Headers (4.2.14)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/) | Methodology reference for `HeaderQualityStep` (HSTS max-age, X-Frame-Options, CSP frame-ancestors). Complements `infrastructure/headers_step.py` (missing-header check). |
+| [OWASP WSTG — HSTS (4.2.7) / CSP (4.2.12) / Other Headers (4.2.14)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/) | Methodology reference for `HeaderQualityStep` (HSTS max-age, X-Frame-Options, CSP frame-ancestors) and `CspAuditStep` (weak/missing CSP directives). Complements `infrastructure/headers_step.py` (missing-header check). |
+| [OWASP WSTG — Test for Client-side URL Redirect (4.11.4)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/04-Testing_for_Client-side_URL_Redirect) | Methodology reference for `OpenRedirectStep` (unvalidated redirect parameters via canary URLs). |
+| [OWASP WSTG — Testing for Host Header Injection (4.7.17)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/17-Testing_for_Host_Header_Injection) | Methodology reference for `HostHeaderStep` (vhost takeover surface, Host/X-Forwarded-Host reflection, cookie-domain poisoning). |
+| [OWASP WSTG — Enumerate Infrastructure and Application Admin Interfaces (4.2.5)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/05-Enumerate_Infrastructure_and_Application_Admin_Interfaces) | Methodology reference for `AdminSurfaceStep` (exposed consoles, monitoring, debug endpoints; path confusion per 4.2.13). |
+| [OWASP WSTG — API Reconnaissance (4.12.1) / Testing GraphQL (4.12.99)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_and_Web_Services_Testing/) | Methodology reference for `ApiSurfaceStep` (API/doc discovery, OpenAPI parsing, GraphQL introspection). |
 | [gitleaks — default rules config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) | **Source of the secret-detection regex rules** in `steps/webapp/source_review_step.py` (AWS, GitHub, Slack, JWT, PEM keys, GCP, Stripe, Twilio, SendGrid, npm, HuggingFace, Mailgun, DB connection strings, basic-auth URLs). Rules are adapted from Go RE2 to Python `re` syntax (gitleaks `(?-i)` flag-scopes are not supported by Python). |
 | [gitleaks — documentation](https://github.com/gitleaks/gitleaks) | Secret scanner used as the pattern reference. Rule structure (`id`, `description`, `regex`, `keywords`, `entropy`) inspired the `SECRET_RULES` design. |
 | [MDN — Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie) | Cookie attribute reference (`Secure`, `HttpOnly`, `SameSite`) for `CookieFlagsStep` parsing. |

@@ -324,6 +324,34 @@ cp my-assets.txt ~/.config/recon-wp/wordlists/webapp/assets.txt
 One asset path per line; `#` comments and blank lines are ignored. Paths are
 resolved relative to the target origin (absolute or root-relative).
 
+## Webapp API/Documentation Paths (API Surface Discovery)
+
+Used by `ApiSurfaceStep` (WSTG 4.12.1/4.12.99) to probe API roots, OpenAPI/
+Swagger documentation, and GraphQL endpoints.
+
+**Built-in file**: `wordlists/webapp/api_paths.txt` (27 API/doc paths)
+
+Probing is capped by `WP_WEBAPP_MAX_API_PATHS` (default 30). Paths that return
+200 are classified (OpenAPI spec, Swagger UI, GraphQL, plain API endpoint) and
+reported.
+
+## Webapp Admin/Management Paths (Admin Surface Enumeration)
+
+Used by `AdminSurfaceStep` (WSTG 4.2.5) to probe for exposed management
+consoles, monitoring dashboards, and service/debug endpoints (actuator,
+heapdump, Grafana, Jenkins, phpMyAdmin, security.txt, …).
+
+**Built-in file**: `wordlists/webapp/admin_paths.txt` (46 admin/service paths)
+
+Probing is capped by `WP_WEBAPP_MAX_ADMIN_PATHS` (default 40). 2xx responses
+report the path with a per-path severity (heapdump/actuator = high, consoles =
+medium); 401/403 responses are aggregated into a single "behind authentication"
+finding.
+
+Both files follow the standard resolution chain (config key →
+`~/.config/recon-wp/wordlists/webapp/` → built-in) and support custom
+overrides the same way as `assets.txt`.
+
 ---
 
 ## External Wordlist Directory (Persistent Overrides)
@@ -352,7 +380,9 @@ CLI flags:
     ├── sensitive_paths.txt
     └── wp_paths.txt
 └── webapp/
-    └── assets.txt
+    ├── assets.txt
+    ├── api_paths.txt
+    └── admin_paths.txt
 ```
 
 ---
