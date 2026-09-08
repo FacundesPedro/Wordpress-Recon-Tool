@@ -74,6 +74,27 @@ class TestStackTraceStep:
         findings = await step.run()
         assert findings == []
 
+    async def test_post_malformed_json_detected(self, mock_http, mock_target, mock_config):
+        body = (
+            "<pre>org.springframework.http.converter.HttpMessageNotReadableException: "
+            "JSON parse error</pre>"
+        )
+
+        def responder(method, url, **kwargs):
+            if method == "POST":
+                return response(400, body)
+            return response(200, "<html>ok</html>")
+
+        mock_http.request = AsyncMock(side_effect=responder)
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        assert any("Spring exception" in f.title for f in findings)
+        post_calls = [
+            c for c in mock_http.request.call_args_list if c.args[0] == "POST"
+        ]
+        assert len(post_calls) == 2
+
     async def test_exceptions_tolerated(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(side_effect=ConnectionError("down"))
         step = make_step(mock_http, mock_target, mock_config)

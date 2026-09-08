@@ -8,7 +8,8 @@ and looks for verbose framework error output.
 """
 
 # WHAT: Detects stack traces and verbose errors in HTTP responses
-# HOW: Sends malformed-shape query probes, matches known error signatures
+# HOW: Sends malformed-shape query probes and malformed JSON POST bodies,
+#      matches known error signatures
 # WHY: Stack traces leak code paths, frameworks, versions, and config
 
 from base.http_step import BaseHttpStep
@@ -19,6 +20,11 @@ PROBE_PATHS = [
     ("?probe=%", "malformed percent encoding"),
     ("?probe[]=", "array parameter"),
     ("?probe=1%00", "null byte"),
+]
+
+POST_PROBES = [
+    ("/api", "malformed JSON body"),
+    ("/graphql", "malformed JSON body"),
 ]
 
 ERROR_SIGNATURES: list[tuple[str, str, str]] = [
@@ -61,48 +67,64 @@ class StackTraceStep(BaseHttpStep):
             except Exception as e:
                 self.logger.debug(f"Probe {label} failed: {e}")
                 continue
+            self._scan_response(label, response, reported)
 
-            status = response.status_code
-            text = getattr(response, "text", "") or ""
-            if status < 400 or not text:
+        for path, label in POST_PROBES:
+            try:
+                response = await self.post(
+                    path,
+                    content="{invalid-json",
+                    headers={"Content-Type": "application/json"},
+                )
+            except Exception as e:
+                self.logger.debug(f"POST probe {path} failed: {e}")
                 continue
-
-            for name, pattern, framework in ERROR_SIGNATURES:
-                if name in reported:
-                    continue
-                if _matches(pattern, text):
-                    reported.add(name)
-                    excerpt = _excerpt_around(text, pattern, max_len=300)
-                    self._add_finding(
-                        module=self.MODULE,
-                        severity=self.severity,
-                        title=f"{name} leaked in error response",
-                        description=(
-                            f"A malformed {label} probe ({self.target.url}/"
-                            f"{suffix.lstrip('/')}) returned HTTP {status} "
-                            f"containing a {name}"
-                            + (f" ({framework})" if framework != "unknown" else "")
-                            + "."
-                        ),
-                        evidence=excerpt,
-                        recommendation=(
-                            "Disable debug mode and return generic error pages "
-                            "in production; log details server-side only"
-                        ),
-                        raw={
-                            "probe": suffix,
-                            "label": label,
-                            "status": status,
-                            "signature": name,
-                            "framework": framework,
-                        },
-                    )
-                    self.logger.info(f"Stack trace signature found: {name}")
+            self._scan_response(label, response, reported)
 
         if not reported:
             self.logger.info("No verbose error signatures detected")
 
         return self.findings
+
+    def _scan_response(self, label: str, response, reported: set[str]) -> bool:
+        """Scan one response for error signatures; emit finding(s) per new match."""
+        status = response.status_code
+        text = getattr(response, "text", "") or ""
+        if status < 400 or not text:
+            return False
+
+        matched = False
+        for name, pattern, framework in ERROR_SIGNATURES:
+            if name in reported:
+                continue
+            if _matches(pattern, text):
+                reported.add(name)
+                excerpt = _excerpt_around(text, pattern, max_len=300)
+                self._add_finding(
+                    module=self.MODULE,
+                    severity=self.severity,
+                    title=f"{name} leaked in error response",
+                    description=(
+                        f"A {label} probe ({self.target.url}) returned HTTP "
+                        f"{status} containing a {name}"
+                        + (f" ({framework})" if framework != "unknown" else "")
+                        + "."
+                    ),
+                    evidence=excerpt,
+                    recommendation=(
+                        "Disable debug mode and return generic error pages "
+                        "in production; log details server-side only"
+                    ),
+                    raw={
+                        "label": label,
+                        "status": status,
+                        "signature": name,
+                        "framework": framework,
+                    },
+                )
+                self.logger.info(f"Stack trace signature found: {name}")
+                matched = True
+        return matched
 
 
 def _matches(pattern: str, text: str) -> bool:
