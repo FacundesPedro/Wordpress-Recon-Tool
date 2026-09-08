@@ -20,6 +20,7 @@ EXPECTED_WEBAPP_STEPS = [
     "StackTraceStep",
     "ContentLeakStep",
     "HeaderQualityStep",
+    "CspAuditStep",
 ]
 
 

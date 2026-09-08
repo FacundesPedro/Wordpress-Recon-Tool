@@ -19,6 +19,7 @@ from steps.webapp import (
     ContentLeakStep,
     CookieFlagsStep,
     CorsStep,
+    CspAuditStep,
     HeaderQualityStep,
     HttpMethodsStep,
     SourcemapStep,
@@ -41,3 +42,4 @@ class WebappModule(Module):
         self.add_step(StackTraceStep)
         self.add_step(ContentLeakStep)
         self.add_step(HeaderQualityStep)
+        self.add_step(CspAuditStep)
