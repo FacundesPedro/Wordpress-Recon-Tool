@@ -137,7 +137,14 @@ class EmailSecurityStep(BaseToolStep):
             self.logger.warning("No target domain provided")
             return self.findings
 
+        from utils.domain_utils import is_non_public_domain
+
         domain = self.target.domain
+        if is_non_public_domain(domain):
+            self.logger.info(
+                f"Email security audit skipped: {domain} is not a public domain"
+            )
+            return self.findings
 
         # 1. SPF + DMARC via TXT
         txt_records = self._query_txt(domain)

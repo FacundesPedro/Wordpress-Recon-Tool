@@ -82,15 +82,9 @@ class HostingStep(BaseHttpStep):
                 ]},
             )
         else:
-            self._add_finding(
-                module=self.MODULE,
-                severity="info",
-                title="Hosting platform not detected",
-                description="No known hosting provider signatures found in response headers",
-                evidence="Checked response headers and page source for provider signals",
-                recommendation="No action needed.",
-                raw={"detected": False, "checked_headers": list(headers.keys())},
-            )
+            # Absence of a known hosting platform is not a finding - it is
+            # the expected case for most targets (self-hosted, bare VPS).
+            self.logger.info("Hosting platform: no known provider detected")
 
         return self.findings
 

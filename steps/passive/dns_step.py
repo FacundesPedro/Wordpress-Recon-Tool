@@ -175,7 +175,10 @@ class DnsStep(BaseToolStep):
 
     def _analyze_intelligence(self, domain: str, findings: list[Finding]) -> None:
         """Analyze DNS records for intelligence."""
-        self._analyze_spf(domain)
+        from utils.domain_utils import is_non_public_domain
+
+        if not is_non_public_domain(domain):
+            self._analyze_spf(domain)
         self._analyze_google_verification(domain)
         self._analyze_hosting_provider(domain)
         self._analyze_email_provider(domain)

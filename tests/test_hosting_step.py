@@ -168,11 +168,9 @@ class TestRun:
 
         findings = await step.run()
 
-        assert len(findings) == 1
-        f = findings[0]
-        assert f.module == "infrastructure"
-        assert f.severity == "info"
-        assert "not detected" in f.title.lower()
+        # Absence of a known hosting platform is not a finding (noise
+        # reduction) - the step logs instead of emitting.
+        assert findings == []
 
     async def test_bedrock_fallback(self, mock_http, mock_target, mock_config):
         from steps.infrastructure.hosting_step import HostingStep

@@ -128,39 +128,60 @@ class WaymachineStep(BaseStep):
         if not self._urls:
             return
 
-        sorted_urls = sorted(self._urls)
-        total_count = len(sorted_urls)
+        # Deduplicate by path: query-string variants of the same path
+        # (session tokens, cache busters) inflate counts without adding
+        # attack-surface information.
+        from urllib.parse import urlsplit
 
-        categories = self._categorize_urls(sorted_urls)
+        path_representatives: dict[str, str] = {}
+        for url in sorted(self._urls):
+            try:
+                parts = urlsplit(url)
+                path_key = f"{parts.scheme}://{parts.netloc}{parts.path or '/'}"
+            except Exception:
+                path_key = url
+            if path_key not in path_representatives:
+                path_representatives[path_key] = url
 
-        summary_lines = [f"Total archived URLs: {total_count}", ""]
+        unique_urls = sorted(path_representatives.values())
+        total_count = len(unique_urls)
+
+        categories = self._categorize_urls(unique_urls)
+
+        sample_limit = 10
+        summary_lines = [
+            f"Total archived URLs: {total_count} "
+            f"({len(self._urls)} raw, deduplicated by path)",
+            "",
+        ]
         for category, count in categories.items():
             summary_lines.append(f"  {category}: {count}")
 
         summary_lines.append("")
-        summary_lines.append("Sample URLs (first 20):")
-        for url in sorted_urls[:20]:
+        summary_lines.append(f"Sample URLs (first {sample_limit}):")
+        for url in unique_urls[:sample_limit]:
             summary_lines.append(f"  - {url}")
 
-        if total_count > 20:
-            summary_lines.append(f"  ... and {total_count - 20} more")
+        if total_count > sample_limit:
+            summary_lines.append(f"  ... and {total_count - sample_limit} more")
 
         self._add_finding(
             module=self.MODULE,
             severity="info",
             title="Historical URLs Discovered via Wayback Machine",
-            description=f"Found {total_count} archived URL(s) for {domain}",
+            description=f"Found {total_count} unique archived path(s) for {domain}",
             evidence="\n".join(summary_lines),
             recommendation="Review archived URLs for forgotten endpoints, backups, and debug pages",
             raw={
                 "domain": domain,
-                "urls": sorted_urls,
+                "urls": unique_urls[:50],
                 "total_count": total_count,
+                "raw_count": len(self._urls),
                 "categories": categories,
             },
         )
 
-        sensitive_endpoints = self._check_sensitive_endpoints(sorted_urls)
+        sensitive_endpoints = self._check_sensitive_endpoints(unique_urls)
         if sensitive_endpoints:
             severity: Literal["info", "low", "medium", "high", "critical"] = "low"
             if len(sensitive_endpoints) > 5:
