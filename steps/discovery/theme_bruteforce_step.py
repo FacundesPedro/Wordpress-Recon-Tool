@@ -10,6 +10,7 @@ from typing import Optional
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 
 class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
@@ -53,6 +54,13 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         if not slugs:
             return self.findings
 
+        if self.http.unreachable:
+            self.logger.warning("Target unreachable — aborting theme brute-force")
+            return self.findings
+
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         concurrency = self._config_int(
             "bruteforce_concurrency", self.CONCURRENCY_DEFAULT
         )
@@ -81,7 +89,7 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
 
         async def probe(slug: str):
             async with semaphore:
-                return await self._probe_theme(slug)
+                return await self._probe_theme(slug, detector)
 
         found = []
         total = len(slugs)
@@ -137,7 +145,9 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
 
         return self.findings
 
-    async def _probe_theme(self, slug: str) -> tuple[bool, Optional[str], str]:
+    async def _probe_theme(
+        self, slug: str, detector: Soft404Detector
+    ) -> tuple[bool, Optional[str], str]:
         path = f"wp-content/themes/{slug}/"
         try:
             response = await self.get(path)
@@ -146,6 +156,11 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
             return False, None, "error"
 
         if status in (200, 301, 302, 403):
+            if detector.is_soft404(response):
+                self.logger.debug(
+                    f"Theme probe {slug}: catch-all/soft-404 shell - skipped"
+                )
+                return False, None, f"HTTP {status}"
             version = await self._try_extract_version(slug)
             return True, version, f"HTTP {status}"
         return False, None, f"HTTP {status}"

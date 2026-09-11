@@ -200,7 +200,32 @@ class TestPluginBruteforceStep:
             findings = await step.run()
 
         assert findings == []
-        assert mock_http.request.await_count == 2
+        probe_calls = [
+            call for call in mock_http.request.call_args_list
+            if "/wp-content/plugins/" in call.args[1]
+        ]
+        assert len(probe_calls) == 2
+
+    async def test_soft404_shell_not_reported(self, mock_target, mock_config):
+        shell = "<html><title>Home</title><body>homepage shell</body></html>"
+
+        async def fake_request(method, url, **kwargs):
+            return MagicMock(status_code=200, text=shell)
+
+        mock_http = MagicMock()
+        mock_http.unreachable = False
+        mock_http.request = AsyncMock(side_effect=fake_request)
+
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["alpha", "beta", "gamma"],
+        ):
+            step = PluginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+            findings = await step.run()
+
+        assert findings == []
 
     async def test_early_abort_when_target_unreachable(self, mock_target, mock_config):
         mock_http = make_http({})
