@@ -328,12 +328,33 @@ class HttpClient:
         self,
         method: str,
         url: str,
+        track_breaker: bool = True,
         **kwargs,
     ) -> httpx.Response:
+        """Send an HTTP request.
+
+        Args:
+            method: HTTP method
+            url: Absolute URL
+            track_breaker: When False, transport errors do not count toward
+                the circuit breaker. Use for requests to third-party hosts
+                (subdomains, external APIs) whose failures say nothing about
+                the primary target's reachability.
+        """
         if not self._client:
             raise RuntimeError("HttpClient must be used as async context manager")
         await self._prepare_request()
-        return await self._execute(self._client.request(method, url, **kwargs))
+        coro = self._client.request(method, url, **kwargs)
+        if track_breaker:
+            return await self._execute(coro)
+        try:
+            return await coro
+        except (httpx.TransportError, OSError) as exc:
+            logger.debug(
+                f"Non-tracked request failed ({url[:80]}): "
+                f"{friendly_network_error(exc)}"
+            )
+            raise
 
     async def request_unique(
         self,
