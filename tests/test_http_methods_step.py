@@ -107,3 +107,41 @@ class TestHttpMethodsStep:
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert findings == []
+
+    async def test_spa_catchall_methods_suppressed(self, mock_http, mock_target, mock_config):
+        """SPA shell served for every method = methods not actually enabled."""
+        shell = ("<!-- license -->\n<!doctype html><html><head>"
+                 "<title>OWASP Juice Shop</title></head></html>")
+
+        async def catch_all(method, url, **kwargs):
+            return response(200, text=shell)
+
+        mock_http.request = AsyncMock(side_effect=catch_all)
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        titles = [f.title for f in findings]
+        assert "TRACE method enabled" not in titles
+        assert "PUT method allowed" not in titles
+        assert "DELETE method allowed" not in titles
+        assert "WebDAV PROPFIND method enabled" not in titles
+
+    async def test_method_processed_differently_reported(self, mock_http, mock_target, mock_config):
+        """A method answered differently from the GET baseline is a real signal."""
+        shell = "<!doctype html><html><title>App</title></html>"
+
+        async def responder(method, url, **kwargs):
+            if method == "PUT":
+                return response(201, text='{"created": true}')
+            if method == "DELETE":
+                return response(204, text="")
+            return response(200, text=shell)
+
+        mock_http.request = AsyncMock(side_effect=responder)
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        titles = [f.title for f in findings]
+        assert "PUT method allowed" in titles
+        assert "DELETE method allowed" in titles
+        assert "TRACE method enabled" not in titles
