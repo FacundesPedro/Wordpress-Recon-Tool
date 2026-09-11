@@ -45,6 +45,33 @@ class TestSkipConditions:
 
         assert findings == []
 
+    async def test_skips_non_public_domain(self, mock_http):
+        """localhost/IP targets: archive results are unrelated to the target."""
+        mock_target = MagicMock()
+        mock_target.domain = "localhost"
+
+        from steps.passive.wayback_step import WaymachineStep
+
+        step = WaymachineStep(target=mock_target, http=mock_http)
+        findings = await step.run()
+        assert findings == []
+        mock_http.request.assert_not_called()
+
+    async def test_filters_junk_cdx_entries(self, mock_http):
+        """CDX header rows like 'original' are not URLs."""
+        mock_target = MagicMock()
+        mock_target.domain = "example.com"
+
+        from steps.passive.wayback_step import WaymachineStep
+
+        step = WaymachineStep(target=mock_target, http=mock_http)
+        step._parse_response(
+            '[["original"], ["http://example.com/real"], ["original"], ["junk"]]'
+        )
+        assert "http://example.com/real" in step._urls
+        assert "original" not in step._urls
+        assert "junk" not in step._urls
+
 
 class TestUrlBuilding:
     """Tests for _build_url."""

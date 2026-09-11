@@ -77,7 +77,16 @@ class CrtShStep(BaseStep):
             )
             return self.findings
 
+        from utils.domain_utils import is_non_public_domain
+
         domain = self.target.domain
+        if is_non_public_domain(domain):
+            self.logger.info(
+                f"CT enumeration skipped: {domain} is not a public domain "
+                f"(crt.sh results would be unrelated certificates)"
+            )
+            return self.findings
+
         patterns = self._build_query_patterns(domain)
 
         for pattern in patterns:

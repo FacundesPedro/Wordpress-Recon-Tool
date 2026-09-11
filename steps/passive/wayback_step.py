@@ -67,7 +67,16 @@ class WaymachineStep(BaseStep):
             self.logger.warning("HTTP client not available, skipping Wayback lookup")
             return self.findings
 
+        from utils.domain_utils import is_non_public_domain
+
         domain = self.target.domain
+        if is_non_public_domain(domain):
+            self.logger.info(
+                f"Wayback enumeration skipped: {domain} is not a public domain "
+                f"(archive results would be unrelated to this target)"
+            )
+            return self.findings
+
         wildcard_domain = f"*.{domain}"
 
         query_urls = [
@@ -112,16 +121,34 @@ class WaymachineStep(BaseStep):
                 for item in data:
                     if isinstance(item, list) and len(item) > 0:
                         url = item[0]
-                        self._urls.add(url)
+                        if self._is_valid_url(url):
+                            self._urls.add(url)
                     elif isinstance(item, str):
-                        self._urls.add(item)
+                        if self._is_valid_url(item):
+                            self._urls.add(item)
         except json.JSONDecodeError:
             lines = response_text.strip().split("\n")
             for line in lines:
                 if line and not line.startswith("#"):
-                    self._urls.add(line.strip())
+                    candidate = line.strip()
+                    if self._is_valid_url(candidate):
+                        self._urls.add(candidate)
 
         self.logger.debug(f"Found {len(self._urls)} URLs so far")
+
+    @staticmethod
+    def _is_valid_url(url: str) -> bool:
+        """Filter junk CDX entries (header rows, column labels, fragments)."""
+        url = (url or "").strip()
+        if not url:
+            return False
+        lowered = url.lower()
+        # CDX 'original' column header and other non-URL artifacts
+        if lowered in ("original", "urlkey", "timestamp", "mimetype", "statuscode"):
+            return False
+        if not lowered.startswith(("http://", "https://")):
+            return False
+        return True
 
     def _create_findings(self, domain: str) -> None:
         """Create findings from discovered URLs."""

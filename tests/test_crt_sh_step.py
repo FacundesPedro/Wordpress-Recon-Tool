@@ -34,6 +34,18 @@ class TestSkipConditions:
         findings = await step.run()
         assert findings == []
 
+    async def test_skips_non_public_domain(self, mock_http):
+        """localhost targets: crt.sh results are unrelated certificates."""
+        mock_target = MagicMock()
+        mock_target.domain = "localhost"
+
+        from steps.passive.crt_sh_step import CrtShStep
+
+        step = CrtShStep(target=mock_target, http=mock_http)
+        findings = await step.run()
+        assert findings == []
+        mock_http.request.assert_not_called()
+
     async def test_returns_skip_finding_when_no_http(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
