@@ -11,6 +11,7 @@ Tests if the oEmbed proxy endpoint allows requests to arbitrary URLs.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import json_body, rest_route_fallbacks
 
 
 class OembedProxyStep(BaseHttpStep):
@@ -35,17 +36,31 @@ class OembedProxyStep(BaseHttpStep):
 
         self.logger.info("Checking oEmbed proxy for SSRF...")
 
-        url = self.urljoin("wp-json/oembed/1.0/proxy")
+        for path in rest_route_fallbacks("wp-json/oembed/1.0/proxy"):
+            separator = "&" if "?" in path else "?"
+            ssrf_url = self.urljoin(path) + separator + "url=http://127.0.0.1"
 
-        ssrf_url = f"{url}?url=http://127.0.0.1"
+            try:
+                response = await self.http.get(ssrf_url)
+            except Exception as e:
+                self.logger.error(f"Error checking oEmbed proxy: {e}")
+                continue
 
-        try:
-            response = await self.http.get(ssrf_url)
+            status = getattr(response, "status_code", None)
 
-            if response.status_code == 200:
-                content = response.text.lower()
+            if status in (401, 403):
+                self.logger.debug(
+                    "oEmbed proxy requires authentication - not vulnerable"
+                )
+                return self.findings
 
-                if "wordpress" in content or "html" in content:
+            if status == 200:
+                data = json_body(response)
+                if isinstance(data, dict) and not data.get("code") and (
+                    "html" in data
+                    or "provider_name" in data
+                    or data.get("type")
+                ):
                     self._add_finding(
                         module=self.MODULE,
                         severity=self.severity,
@@ -56,14 +71,10 @@ class OembedProxyStep(BaseHttpStep):
                         raw={"url": ssrf_url},
                     )
                     self.logger.info("oEmbed proxy may be vulnerable to SSRF")
-                else:
-                    self.logger.debug("oEmbed proxy responded but content unclear")
+                    return self.findings
             else:
                 self.logger.debug(
-                    f"oEmbed proxy returned status {response.status_code}"
+                    f"oEmbed proxy returned status {status} for {path}"
                 )
-
-        except Exception as e:
-            self.logger.error(f"Error checking oEmbed proxy: {e}")
 
         return self.findings
