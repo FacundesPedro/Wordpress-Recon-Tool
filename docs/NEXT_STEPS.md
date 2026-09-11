@@ -1,8 +1,60 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-09-08  
+**Last Updated:** 2026-09-11  
 **Current Branch:** `main`  
 **HEAD:** `443702e` — Update brute-force and http_client tests for concurrency and progress features (1200 tests passing)
+
+---
+
+## Web Pentest + Intrusive Expansion (implemented 2026-09-11, status: ✅ complete)
+
+Research-driven expansion in 7 phases — all implemented and tested (96 steps, 1605 tests passing). Full reference list in `docs/REFERENCES.md`
+(sections "Web Pentest Expansion References" and "Active testing").
+
+### Phase 0 — Foundation: `active` module + `intrusive` profile ✅
+- `modules/active_module.py` (new, tier 5, 15 steps), `RISK_TIERS[5]`, `PROFILES["intrusive"]` / `PROFILES["web-intrusive"]`
+- `base/runner.py`: dynamic tier grouping (supports any tier in RISK_TIERS)
+- `config.py`: `active_enabled` master switch (default false) + caps (`active_max_params` 20, `active_max_requests` 100, `active_delay` 0.5s, `active_time_based`, `active_file_upload`, `active_smuggling`, `active_race_endpoint`, `active_mass_assign_endpoint`)
+- `main.py`: `-p intrusive` / `web-intrusive` + `--active` flag + `--authorized` ack (scan exits without it)
+- Safety model: default off, hard request caps, delay between probes, detection-only (no data extraction), respects circuit breaker
+
+### Phase 1 — Tier A web recon (webapp/passive) ✅
+| Step | WSTG | Approach |
+|------|------|----------|
+| `JwtAuditStep` | 4.6.10 | Extract JWTs from cookies/HTML/JS; offline decode: alg:none, missing/expired exp, weak HS256 secret (stdlib dict), sensitive claims, kid/jku |
+| `ClientSideAuditStep` | 4.11.1/11/12/14 | Static HTML/JS: postMessage `*`, DOM sinks fed by location, localStorage secrets, target=_blank w/o noopener |
+| `SubdomainTakeoverStep` | 4.2.10 | crt.sh candidates + dig CNAME + can-i-take-over-xyz fingerprints (`wordlists/takeover/fingerprints.json`) |
+| `WebSocketStep` | 4.11.10 | ws/wss discovery in HTML/JS + raw asyncio handshake with canary Origin (101 = CSWSH signal) |
+| `JsLibraryStep` | 4.11.6 | JS lib/version detection + vendored retire.js subset (`wordlists/webapp/js_libraries.json`) + missing SRI |
+
+### Phase 2 — Tier B config surface ✅
+| Step | WSTG | Approach |
+|------|------|----------|
+| `SensitiveFilesStep` | 4.2.3/4.2.4 | Generic backup/config wordlist (`wordlists/webapp/sensitive_files.txt`) |
+| `CacheAnalysisStep` | cache | Cache-layer detection (Age/X-Cache/CF-Cache-Status) + capped path-suffix WCD canary |
+| `FormSecurityStep` | 4.4.1/4.4.6/4.6.5 | Password form over http://, CSRF-token heuristic, autocomplete, cacheable auth pages |
+| `TechFingerprintStep` | 4.1.8/4.1.9 | Framework fingerprint from headers/cookies/HTML |
+| `EmailSecurityStep` | passive | DMARC/DKIM/CAA/DNSSEC via dig |
+
+### Phase 3 — Tier C WordPress ✅
+| Step | Approach |
+|------|----------|
+| `PluginAbandonmentStep` | wp.org API `last_updated`/`closed`/`tested` risk scoring |
+| `WooCommerceStep` | `/wp-json/wc/store/v1/` + `/?wc-ajax=` + version from readme |
+| `PhpVersionStep` | PHP version from headers/cookies → EOL mapping |
+| `RegistrationStep` | `wp-login.php?action=register` + `wp-signup.php` open registration |
+
+### Phase 4 — Active injection family (tier 5, detection-only) ✅
+`SqlInjectionStep` (4.7.5, error-signatures + optional time-based), `ReflectedXssStep` (4.7.1, canary reflection), `SstiStep` (4.7.18), `PathTraversalStep` (4.5.1), `CrlfInjectionStep` (4.7.15), `HttpParameterPollutionStep` (4.7.4).
+
+### Phase 5 — Active auth family ✅
+`AuthBypassStep` (4.4.4/4.5.2), `RateLimitStep` (4.4.3), `PasswordResetStep` (4.4.9), `CsrfStep` (4.6.5), `DefaultCredentialsStep` (4.4.2, capped, stops on success).
+
+### Phase 6 — Active high-risk (double-gated) ✅
+`RequestSmugglingStep` (4.7.16, raw sockets, off even in intrusive), `MassAssignmentStep` (4.7.20, operator-supplied endpoint), `RaceConditionStep` (4.10.x, operator-supplied endpoint), `FileUploadStep` (4.10.8/9, safe marker file, requires `active_file_upload=true`).
+
+### New wordlists ✅
+`webapp/sensitive_files.txt`, `webapp/js_libraries.json`, `takeover/fingerprints.json`, `active/` payload lists (built-in fallbacks in steps).
 
 ---
 
@@ -55,7 +107,7 @@
 | 43 | — | **Generic web security: `webapp` module + `web` profile + Nmap integration** — 10 new steps, 139 new tests (see "Generic Web App Security ✅" below) |
 | 44 | — | **Webapp module expansion: 5 new research steps + 6 refinements** — CSP audit, API surface, admin surface, open redirect, host header; 80 new tests, 1419 total (see "Webapp Research Expansion ✅" below) |
 
-**Current state:** 13 modules, 75 steps, 1419 tests passing (4 pre-existing weasyprint environment failures unrelated to code). Generic web app security module (`webapp`, now 13 steps), `web` profile for non-WordPress targets, and Nmap port/NSE scanning added — see AGENTS.md for config reference.
+**Current state:** 14 modules, 96 steps, 1605 tests passing (4 pre-existing weasyprint environment failures unrelated to code). Web pentest expansion + active module (`active` tier 5, 15 gated steps), `intrusive`/`web-intrusive` profiles for authorized client assessments — see AGENTS.md for config reference.
 
 ---
 

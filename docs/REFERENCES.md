@@ -2,7 +2,7 @@
 
 **Purpose:** Index of external APIs, tools, wordlists, and documentation that this project depends on or integrates with. Keep this up to date as dependencies change.
 
-**Last Updated:** 2026-09-08
+**Last Updated:** 2026-09-11
 
 ---
 
@@ -54,6 +54,86 @@
 | [MDN — Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie) | Cookie attribute reference (`Secure`, `HttpOnly`, `SameSite`) for `CookieFlagsStep` parsing. |
 | [MDN — Access-Control-Allow-Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Origin) | CORS response header reference for `CorsStep` evaluation logic. |
 | [Sourcemaps (source map spec)](https://docs.google.com/document/d/1g5kRt-i0SwhXf0kl1qz_w12F7Qw3fDnqhURxeYa2RKQ) | Source map v3 spec. `.js.map` files expose original unminified source — the target of `SourcemapStep`. |
+
+## Web Pentest Expansion References (2026-09-11 research)
+
+### Authentication / Session / JWT
+
+| URL | Why It Matters |
+|-----|----------------|
+| [OWASP WSTG — Testing JSON Web Tokens (4.6.10)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/10-Testing_JSON_Web_Tokens) | Methodology reference for `JwtAuditStep` (alg:none, weak HMAC secrets, missing/expired `exp`, sensitive claims, `kid`/`jku` header injection surface). |
+| [RFC 7519 — JSON Web Token](https://datatracker.ietf.org/doc/html/rfc7519) | JWT structure reference (header/payload/signature base64url segments) used by the offline decoder in `JwtAuditStep`. |
+| [RFC 8725 — JWT Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725) | Algorithm validation rules (`alg` allowlists, `kid`/`jku` risks) backing the JWT findings. |
+| [PortSwigger — JWT attacks](https://portswigger.net/web-security/jwt) | Practical JWT attack catalog (alg confusion, key injection) referenced by `JwtAuditStep` detection logic. |
+| [OWASP WSTG — Credentials Transported over Encrypted Channel (4.4.1)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/01-Credentials_Transported_over_an_Encrypted_Channel) | Methodology reference for `FormSecurityStep` (password form actions over `http://`). |
+| [OWASP WSTG — Browser Cache Weaknesses (4.4.6)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/06-Browser_Cache_Weaknesses) | Methodology reference for `FormSecurityStep` / `CacheAnalysisStep` (`Cache-Control` on sensitive pages). |
+| [OWASP WSTG — Testing for CSRF (4.6.5)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/05-Testing_for_CSRF) | Methodology reference for `CsrfStep` (token presence heuristic + POST-without-token verification). |
+| [OWASP WSTG — Testing for Weak Lock Out Mechanism (4.4.3)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/03-Testing_for_Weak_Lock_Out_Mechanism) | Methodology reference for `RateLimitStep` (probe for 429/lockout signals). |
+| [OWASP WSTG — Testing for Weak Password Change or Reset (4.4.9)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/09-Testing_for_Weak_Password_Change_or_Reset_Functionalities) | Methodology reference for `PasswordResetStep` (reset-form user enumeration, Host-header reset-link injection surface). |
+| [OWASP WSTG — Testing Default Credentials (4.4.2)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/02-Testing_for_Default_Credentials) | Methodology reference for `DefaultCredentialsStep` (small capped default-pair probes against discovered login forms). |
+
+### Client-side / Supply chain
+
+| URL | Why It Matters |
+|-----|----------------|
+| [OWASP WSTG — Testing for DOM-Based XSS (4.11.1)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/01-Testing_for_DOM-based_Cross_Site_Scripting) | Methodology reference for `ClientSideAuditStep` static DOM-sink analysis (`innerHTML`, `eval`, `document.write` fed by `location.*` sources). |
+| [OWASP WSTG — Testing Web Messaging (4.11.11)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/11-Testing_Web_Messaging) | `postMessage` targetOrigin `*` / missing origin-check detection in `ClientSideAuditStep`. |
+| [OWASP WSTG — Testing Browser Storage (4.11.12)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/12-Testing_Browser_Storage) | Sensitive-data-in-localStorage detection in `ClientSideAuditStep`. |
+| [OWASP WSTG — Testing for Reverse Tabnabbing (4.11.14)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/14-Testing_for_Relax_tabnabbing) | `target="_blank"` without `rel=noopener` detection in `ClientSideAuditStep`. |
+| [OWASP WSTG — Client-side Resource Manipulation (4.11.6)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/06-Testing_for_Client-side_Resource_Manipulation) | Third-party script / SRI (`integrity`) audit backing `JsLibraryStep`. |
+| [MDN — Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity) | SRI attribute semantics used by the `JsLibraryStep` third-party script check. |
+| [Retire.js — JS library vulnerability database](https://github.com/RetireJS/retire.js) | Source of the JS library/version→vulnerability mapping (vendored subset in `wordlists/webapp/js_libraries.json`). Apache-2.0 — attribution required. |
+| [MDN — WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) | Handshake semantics (`Upgrade: websocket`, `Sec-WebSocket-Key`) used by the raw-asyncio probe in `WebSocketStep`. |
+| [OWASP WSTG — Testing WebSockets (4.11.10)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/10-Testing_WebSockets) | Methodology reference for `WebSocketStep` (cross-origin handshake / CSWSH signal). |
+
+### DNS / Takeover / Email
+
+| URL | Why It Matters |
+|-----|----------------|
+| [OWASP WSTG — Test for Subdomain Takeover (4.2.10)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover) | Methodology reference for `SubdomainTakeoverStep` (CNAME/NXDOMAIN + fingerprint phases). |
+| [can-i-take-over-xyz fingerprints](https://github.com/EdOverflow/can-i-take-over-xyz) | Fingerprint database (service → CNAME pattern + response regex) vendored as `wordlists/takeover/fingerprints.json`. |
+| [dnsReaper](https://github.com/punk-security/dnsReaper) | Alternative signature set + detection model (CNAME+body, CNAME+NXDOMAIN, NS+no SOA) used to shape `SubdomainTakeoverStep`. |
+| [RFC 7489 — DMARC](https://datatracker.ietf.org/doc/html/rfc7489) | DMARC record semantics (`p=none` weakness, alignment) for `EmailSecurityStep`. |
+| [RFC 6376 — DKIM](https://datatracker.ietf.org/doc/html/rfc6376) | DKIM selector probing (`<selector>._domainkey`) for `EmailSecurityStep`. |
+| [RFC 8659 — CAA](https://datatracker.ietf.org/doc/html/rfc8659) | Certificate Authority Authorization record check for `EmailSecurityStep`/DNS hardening. |
+
+### Cache / Config surface
+
+| URL | Why It Matters |
+|-----|----------------|
+| [PortSwigger Research — Gotta cache 'em all (2024)](https://portswigger.net/research/gotta-cache-em-all) | Path-confusion / delimiter / normalization taxonomy behind the `CacheAnalysisStep` canary probes. |
+| [PortSwigger — Web cache deception](https://portswigger.net/web-security/web-cache-deception) | Path-suffix cache-deception technique (append static-looking extension) used by `CacheAnalysisStep` (capped, corroborated by cache headers). |
+| [OWASP WSTG — Review Old Backup and Unreferenced Files (4.2.4)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information) | Methodology reference for `SensitiveFilesStep` (generic non-WP backup/config file probing). |
+| [OWASP WSTG — File Extensions Handling (4.2.3)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/03-Test_File_Extensions_Handling_for_Sensitive_Information) | Companion reference for `SensitiveFilesStep`. |
+| [OWASP WSTG — Fingerprint Web Application Framework (4.1.8)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/08-Fingerprint_Web_Application_Framework) | Methodology reference for `TechFingerprintStep` (header/cookie/HTML framework signatures). |
+| [OWASP WSTG — Fingerprint Web Application (4.1.9)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/09-Fingerprint_Web_Application) | Companion reference for `TechFingerprintStep`. |
+| [PHP Supported Versions](https://www.php.net/supported-versions.php) | EOL timeline (8.1 EOL 2025-12-31, 8.2 security-only) backing `PhpVersionStep` findings. |
+
+### WordPress-specific expansion
+
+| URL | Why It Matters |
+|-----|----------------|
+| [wpsecscan v2.6.0 release notes](https://github.com/bryanflowers/wpsecscan/releases/tag/v2.6.0) | Reference for modern WP check coverage: plugin abandonment auditing, WooCommerce Store API drift, WP 6.5–6.8 feature checks (Speculation Rules, Font Library, REST schema leak), app-password staleness. |
+| [ScanTitan — WordPress vulnerability scanner](https://scantitan.com/wordpress-vulnerability-scanner/) | Abandoned-plugin risk scoring model (no CVE + no updates in years → elevated risk) backing `PluginAbandonmentStep`. |
+| [WooCommerce Store API](https://woocommerce.github.io/woocommerce-rest-api-docs/) | Store API endpoints (`/wp-json/wc/store/v1/...`) probed by `WooCommerceStep`. |
+| [WooCommerce ajax endpoints (`wc-ajax`)](https://github.com/woocommerce/woocommerce) | `/?wc-ajax=get_refreshed_fragments` and related AJAX surface used for WooCommerce detection. |
+
+### Active testing (intrusive profile)
+
+| URL | Why It Matters |
+|-----|----------------|
+| [OWASP WSTG — Testing for SQL Injection (4.7.5)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection) | Error-signature taxonomy for `SqlInjectionStep` (detection-only; no data extraction). |
+| [OWASP WSTG — Testing for Reflected XSS (4.7.1)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/01-Testing_for_Reflected_Cross_Site_Scripting) | Canary-reflection methodology for `ReflectedXssStep`. |
+| [OWASP WSTG — Testing for SSTI (4.7.18)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-side_Template_Injection) | Arithmetic-canary (`{{7*7}}` → 49) methodology for `SstiStep`. |
+| [OWASP WSTG — Testing for Directory Traversal (4.5.1)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/01-Testing_Directory_Traversal_File_Include) | Encoded traversal payloads + OS signatures for `PathTraversalStep`. |
+| [OWASP WSTG — Testing for HTTP Splitting/Smuggling (4.7.15/4.7.16)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/15-Testing_for_HTTP_Splitting_Smuggling) | CRLF-injection and CL.TE/TE.CL timing methodology for `CrlfInjectionStep` / `RequestSmugglingStep`. |
+| [OWASP WSTG — Testing for HTTP Parameter Pollution (4.7.4)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution) | Duplicate-parameter methodology for `HttpParameterPollutionStep`. |
+| [OWASP WSTG — Bypassing Authorization Schema (4.5.2) / Authentication Schema (4.4.4)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/02-Testing_Bypassing_Authorization_Schema) | Forced-browsing / verb / header bypass methodology for `AuthBypassStep`. |
+| [OWASP WSTG — Testing for Mass Assignment (4.7.20)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/20-Testing_for_Mass_Assignment) | Extra-field injection methodology for `MassAssignmentStep` (operator-supplied endpoint). |
+| [OWASP WSTG — Upload of Unexpected File Types (4.10.8)](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/08-Test_Upload_of_Unexpected_File_Types) | Extension/MIME bypass detection methodology for `FileUploadStep` (safe marker file, double-gated). |
+| [HackTricks — Web Vulnerabilities Methodology](https://book.hacktricks.wiki/pentesting-web/web-vulnerabilities-methodology) | Broad checklist used to cross-validate active-module coverage (smuggling, hop-by-hop, auth bypass playbooks). |
+| [RingSafe — Web App Pentesting Checklist 2026](https://ringsafe.in/web-app-penetration-testing-checklist/) | 2026 checklist validating JWT/GraphQL/cache/AI-era coverage priorities. |
+| [Bravix — Web App Pentest Methodology 2026](https://bravixsec.com/blog/web-application-penetration-testing-2026.html) | API-first testing emphasis (GraphQL introspection, batching, JWT) backing the API/auth step choices. |
 
 ## External APIs (Existing)
 
