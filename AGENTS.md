@@ -6,7 +6,9 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-5), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 14 modules, 96 steps, 1605 tests passing (all new steps covered). Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`. Note: 4 PDF tests fail in environments where weasyprint's native libs (pango/cairo) are missing — pre-existing environment issue, not a code bug.
+**Current state:** 14 modules, 96 steps, 1674 tests passing (all new steps covered). Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`. Note: 4 PDF tests fail in environments where weasyprint's native libs (pango/cairo) are missing — pre-existing environment issue, not a code bug.
+
+**Latest hardening (2026-09-11): WordPress detection gate + cross-target FP calibration** — OWASP Juice Shop validation (`reports/juice-full5.*`, all formats) reduced findings 39 → 8, all verified true positives (missing security headers, crawl summary, `testing@juice-sh.op` email, OPTIONS missing Allow, wildcard CORS, Swagger `/api-docs`, robots `/ftp`, real `/metrics`). New `utils/wordpress_detect.py` caches per-URL WordPress detection (`/wp-json/` JSON with `namespaces`, `wp-content/` paths, generator meta; fail-closed on errors) and gates 12 WP-only steps: `plugin_bruteforce`, `theme_bruteforce`, `login_bruteforce`, `rest_hardening`, `rest_surface`, `app_passwords`, `author_id`, `wp_cron`, `sitemap`, `woocommerce`, `oembed_proxy`, `xmlrpc_detect` (tests: `tests/test_wordpress_detect.py`). Signature/behavior validation added to `env_file`/`git_exposure`/`debug_log`/`phpinfo`/`sourcemap` (reject SPA shells; require real file formats), `open_redirect` (match the parsed destination hostname, not substring), `woocommerce` (JSON signals + soft-404), `rate_limit`/`password_reset` (Soft404Detector before bursting), spider (ignore static asset filename prefixes). Real-WordPress verification (official `wordpress:latest` + MariaDB, plain permalinks) confirmed all 12 gated steps still run — no false negatives; post-fix report `reports/wp-validate2.*` (all formats, 34 findings; PDF 0 bytes due to the pango/cairo env issue).
 
 **Latest feature: Web pentest expansion + active module (`active` tier 5, `intrusive` profiles)** — 26 new steps across 4 areas. **Tier A web recon:** `JwtAuditStep` (WSTG 4.6.10: alg:none, weak HS256 offline dictionary check, exp/claims/kid-jku audit), `ClientSideAuditStep` (4.11.1/11/12/14: DOM sinks, postMessage `*`, localStorage secrets, tabnabbing), `WebSocketStep` (4.11.10: ws/wss discovery + raw asyncio handshake with canary Origin → CSWSH), `JsLibraryStep` (4.11.6: version detection vs vendored Retire.js-derived DB + missing SRI), `SubdomainTakeoverStep` (4.2.10, passive: crt.sh + dig CNAME + can-i-take-over-xyz fingerprints). **Tier B config surface:** `SensitiveFilesStep` (4.2.3/4.2.4 generic backup/config wordlist), `CacheAnalysisStep` (cache-layer detection + capped path-suffix WCD canary), `FormSecurityStep` (4.4.1/4.4.6/4.6.5: http password forms, autocomplete, cacheable login), `TechFingerprintStep` (4.1.8/4.1.9), `EmailSecurityStep` (passive: SPF/DMARC/DKIM/CAA via dig). **Tier C WordPress:** `PluginAbandonmentStep` (wp.org API closed/last_updated/tested risk scoring), `WooCommerceStep` (Store API + wc-ajax + version), `PhpVersionStep` (EOL mapping), `RegistrationStep` (open registration/wp-signup). **Active module (tier 5, 15 steps, gated):** injection family (`SqlInjectionStep` error-signatures + optional time-based, `ReflectedXssStep` canary, `SstiStep` arithmetic, `PathTraversalStep`, `CrlfInjectionStep`, `HttpParameterPollutionStep`), auth family (`AuthBypassStep` path-confusion/header bypass, `RateLimitStep`, `PasswordResetStep`, `CsrfStep`, `DefaultCredentialsStep` capped/stops-on-success), high-risk double-gated (`RequestSmugglingStep` CL.TE/TE.CL raw sockets, `MassAssignmentStep` + `RaceConditionStep` operator-supplied endpoints, `FileUploadStep` safe marker). Safety: requires `-p intrusive`/`web-intrusive` or `--active` **plus `--authorized`**; honors `WP_ACTIVE_ENABLED` master switch, `WP_ACTIVE_MAX_REQUESTS` (100), `WP_ACTIVE_DELAY` (0.5s), `WP_ACTIVE_MAX_PARAMS` (20); detection-only payloads; shared base `steps/active/base_active.py`. New wordlists: `takeover/fingerprints.json` (32), `webapp/js_libraries.json` (14), `webapp/sensitive_files.txt` (~60). References in `docs/REFERENCES.md` ("Web Pentest Expansion References").
 
@@ -34,7 +36,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | CVE source | WPVulnerability.net primary, WPScan secondary | Free, no API key, 47k+ plugin vulns |
 | Plugin brute-force | Response-code oracle (200/301/403 = exists) | Standard approach, SecLists wordlists |
 
-## Commit History (45 on main)
+## Commit History (60 listed, 109 on main)
 
 | # | Commit | Description |
 |---|--------|-------------|
@@ -83,6 +85,21 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 | 43 | `b82436a` | Add concurrency, progress logging, early abort and probe cap to plugin/theme brute-force |
 | 44 | `be43873` | Add progress logging to login brute-force step |
 | 45 | `443702e` | Update brute-force and http_client tests for concurrency and progress features |
+| 46 | `254e817` | Calibrate HTTP method probes against catch-all servers |
+| 47 | `ed7207c` | Add domain scope helper for non-public targets |
+| 48 | `12a347b` | Reduce passive/infrastructure false positives |
+| 49 | `dfb38e9` | Calibrate api_surface and aggregate cors findings |
+| 50 | `1eb9a4b` | Fix source_review password FPs and max-age=0 cache handling |
+| 51 | `f75c322` | Skip public OSINT queries for non-public domains |
+| 52 | `9737565` | Fix bare-path URLs in secrets module steps |
+| 53 | `fdc2a8a` | Calibrate login brute-force against catch-all servers |
+| 54 | `02f0baf` | **WordPress detection gate** — `utils/wordpress_detect.py` + 12 gated steps + tests |
+| 55 | `0b54a16` | Content-signature validation in secrets steps |
+| 56 | `18efb1e` | Soft-404 baselines in rate_limit/password_reset |
+| 57 | `03a2a83` | Sourcemap response validation (Source Map v3 JSON) |
+| 58 | `996c8eb` | Spider ignores static asset filename prefixes |
+| 59 | `c50ad66` | Open-redirect canary matches the redirect destination host |
+| 60 | `6845db0` | WooCommerce JSON signals + soft-404 calibration |
 
 ## Roadmap Status — ✅ All 9 items implemented (plus 1 enhancement)
 
@@ -101,7 +118,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 
 ### Priority 1 — Tests (complete)
 
-**Coverage:** 75/75 steps tested (100%), 1419 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
+**Coverage:** 75/75 steps tested (100%), 1674 tests passing across all layers (4 PDF env failures excluded). All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 
@@ -200,7 +217,7 @@ Key files: `steps/webapp/*`, `utils/source_discovery.py`, `modules/webapp_module
 | `WP_ACTIVE_RACE_ENDPOINT` | `""` | Absolute path for race-condition probing (e.g. `/api/coupon/apply`); empty = skip |
 | `WP_ACTIVE_MASS_ASSIGN_ENDPOINT` | `""` | Absolute path for mass-assignment probing (e.g. `/api/register`); empty = skip |
 
-CLI: `--active` (append active module + set master switch) requires `--authorized` or the scan exits with an error. Profiles: `-p intrusive` (full recon + active), `-p web-intrusive` (passive/infrastructure/webapp + active). Key files: `modules/active_module.py`, `steps/active/base_active.py` (gate/caps/delay/param-discovery), `steps/active/*`.
+CLI: `--active` (append active module + set master switch) requires `--authorized` or the scan exits with an error; `--authorized` itself sets `active_enabled=True` regardless of `WP_ACTIVE_ENABLED` when the profile includes `active` (observed on `-p full`). Profiles: `-p intrusive` (full recon + active), `-p web-intrusive` (passive/infrastructure/webapp + active). Key files: `modules/active_module.py`, `steps/active/base_active.py` (gate/caps/delay/param-discovery), `steps/active/*`.
 
 ### Config Reference — Webapp Expansion (Tier A/B)
 
