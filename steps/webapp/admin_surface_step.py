@@ -20,6 +20,7 @@ from typing import Optional
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 DEFAULT_ADMIN_PATHS = [
     "admin",
@@ -153,8 +154,17 @@ class AdminSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
         )
         unique_paths = unique_paths[:max_paths]
 
+        # Calibrate against a guaranteed-nonexistent path. SPA routers and
+        # soft-404 handlers return the app shell (200) for it - any probed
+        # path matching that fingerprint is a false positive, not a real page.
+        detector = Soft404Detector(
+            self.http, self.target.url, self.logger
+        )
+        await detector.calibrate()
+
         protected: list[str] = []
         security_txt: Optional[str] = None
+        skipped_baseline = 0
 
         for path in unique_paths:
             try:
@@ -170,8 +180,12 @@ class AdminSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
                 if path == "security.txt" or path.endswith("security.txt"):
                     security_txt = text
                     continue
+                if detector.is_soft404(response):
+                    skipped_baseline += 1
+                    continue
                 title = extract_title(text)
                 severity = PATH_SEVERITIES.get(path, "info")
+                url = self.urljoin(path)
                 self._add_finding(
                     module=self.MODULE,
                     severity=severity,
@@ -182,16 +196,23 @@ class AdminSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
                         + ". Management interfaces should not be publicly "
                         "accessible."
                     ),
-                    evidence=f"/{path} -> HTTP 200 {title}".strip(),
+                    evidence=f"GET {url} -> HTTP 200 {title}".strip(),
                     recommendation=(
                         "Remove the interface or restrict it to authenticated "
                         "administrators and internal networks"
                     ),
-                    raw={"path": path, "status": status, "title": title},
+                    raw={"path": path, "url": url, "status": status,
+                         "title": title},
                 )
             elif status in (401, 403):
                 protected.append(path)
             # 404 and other codes: not interesting, skip
+
+        if skipped_baseline:
+            self.logger.debug(
+                f"Admin surface: {skipped_baseline} path(s) skipped as "
+                f"SPA/soft-404 baseline matches"
+            )
 
         if protected:
             self._add_finding(

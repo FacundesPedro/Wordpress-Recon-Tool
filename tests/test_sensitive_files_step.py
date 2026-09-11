@@ -36,6 +36,18 @@ class TestContentHeuristics:
         assert not is_interesting_content(spa_shell, "credentials.json")
         assert not is_interesting_content(spa_shell, "id_rsa")
 
+    def test_spa_fallback_with_comment_prefix(self):
+        """Angular-style shells start with a comment block before <!doctype>."""
+        shell = ("<!--\n  ~ Copyright (c) 2026 someone\n  ~ SPDX-License: MIT\n"
+                 "-->\n<!doctype html>\n<html lang=\"en\"><head><title>App</title>"
+                 "</head></html>")
+        assert not is_interesting_content(shell, "backup.sql")
+        assert not is_interesting_content(shell, "config.php.bak")
+        assert not is_interesting_content(shell, "db.sql")
+
+    def test_text_html_content_type_rejected(self):
+        assert not is_interesting_content("anything", "backup.sql", "text/html; charset=utf-8")
+
     def test_html_body_on_file_path_rejected(self):
         assert not is_interesting_content("<html>anything at all</html>", "db.sql")
 

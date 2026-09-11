@@ -15,6 +15,7 @@ file paths and reports anything that responds 200 with non-HTML content.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import is_html_body
 
 DEFAULT_FILES = [
     ".DS_Store",
@@ -53,13 +54,18 @@ def looks_like_soft_404(body: str) -> bool:
     return any(m in lowered for m in markers)
 
 
-def looks_like_html(body: str) -> bool:
-    """True when the body is an HTML document (SPA fallback shell, etc.)."""
-    head = (body or "").lstrip()[:200].lower()
-    return head.startswith("<!doctype") or head.startswith("<html")
+def looks_like_html(body: str, content_type: str = "") -> bool:
+    """True when the body is an HTML document (SPA fallback shell, etc.).
+
+    Shared implementation lives in utils/soft404.py (is_html_body); this
+    alias keeps the step-level helper name for tests and callers.
+    """
+    return is_html_body(body, content_type)
 
 
-def is_interesting_content(body: str, path: str) -> bool:
+def is_interesting_content(
+    body: str, path: str, content_type: str = ""
+) -> bool:
     """True when the body looks like real file content rather than HTML.
 
     SPA servers (Angular/React/Next) return the index.html shell with HTTP
@@ -73,7 +79,7 @@ def is_interesting_content(body: str, path: str) -> bool:
         if path.endswith(".DS_Store"):
             return body[:8] == "\x00\x00\x00\x01Bud1"
         return body[:2] == "PK"
-    if looks_like_html(body):
+    if looks_like_html(body, content_type):
         return False
     if looks_like_soft_404(body):
         return False
@@ -107,21 +113,26 @@ class SensitiveFilesStep(BaseHttpStep):
             if getattr(response, "status_code", None) != 200:
                 continue
             body = response.text or ""
-            if not is_interesting_content(body, path):
+            content_type = response.headers.get("content-type") or ""
+            if not is_interesting_content(body, path, content_type):
                 continue
+            url = self.urljoin(path)
+            snippet = " ".join(body.split())[:120]
             self._add_finding(
                 module=self.MODULE,
                 severity="high",
-                title=f"Sensitive file exposed at {path}",
+                title=f"Sensitive file exposed at {url}",
                 description=(
                     f"The file {path} is publicly accessible and contains "
                     f"non-HTML content that may include credentials, source "
                     f"code, or configuration."
                 ),
-                evidence=f"GET {path} -> 200 ({len(body)} bytes)",
+                evidence=f"GET {url} -> 200 ({len(body)} bytes, "
+                         f"{content_type or 'unknown type'}): {snippet}",
                 recommendation="Remove the file from the web root and add "
                                "deployment steps to exclude backups/artifacts",
-                raw={"path": path, "size": len(body)},
+                raw={"path": path, "url": url, "size": len(body),
+                     "content_type": content_type},
             )
 
         self.logger.info(f"Sensitive files: {len(self.findings)} finding(s)")
