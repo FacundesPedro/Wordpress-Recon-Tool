@@ -90,6 +90,24 @@ def unsafe_urls():
     ]
 
 
+@pytest.fixture(autouse=True)
+def mock_wordpress_detection(request, monkeypatch):
+    """Default WordPress-detection result for step tests.
+
+    WP-gated steps call utils.wordpress_detect.is_wordpress; tests mock
+    the HTTP layer rather than real WP markers, so the gate would skip
+    every WP step. Default to True (target looks like WordPress); tests
+    that exercise the gate itself override this explicitly.
+    """
+    async def always_wp(http, url, logger=None):
+        return True
+
+    monkeypatch.setattr(
+        "utils.wordpress_detect.is_wordpress",
+        staticmethod(always_wp),
+    )
+
+
 @pytest.fixture
 def mock_http():
     """Mock HttpClient for step testing."""

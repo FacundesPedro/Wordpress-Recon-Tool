@@ -24,6 +24,14 @@ class LoginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
     SLEEP_BETWEEN_ATTEMPTS = 1.5
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping login brute-force"
+            )
+            return self.findings
+
         self.logger.info("Running login brute-force on wp-login.php...")
 
         credentials = self.resolve_credentials_with_fallback(

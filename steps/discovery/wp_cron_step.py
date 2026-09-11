@@ -22,6 +22,14 @@ class WpCronStep(BaseHttpStep):
     MODULE = "discovery"
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping wp-cron check"
+            )
+            return self.findings
+
         self.logger.info("Checking for wp-cron.php...")
         url = self.urljoin("wp-cron.php")
 

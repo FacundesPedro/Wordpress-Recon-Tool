@@ -50,6 +50,14 @@ class RestSurfaceStep(BaseHttpStep):
     INTERESTING_CODES = {200, 201, 301, 302, 307, 401, 403}
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping REST surface"
+            )
+            return self.findings
+
         self.logger.info("Probing REST API endpoints...")
 
         found_endpoints = []

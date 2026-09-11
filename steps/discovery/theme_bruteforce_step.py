@@ -34,6 +34,14 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
             return default
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping theme brute-force"
+            )
+            return self.findings
+
         self.logger.info("Brute-forcing WordPress themes...")
 
         slugs = self.resolve_wordlist_or_fallback(

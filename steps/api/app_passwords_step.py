@@ -29,6 +29,14 @@ class AppPasswordsStep(BaseHttpStep):
     ]
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping application passwords"
+            )
+            return self.findings
+
         self.logger.info("Checking Application Passwords API endpoints...")
 
         found_routes = []

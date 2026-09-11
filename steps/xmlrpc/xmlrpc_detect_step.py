@@ -34,6 +34,14 @@ class XmlrpcDetectStep(BaseHttpStep):
 </methodCall>"""
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping xmlrpc checks"
+            )
+            return self.findings
+
         self.logger.info("Checking if XML-RPC is enabled...")
 
         url = self.urljoin("xmlrpc.php")

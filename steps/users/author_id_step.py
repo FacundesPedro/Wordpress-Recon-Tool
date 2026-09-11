@@ -24,6 +24,14 @@ class AuthorIdStep(BaseHttpStep):
     MODULE = "users"
 
     async def run(self) -> list[Finding]:
+        from utils.wordpress_detect import is_wordpress
+
+        if not await is_wordpress(self.http, self.target.url, self.logger):
+            self.logger.info(
+                "Target does not appear to be WordPress - skipping author ID enumeration"
+            )
+            return self.findings
+
         self.logger.info("Enumerating author IDs...")
 
         found_ids = []
