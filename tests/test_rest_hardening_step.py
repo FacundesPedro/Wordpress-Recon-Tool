@@ -283,6 +283,29 @@ class TestCheckPluginEndpoints:
 
         assert len(step.findings) == 0
 
+    async def test_core_routes_not_counted_as_plugins(self, mock_http, mock_target, mock_config):
+        from steps.access.rest_hardening_step import RestHardeningStep
+        step = RestHardeningStep(target=mock_target, config=mock_config, http=mock_http)
+
+        async def requestor(url, **kwargs):
+            if "wp/v2/posts" in url or "wp/v2/pages" in url:
+                return MagicMock(
+                    status_code=200,
+                    headers={"content-type": "application/json"},
+                    text="[]",
+                )
+            return MagicMock(
+                status_code=404,
+                headers={"content-type": "application/json"},
+                text='{"code": "rest_no_route"}',
+            )
+
+        mock_http.get = AsyncMock(side_effect=requestor)
+
+        await step._check_plugin_endpoints()
+
+        assert len(step.findings) == 0
+
     async def test_no_accessible_endpoints_no_finding(self, mock_http, mock_target, mock_config):
         from steps.access.rest_hardening_step import RestHardeningStep
         step = RestHardeningStep(target=mock_target, config=mock_config, http=mock_http)

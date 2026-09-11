@@ -27,8 +27,6 @@ class RestHardeningStep(BaseHttpStep):
         "wp-json/wordfence/v1/",
         "wp-json/akismet/v1/",
         "wp-json/jetpack/v4/",
-        "wp-json/wp/v2/posts",
-        "wp-json/wp/v2/pages",
     ]
 
     async def run(self) -> list[Finding]:
@@ -109,7 +107,7 @@ class RestHardeningStep(BaseHttpStep):
             parts = route_path.lstrip("/").split("/")
             if parts:
                 ns = parts[0]
-                if ns != "wp":
+                if ns and ns != "wp":
                     namespaces.setdefault(ns, []).append(route_path)
 
         if namespaces:
@@ -170,10 +168,9 @@ class RestHardeningStep(BaseHttpStep):
                 f"Users exposed: {user_count}"
             ),
             recommendation=(
-                "WordPress blocks the users endpoint by default. "
-                "A plugin or theme is likely overriding this. "
-                "Add 'if (is_user_logged_in())' checks or use a "
-                "rest_endpoints hook to restrict access."
+                "Restrict the users endpoint to authenticated users if user "
+                "enumeration is not required (rest_endpoints filter), or "
+                "disable author archives."
             ),
             raw={"status": response.status_code, "user_count": user_count},
         )
