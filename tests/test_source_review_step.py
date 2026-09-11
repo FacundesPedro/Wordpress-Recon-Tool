@@ -184,6 +184,16 @@ class TestMaskingHelpers:
         assert _is_skip_value("xxxx")
         assert not _is_skip_value("Sup3rS3cret!")
 
+    def test_skip_dynamic_property_reads(self):
+        """Form-field reads like {password: this.passwordControl.value}
+        are not hardcoded secrets (Juice Shop regression)."""
+        assert _is_skip_value("this.passwordControl.value")
+        assert _is_skip_value("event.target.value")
+        assert _is_skip_value("document.getElementById('pw').value")
+        assert _is_skip_value("props.password")
+        assert _is_skip_value("someFunction(password)")
+        assert not _is_skip_value("Sup3rS3cret!")
+
 
 class TestSourceReviewStep:
     async def test_secrets_in_homepage_and_js(self, mock_http, mock_target, mock_config):

@@ -158,8 +158,14 @@ class FormSecurityStep(BaseHttpStep):
 
     @staticmethod
     def _page_cacheable(headers) -> bool:
-        """True when Cache-Control allows shared caching."""
+        """True when Cache-Control allows shared caching.
+
+        max-age=0 requires revalidation on every use and is not treated
+        as meaningfully cacheable.
+        """
         cc = (headers.get("cache-control") or "").lower()
         if "no-store" in cc or "private" in cc:
+            return False
+        if "max-age=0" in cc or "s-maxage=0" in cc:
             return False
         return "public" in cc or "max-age" in cc or "s-maxage" in cc

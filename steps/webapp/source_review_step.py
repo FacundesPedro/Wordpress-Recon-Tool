@@ -322,7 +322,21 @@ def _is_skip_value(value: str) -> bool:
     lowered = value.lower()
     if lowered in _SKIP_PASSWORD_VALUES:
         return True
-    return len(set(value)) <= 1
+    if len(set(value)) <= 1:
+        return True
+    # Dynamic property reads, not hardcoded secrets: form field accesses
+    # like `password: this.passwordControl.value`, event objects, function
+    # calls, and template expressions.
+    dynamic_markers = (
+        ".value", ".text", ".target", "this.", "event.", "$(",
+        "props.", "state.", "getelementbyid", "queryselector",
+        "document.", "window.", "input.", "form.", "field.",
+    )
+    if any(marker in lowered for marker in dynamic_markers):
+        return True
+    if "(" in value or ")" in value or "{" in value or "}" in value:
+        return True
+    return False
 
 
 def scan_for_secrets(content: str, source: str, skip_page_rules: bool = False) -> list[dict]:

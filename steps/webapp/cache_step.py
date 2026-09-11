@@ -41,9 +41,15 @@ def cache_layer(headers) -> Optional[str]:
 
 
 def cacheable(headers) -> bool:
-    """True when Cache-Control allows shared caching."""
+    """True when Cache-Control allows shared caching.
+
+    max-age=0 / s-maxage=0 require revalidation on every use and do not
+    meaningfully cache content, so they are treated as not cacheable.
+    """
     cc = (headers.get("cache-control") or "").lower()
     if "no-store" in cc or "private" in cc:
+        return False
+    if "max-age=0" in cc or "s-maxage=0" in cc:
         return False
     return "public" in cc or "max-age" in cc or "s-maxage" in cc
 
