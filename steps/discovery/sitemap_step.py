@@ -13,6 +13,7 @@ import re
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_xml_body
 
 
 class SitemapStep(BaseHttpStep):
@@ -22,6 +23,11 @@ class SitemapStep(BaseHttpStep):
     description = "Check for WordPress sitemap"
     severity = "info"
     MODULE = "discovery"
+
+    SITEMAP_PATHS = [
+        "wp-sitemap.xml",
+        "?sitemap=index",
+    ]
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress
@@ -33,32 +39,42 @@ class SitemapStep(BaseHttpStep):
             return self.findings
 
         self.logger.info("Checking for wp-sitemap.xml...")
-        url = self.urljoin("wp-sitemap.xml")
 
-        try:
-            response = await self.http.get(url)
-            if response.status_code == 200:
-                content = response.text
+        for path in self.SITEMAP_PATHS:
+            url = self.urljoin(path)
+            try:
+                response = await self.http.get(url)
+            except Exception as e:
+                self.logger.debug(f"Error checking {path}: {e}")
+                continue
 
-                url_pattern = re.compile(r"<loc>([^<]+)</loc>")
-                urls = url_pattern.findall(content)
-                url_count = len(urls)
-
-                self._add_finding(
-                    module=self.MODULE,
-                    severity=self.severity,
-                    title="wp-sitemap.xml found",
-                    description=f"WordPress sitemap found exposing {url_count} URLs",
-                    evidence=f"First 5 URLs: {', '.join(urls[:5])}" if urls else url,
-                    recommendation="Ensure only public content is included in sitemap",
-                    raw={"url": url, "url_count": url_count, "urls": urls[:20]},
-                )
-                self.logger.info(f"Found wp-sitemap.xml with {url_count} URLs")
-            else:
+            if response.status_code != 200:
                 self.logger.debug(
-                    f"wp-sitemap.xml not found (status: {response.status_code})"
+                    f"{path} not found (status: {response.status_code})"
                 )
-        except Exception as e:
-            self.logger.error(f"Error checking wp-sitemap.xml: {e}")
+                continue
+            if not is_xml_body(response):
+                self.logger.debug(
+                    f"{path} is not an XML sitemap (catch-all/soft-404) - skipped"
+                )
+                continue
+
+            url_pattern = re.compile(r"<loc>([^<]+)</loc>")
+            urls = url_pattern.findall(response.text or "")
+            url_count = len(urls)
+
+            self._add_finding(
+                module=self.MODULE,
+                severity=self.severity,
+                title="wp-sitemap.xml found",
+                description=f"WordPress sitemap found exposing {url_count} URLs",
+                evidence=f"First 5 URLs: {', '.join(urls[:5])}" if urls else url,
+                recommendation="Ensure only public content is included in sitemap",
+                raw={"url": url, "url_count": url_count, "urls": urls[:20]},
+            )
+            self.logger.info(f"Found wp-sitemap.xml with {url_count} URLs")
+            break
+        else:
+            self.logger.info("No WordPress sitemap found")
 
         return self.findings
