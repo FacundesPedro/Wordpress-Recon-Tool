@@ -9,6 +9,13 @@ from steps.webapp.sourcemap_step import SourcemapStep
 pytestmark = pytest.mark.asyncio
 
 
+VALID_MAP = '{"version":3,"sources":["app.ts"],"mappings":"AAAA"}'
+SPA_SHELL = (
+    "<!doctype html><html><head><title>App</title></head>"
+    "<body><app-root></app-root></body></html>"
+)
+
+
 def make_step(mock_http, mock_target, mock_config, enabled=True, max_js=10):
     mock_config.source_scan_sourcemaps = enabled
     mock_config.source_scan_max_js = max_js
@@ -23,6 +30,28 @@ def responder(routes: dict):
         return MagicMock(status_code=404, text="Not Found")
 
     return _respond
+
+
+class TestIsSourcemapContent:
+    async def test_valid_v3_map(self):
+        from steps.webapp.sourcemap_step import is_sourcemap_content
+        assert is_sourcemap_content(VALID_MAP) is True
+
+    async def test_version_and_sources_only(self):
+        from steps.webapp.sourcemap_step import is_sourcemap_content
+        assert is_sourcemap_content('{"version":3,"sources":["a.ts"]}') is True
+
+    async def test_html_rejected(self):
+        from steps.webapp.sourcemap_step import is_sourcemap_content
+        assert is_sourcemap_content(SPA_SHELL) is False
+
+    async def test_unrelated_json_rejected(self):
+        from steps.webapp.sourcemap_step import is_sourcemap_content
+        assert is_sourcemap_content('{"error": "not found"}') is False
+
+    async def test_non_json_rejected(self):
+        from steps.webapp.sourcemap_step import is_sourcemap_content
+        assert is_sourcemap_content("//# sourceMappingURL=x.map") is False
 
 
 class TestSourcemapStep:
@@ -65,14 +94,45 @@ class TestSourcemapStep:
             side_effect=responder(
                 {
                     "/": MagicMock(status_code=200, text=html),
-                    "/static/app.js.map": MagicMock(status_code=200, text="{}"),
-                    "/static/vendor.js.map": MagicMock(status_code=200, text="{}"),
+                    "/static/app.js.map": MagicMock(status_code=200, text=VALID_MAP),
+                    "/static/vendor.js.map": MagicMock(status_code=200, text=VALID_MAP),
                 }
             )
         )
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert len(findings) == 2
+
+    async def test_spa_shell_at_map_path_ignored(self, mock_http, mock_target, mock_config):
+        html = '<html><head><script src="/main.js"></script></head><body></body></html>'
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": MagicMock(status_code=200, text=html),
+                    "/main.js": MagicMock(status_code=200, text="console.log(1)"),
+                    "/main.js.map": MagicMock(status_code=200, text=SPA_SHELL),
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings == []
+
+    async def test_non_sourcemap_json_ignored(self, mock_http, mock_target, mock_config):
+        html = '<html><head><script src="/app.js"></script></head><body></body></html>'
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": MagicMock(status_code=200, text=html),
+                    "/app.js.map": MagicMock(
+                        status_code=200, text='{"error": "not found"}'
+                    ),
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings == []
 
     async def test_sourcemap_url_comment_detected(self, mock_http, mock_target, mock_config):
         html = '<html><head><script src="/static/app.js"></script></head><body></body></html>'

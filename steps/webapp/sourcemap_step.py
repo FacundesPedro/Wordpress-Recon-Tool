@@ -11,6 +11,7 @@ a frequent source of leaked secrets and internal structure.
 #      referenced maps (falling back to the <file>.map suffix convention)
 # WHY: Exposed sourcemaps leak original source code, comments, and configs
 
+import json
 import re
 from urllib.parse import urljoin, urlsplit
 
@@ -22,10 +23,33 @@ from utils.source_discovery import (
     normalize_url,
     strip_query,
 )
+from utils.soft404 import is_html_body
 
 _SOURCE_MAPPING_URL_RE = re.compile(
     r"^\s*//#\s*sourceMappingURL=(\S+)\s*$", re.MULTILINE
 )
+
+
+def is_sourcemap_content(content: str) -> bool:
+    """True when the body is a Source Map v3 JSON document, not a shell.
+
+    SPA catch-alls answer 200 with the app shell for every .map path;
+    a real sourcemap is a JSON object with "version" plus "mappings"
+    (v3) and/or "sources". HTML and arbitrary JSON never match.
+    """
+    if not content:
+        return False
+    if is_html_body(content):
+        return False
+    if not content.lstrip().startswith("{"):
+        return False
+    try:
+        data = json.loads(content)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(data, dict) or "version" not in data:
+        return False
+    return "mappings" in data or "sources" in data
 
 
 def extract_sourcemap_urls(js_content: str) -> list[str]:
@@ -102,6 +126,12 @@ class SourcemapStep(BaseHttpStep):
                 continue
             if getattr(response, "status_code", None) == 200:
                 text = getattr(response, "text", "") or ""
+                if not is_sourcemap_content(text):
+                    self.logger.debug(
+                        f"Sourcemap probe {map_url}: response is not a sourcemap "
+                        f"(likely an SPA/soft-404 shell) - skipped"
+                    )
+                    continue
                 found_maps.append((map_url, len(text.splitlines()), origin))
                 self.logger.info(f"Exposed sourcemap: {map_url}")
 
