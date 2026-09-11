@@ -202,6 +202,20 @@ def main(
             help="Skip pre-flight DNS/TCP/TLS reachability probe",
         ),
     ] = False,
+    active: Annotated[
+        bool,
+        typer.Option(
+            "--active",
+            help="Enable active/intrusive testing steps (requires --authorized)",
+        ),
+    ] = False,
+    authorized: Annotated[
+        bool,
+        typer.Option(
+            "--authorized",
+            help="Confirm you have written authorization to actively test the target",
+        ),
+    ] = False,
 ):
     """Run WordPress reconnaissance scan."""
     config = ScanConfig()
@@ -257,6 +271,27 @@ def main(
 
     main_logger = Logger("Main", config.log_level)
 
+    module_names = get_module_names(
+        profile, modules, wpscan, nuclei, ffuf, opendoor, nmap, nmap_scripts
+    )
+
+    # ── Active testing gate ─────────────────────────────────────────
+    if "active" in module_names or active:
+        if not authorized:
+            main_logger.error(
+                "Active/intrusive testing requested but not authorized. "
+                "Pass --authorized to confirm you have permission to "
+                "actively test this target."
+            )
+            raise typer.Exit(code=1)
+        if "active" not in module_names:
+            module_names.append("active")
+        config.active_enabled = True
+        main_logger.warning(
+            "ACTIVE TESTING ENABLED — intrusive canary probes will be sent "
+            "to the target. Detection-only payloads; still verify scope."
+        )
+
     if not config.quiet:
         main_logger.info("Initializing scan configuration")
 
@@ -279,10 +314,6 @@ def main(
         if not probe.reachable:
             main_logger.error(probe.error or "Target is unreachable")
             raise typer.Exit(code=1)
-
-    module_names = get_module_names(
-        profile, modules, wpscan, nuclei, ffuf, opendoor, nmap, nmap_scripts
-    )
 
     if not config.quiet:
         main_logger.info(f"Selected modules: {', '.join(module_names)}")

@@ -233,6 +233,56 @@ class ScanConfig(BaseSettings):
         default=40, ge=5, le=300,
         description="Max admin/management paths to probe (admin_surface step)",
     )
+    webapp_jwt_audit: bool = Field(
+        default=True,
+        description="Audit JWTs found in cookies/HTML/JS (jwt_audit step)",
+    )
+    webapp_websocket_probe: bool = Field(
+        default=True,
+        description="Probe WebSocket endpoints for cross-origin handshakes (websocket step)",
+    )
+    takeover_max_subdomains: int = Field(
+        default=25, ge=1, le=200,
+        description="Max subdomains to check for takeover (subdomain_takeover step)",
+    )
+
+    # Active / intrusive testing settings (tier 5, explicit opt-in only)
+    active_enabled: bool = Field(
+        default=False,
+        description="Master switch for active/intrusive testing steps (active module)",
+    )
+    active_max_params: int = Field(
+        default=20, ge=1, le=200,
+        description="Max query parameters tested per active injection step",
+    )
+    active_max_requests: int = Field(
+        default=100, ge=1, le=2000,
+        description="Hard cap on probe requests per active step",
+    )
+    active_delay: float = Field(
+        default=0.5, ge=0.0, le=30.0,
+        description="Delay in seconds between active probe requests",
+    )
+    active_time_based: bool = Field(
+        default=False,
+        description="Enable time-based blind SQLi probes (SLEEP canaries; slow)",
+    )
+    active_file_upload: bool = Field(
+        default=False,
+        description="Enable file upload probing (uploads a safe marker file; leaves an artifact)",
+    )
+    active_smuggling: bool = Field(
+        default=False,
+        description="Enable HTTP request smuggling timing probes (raw sockets; noisy)",
+    )
+    active_race_endpoint: str = Field(
+        default="",
+        description="Absolute path for race-condition probing (e.g. /api/coupon/apply); empty = skip",
+    )
+    active_mass_assign_endpoint: str = Field(
+        default="",
+        description="Absolute path for mass-assignment probing (e.g. /api/register); empty = skip",
+    )
 
     skip_reachability_check: bool = Field(
         default=False, description="Skip pre-flight DNS/TCP/TLS reachability probe"

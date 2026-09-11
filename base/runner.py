@@ -43,7 +43,7 @@ class Runner:
 
     def _get_modules_by_tier(self) -> dict[int, list[Module]]:
         """Group modules by risk tier."""
-        tier_modules: dict[int, list[Module]] = {1: [], 2: [], 3: [], 4: []}
+        tier_modules: dict[int, list[Module]] = {tier: [] for tier in RISK_TIERS}
 
         for module in self.modules:
             module_name = module.name or module.__class__.__name__

@@ -2,6 +2,7 @@
 """Module registry and profiles."""
 
 from modules.access_module import AccessModule
+from modules.active_module import ActiveModule
 from modules.api_module import ApiModule
 from modules.discovery_module import DiscoveryModule
 from modules.fingerprint_module import FingerprintModule
@@ -28,6 +29,7 @@ MODULE_REGISTRY = {
     "secrets": SecretsModule,
     "ssrf": SsrfModule,
     "webapp": WebappModule,
+    "active": ActiveModule,
     "tools": ToolsModule,
 }
 
@@ -47,6 +49,21 @@ PROFILES = {
         "ssrf",
     ],
     "web": ["passive", "infrastructure", "webapp", "secrets", "tools"],
+    "intrusive": [
+        "passive",
+        "infrastructure",
+        "discovery",
+        "fingerprint",
+        "vuln",
+        "users",
+        "api",
+        "xmlrpc",
+        "secrets",
+        "ssrf",
+        "webapp",
+        "active",
+    ],
+    "web-intrusive": ["passive", "infrastructure", "webapp", "active"],
     "full": list(MODULE_REGISTRY.keys()),
     "aggressive": ["users", "xmlrpc", "secrets", "tools"],
 }
@@ -59,6 +76,7 @@ RISK_TIERS: dict[int, list[str]] = {
     2: ["infrastructure", "discovery", "fingerprint", "access", "vuln", "webapp"],
     3: ["users", "api", "xmlrpc", "secrets", "ssrf"],
     4: ["tools"],
+    5: ["active"],
 }
 
 
