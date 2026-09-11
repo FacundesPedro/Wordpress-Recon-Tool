@@ -162,6 +162,7 @@ class TestCheckUserEndpoint:
         assert f.severity == "medium"
         assert "User list" in f.title
         assert f.raw["user_count"] == 2
+        assert f.raw["path"] == "wp-json/wp/v2/users"
 
     async def test_200_with_non_list_json_uses_count_one(self, mock_http, mock_target, mock_config):
         from steps.access.rest_hardening_step import RestHardeningStep
@@ -216,6 +217,10 @@ class TestCheckUserEndpoint:
         await step._check_user_endpoint()
 
         assert len(step.findings) == 1
+        finding = step.findings[0]
+        assert finding.raw["path"] == "?rest_route=/wp/v2/users"
+        assert "rest_route=/wp/v2/users" in finding.description
+        assert "rest_route=/wp/v2/users" in finding.evidence
 
     async def test_non_200_no_finding(self, mock_http, mock_target, mock_config):
         from steps.access.rest_hardening_step import RestHardeningStep

@@ -133,6 +133,7 @@ class RestHardeningStep(BaseHttpStep):
 
     async def _check_user_endpoint(self) -> None:
         response = None
+        used_path = None
         for path in rest_route_fallbacks("wp-json/wp/v2/users"):
             try:
                 candidate = await self.http.get(
@@ -143,27 +144,30 @@ class RestHardeningStep(BaseHttpStep):
                 continue
             if candidate.status_code == 200 and is_json_body(candidate):
                 response = candidate
+                used_path = path
                 break
             if is_json_body(candidate):
                 return
 
-        if response is None:
+        if response is None or used_path is None:
             return
 
         data = json_body(response)
         if data is None:
             return
         user_count = len(data) if isinstance(data, list) else 1
+        used_url = self.urljoin(used_path)
 
         self._add_finding(
             module=self.MODULE,
             severity="medium",
             title="User list publicly accessible via REST API",
             description=(
-                f"GET /wp-json/wp/v2/users returned {response.status_code} "
+                f"GET {used_url} returned {response.status_code} "
                 f"with {user_count} user(s) — no authentication required"
             ),
             evidence=(
+                f"URL: {used_url}\n"
                 f"Status: {response.status_code}\n"
                 f"Users exposed: {user_count}"
             ),
@@ -172,7 +176,12 @@ class RestHardeningStep(BaseHttpStep):
                 "enumeration is not required (rest_endpoints filter), or "
                 "disable author archives."
             ),
-            raw={"status": response.status_code, "user_count": user_count},
+            raw={
+                "status": response.status_code,
+                "user_count": user_count,
+                "path": used_path,
+                "url": used_url,
+            },
         )
 
     async def _check_plugin_endpoints(self) -> None:
