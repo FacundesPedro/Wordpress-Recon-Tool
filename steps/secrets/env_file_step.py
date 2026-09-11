@@ -47,7 +47,7 @@ class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
 
         for path in env_paths:
             try:
-                response = await self.http.get(path)
+                response = await self.fetch(path)
                 if response.status_code == 200:
                     content = response.text
                     if (

@@ -36,7 +36,7 @@ class PhpinfoStep(BaseHttpStep):
 
         for path in self.PHPINFO_PATHS:
             try:
-                response = await self.http.get(path)
+                response = await self.fetch(path)
                 if response.status_code == 200:
                     content = response.text.lower()
                     if (

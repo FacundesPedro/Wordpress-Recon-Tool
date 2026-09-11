@@ -35,7 +35,7 @@ class GitExposureStep(BaseHttpStep):
 
         for path in self.GIT_FILES:
             try:
-                response = await self.http.get(path)
+                response = await self.fetch(path)
                 if response.status_code == 200:
                     found_git.append(path)
                     self.logger.info(f"Found .git file: {path}")

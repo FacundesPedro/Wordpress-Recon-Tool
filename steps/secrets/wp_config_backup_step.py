@@ -49,8 +49,9 @@ class WpConfigBackupStep(BaseHttpStep, WordlistDependencyMixin):
         found_backups = []
 
         for pattern in backup_patterns:
+            path = pattern.lstrip("/")
             try:
-                response = await self.http.get(pattern)
+                response = await self.fetch(path)
                 if response.status_code == 200:
                     content = response.text.lower()
                     if (
@@ -58,10 +59,10 @@ class WpConfigBackupStep(BaseHttpStep, WordlistDependencyMixin):
                         or "database" in content
                         or "define(" in content
                     ):
-                        found_backups.append(pattern)
-                        self.logger.info(f"Found wp-config backup: {pattern}")
+                        found_backups.append(path)
+                        self.logger.info(f"Found wp-config backup: {path}")
             except Exception as e:
-                self.logger.debug(f"Error checking {pattern}: {e}")
+                self.logger.debug(f"Error checking {path}: {e}")
 
         if found_backups:
             self._add_finding(
