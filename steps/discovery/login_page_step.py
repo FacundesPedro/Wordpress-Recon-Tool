@@ -13,6 +13,35 @@ from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 
+_LOGIN_MARKERS = (
+    'id="loginform"',
+    "id='loginform'",
+    'name="log"',
+    "name='log'",
+    'name="user_login"',
+    "name='user_login'",
+    'id="wp-submit"',
+    "id='wp-submit'",
+    'name="wp-submit"',
+    "name='wp-submit'",
+    'action="wp-login.php',
+    "action='wp-login.php",
+    "lostpassword",
+)
+
+
+def is_login_page_content(content: str) -> bool:
+    """True when the body contains a WordPress login form.
+
+    A generic "wordpress" substring is not enough: SPA/CMS catch-alls
+    and WordPress homepages (generator meta, wp-includes assets) also
+    contain it, which made every arbitrary path look like a login page.
+    """
+    if not content or not isinstance(content, str):
+        return False
+    lowered = content.lower()
+    return any(marker in lowered for marker in _LOGIN_MARKERS)
+
 
 class LoginPageStep(BaseHttpStep, WordlistDependencyMixin):
     """Detect WordPress login pages."""
@@ -49,10 +78,7 @@ class LoginPageStep(BaseHttpStep, WordlistDependencyMixin):
                 url = self.urljoin(path.lstrip("/"))
                 response = await self.http.get(url)
                 if response.status_code in (200, 302, 303):
-                    if (
-                        "wordpress" in response.text.lower()
-                        or "wp-login" in response.text.lower()
-                    ):
+                    if is_login_page_content(response.text):
                         found_logins.append(
                             {
                                 "path": path,
