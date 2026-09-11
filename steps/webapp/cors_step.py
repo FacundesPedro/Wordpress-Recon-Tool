@@ -38,9 +38,11 @@ class CorsStep(BaseHttpStep):
         self.logger.info("Checking CORS policy...")
 
         checked = 0
-        for path in CORS_PROBE_PATHS:
-            findings_here = 0
+        # observations: (policy_class, acao, acac) -> list of "path (label)"
+        observations: dict[tuple[str, str, str], list[str]] = {}
+        methods_by_policy: dict[tuple[str, str, str], str] = {}
 
+        for path in CORS_PROBE_PATHS:
             preflight = await self._probe(
                 path,
                 method="OPTIONS",
@@ -64,10 +66,22 @@ class CorsStep(BaseHttpStep):
                 ).strip()
                 if not acao:
                     continue
-                findings_here += self._evaluate(path, label, acao, acac, acam)
+                policy_class = self._classify(acao, acac)
+                if policy_class is None:
+                    continue
+                key = (policy_class, acao, acac)
+                observations.setdefault(key, []).append(f"{path} ({label})")
+                if acam and key not in methods_by_policy:
+                    methods_by_policy[key] = acam
+
+        for (policy_class, acao, acac), locations in observations.items():
+            self._emit(policy_class, acao, acac, locations,
+                       methods_by_policy.get((policy_class, acao, acac), ""))
 
         if checked == 0:
             self.logger.info("CORS check: no CORS headers observed")
+        elif not self.findings:
+            self.logger.info("CORS check: no misconfigured policies observed")
         return self.findings
 
     async def _probe(self, path: str, method: str, headers: dict):
@@ -77,65 +91,79 @@ class CorsStep(BaseHttpStep):
             self.logger.debug(f"CORS probe failed for {path} ({method}): {e}")
             return None
 
-    def _evaluate(self, path: str, label: str, acao: str, acac: str, acam: str = "") -> int:
-        """Evaluate one CORS response; emit finding(s) and return count."""
+    @staticmethod
+    def _classify(acao: str, acac: str):
+        """Classify a CORS observation into a policy class (or None)."""
         credentials = acac == "true"
-        full_path = f"{self.target.url}{path} ({label})"
-
         if acao == "*":
-            if credentials:
-                self._add_finding(
-                    module=self.MODULE,
-                    severity="medium",
-                    title="Wildcard CORS with credentials",
-                    description=(
-                        "Access-Control-Allow-Origin: * combined with "
-                        "Access-Control-Allow-Credentials: true (browsers reject "
-                        "this combination, but it indicates a misconfigured policy)."
-                    ),
-                    evidence=f"{full_path}: ACAO=*, ACAC=true",
-                    recommendation="Use an explicit allowlist of trusted origins instead of *",
-                    raw={"acao": acao, "acac": acac, "acam": acam, "path": path},
-                )
-            else:
-                self._add_finding(
-                    module=self.MODULE,
-                    severity="info",
-                    title="Wildcard CORS policy",
-                    description=(
-                        "Access-Control-Allow-Origin: * allows any origin to read "
-                        "responses from this endpoint."
-                    ),
-                    evidence=f"{full_path}: ACAO=*",
-                    recommendation=(
-                        "Restrict Access-Control-Allow-Origin to trusted origins "
-                        "where responses contain sensitive data"
-                    ),
-                    raw={"acao": acao, "acac": acac, "acam": acam, "path": path},
-                )
-            return 1
-
+            return "wildcard-creds" if credentials else "wildcard"
         if acao == CANARY_ORIGIN or acao.lower() == "null":
-            severity = "high" if credentials else "medium"
+            return "reflection-creds" if credentials else "reflection"
+        return None
+
+    def _emit(self, policy_class: str, acao: str, acac: str,
+              locations: list[str], acam: str) -> None:
+        """Emit one aggregated finding per unique CORS policy."""
+        sample = ", ".join(locations[:5])
+        extra = len(locations) - 5
+        if extra > 0:
+            sample += f" (+{extra} more)"
+        acac_label = acac if acac else "absent"
+
+        if policy_class == "wildcard-creds":
             self._add_finding(
                 module=self.MODULE,
-                severity=severity,
+                severity="medium",
+                title="Wildcard CORS with credentials",
+                description=(
+                    "Access-Control-Allow-Origin: * combined with "
+                    "Access-Control-Allow-Credentials: true (browsers reject "
+                    "this combination, but it indicates a misconfigured policy)."
+                ),
+                evidence=f"ACAO=*, ACAC=true at: {sample}",
+                recommendation="Use an explicit allowlist of trusted origins instead of *",
+                raw={"acao": acao, "acac": acac, "acam": acam,
+                     "locations": locations},
+            )
+        elif policy_class == "wildcard":
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="Wildcard CORS policy",
+                description=(
+                    "Access-Control-Allow-Origin: * allows any origin to read "
+                    f"responses from {len(locations)} probed location(s)."
+                ),
+                evidence=f"ACAO=* at: {sample}",
+                recommendation=(
+                    "Restrict Access-Control-Allow-Origin to trusted origins "
+                    "where responses contain sensitive data"
+                ),
+                raw={"acao": acao, "acac": acac, "acam": acam,
+                     "locations": locations},
+            )
+        elif policy_class in ("reflection-creds", "reflection"):
+            credentials = policy_class == "reflection-creds"
+            description = (
+                f"The server reflected the untrusted Origin header ({acao}) "
+                f"at {len(locations)} probed location(s)."
+            )
+            if credentials:
+                description += (
+                    " It also allows credentialed requests, enabling "
+                    "cross-origin data theft with victim cookies."
+                )
+            self._add_finding(
+                module=self.MODULE,
+                severity="high" if credentials else "medium",
                 title="CORS origin reflection"
                 + (" with credentials" if credentials else ""),
-                description=(
-                    "The server reflected the untrusted Origin header "
-                    f"({acao})"
-                    + " and allows credentialed requests."
-                    if credentials
-                    else f"The server reflected the untrusted Origin header ({acao})."
-                ),
-                evidence=f"{full_path}: ACAO={acao}, ACAC={acac or 'absent'}",
+                description=description,
+                evidence=f"ACAO={acao}, ACAC={acac_label} at: {sample}",
                 recommendation=(
                     "Validate the Origin against an explicit allowlist before "
                     "setting Access-Control-Allow-Origin"
                 ),
-                    raw={"acao": acao, "acac": acac, "acam": acam, "path": path},
+                raw={"acao": acao, "acac": acac, "acam": acam,
+                     "locations": locations},
             )
-            return 1
-
-        return 0

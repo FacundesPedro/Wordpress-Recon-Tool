@@ -152,6 +152,14 @@ class ApiSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
         sitemaps: list[str] = []
         sitemap_urls: list[str] = []
 
+        # Calibrate against a nonexistent path: SPA catch-all servers return
+        # the app shell (200) for every unknown path, which would otherwise
+        # be reported as "API endpoint discovered".
+        from utils.soft404 import Soft404Detector
+
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         for path in unique_paths:
             if path in ROBOTS_PATHS:
                 response = await self._get(path)
@@ -168,6 +176,8 @@ class ApiSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
             else:
                 response = await self._get(path)
                 if response is None or response.status_code != 200:
+                    continue
+                if detector.is_soft404(response):
                     continue
                 text = getattr(response, "text", "") or ""
                 if not text:
