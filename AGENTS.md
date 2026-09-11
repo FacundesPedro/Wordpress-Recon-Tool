@@ -4,13 +4,13 @@
 
 WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Rich.
 
-Core architecture: `modules/` → `steps/` with risk tiers (1-4), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
+Core architecture: `modules/` → `steps/` with risk tiers (1-5), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 13 modules, 75 steps, 1419 tests passing (75/75 steps covered, 100%). All infrastructure, core, config, CLI, and edge cases covered at unit level. Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`. Note: 4 PDF tests fail in environments where weasyprint's native libs (pango/cairo) are missing — pre-existing environment issue, not a code bug.
+**Current state:** 14 modules, 96 steps, 1605 tests passing (all new steps covered). Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`. Note: 4 PDF tests fail in environments where weasyprint's native libs (pango/cairo) are missing — pre-existing environment issue, not a code bug.
 
-**Latest feature: Generic web security (`webapp` module + `web` profile + Nmap)** — `webapp` module (tier 2, 13 steps) for non-WordPress web app checks: `SourceReviewStep` (credentials/info leaks in HTML/JS/sourcemaps, gitleaks-derived rules), `SourcemapStep` (`sourceMappingURL=` parsing), `HttpMethodsStep`, `CookieFlagsStep` (incl. SameSite audit), `CorsStep` (8 API paths + ACAM), `StackTraceStep` (incl. malformed-JSON POSTs), `ContentLeakStep` (BFS crawl + mixed content), `HeaderQualityStep`, `CspAuditStep` (WSTG 4.2.12), `ApiSurfaceStep` (robots/sitemap/OpenAPI/GraphQL, 4.12.1/4.12.99), `AdminSurfaceStep` (console/debug path enumeration, 4.2.5), `OpenRedirectStep` (canary probes, 4.11.4), `HostHeaderStep` (vhost/reflection probes, 4.7.17). Shared discovery helper `utils/source_discovery.py` (static asset extraction + wordlist fuzzing via `wordlists/webapp/assets.txt` + bounded same-origin fetch); additional wordlists `wordlists/webapp/api_paths.txt` (27) and `wordlists/webapp/admin_paths.txt` (46). Nmap integration in `tools` module: `NmapPortScanStep` (`-sT -sV --top-ports`) and `NmapScriptScanStep` (`-sC`), both `-oJ` JSON, min version 7.92. New `-p web` profile for generic (non-WP) client assessments: `passive, infrastructure, webapp, secrets, tools`.
+**Latest feature: Web pentest expansion + active module (`active` tier 5, `intrusive` profiles)** — 26 new steps across 4 areas. **Tier A web recon:** `JwtAuditStep` (WSTG 4.6.10: alg:none, weak HS256 offline dictionary check, exp/claims/kid-jku audit), `ClientSideAuditStep` (4.11.1/11/12/14: DOM sinks, postMessage `*`, localStorage secrets, tabnabbing), `WebSocketStep` (4.11.10: ws/wss discovery + raw asyncio handshake with canary Origin → CSWSH), `JsLibraryStep` (4.11.6: version detection vs vendored Retire.js-derived DB + missing SRI), `SubdomainTakeoverStep` (4.2.10, passive: crt.sh + dig CNAME + can-i-take-over-xyz fingerprints). **Tier B config surface:** `SensitiveFilesStep` (4.2.3/4.2.4 generic backup/config wordlist), `CacheAnalysisStep` (cache-layer detection + capped path-suffix WCD canary), `FormSecurityStep` (4.4.1/4.4.6/4.6.5: http password forms, autocomplete, cacheable login), `TechFingerprintStep` (4.1.8/4.1.9), `EmailSecurityStep` (passive: SPF/DMARC/DKIM/CAA via dig). **Tier C WordPress:** `PluginAbandonmentStep` (wp.org API closed/last_updated/tested risk scoring), `WooCommerceStep` (Store API + wc-ajax + version), `PhpVersionStep` (EOL mapping), `RegistrationStep` (open registration/wp-signup). **Active module (tier 5, 15 steps, gated):** injection family (`SqlInjectionStep` error-signatures + optional time-based, `ReflectedXssStep` canary, `SstiStep` arithmetic, `PathTraversalStep`, `CrlfInjectionStep`, `HttpParameterPollutionStep`), auth family (`AuthBypassStep` path-confusion/header bypass, `RateLimitStep`, `PasswordResetStep`, `CsrfStep`, `DefaultCredentialsStep` capped/stops-on-success), high-risk double-gated (`RequestSmugglingStep` CL.TE/TE.CL raw sockets, `MassAssignmentStep` + `RaceConditionStep` operator-supplied endpoints, `FileUploadStep` safe marker). Safety: requires `-p intrusive`/`web-intrusive` or `--active` **plus `--authorized`**; honors `WP_ACTIVE_ENABLED` master switch, `WP_ACTIVE_MAX_REQUESTS` (100), `WP_ACTIVE_DELAY` (0.5s), `WP_ACTIVE_MAX_PARAMS` (20); detection-only payloads; shared base `steps/active/base_active.py`. New wordlists: `takeover/fingerprints.json` (32), `webapp/js_libraries.json` (14), `webapp/sensitive_files.txt` (~60). References in `docs/REFERENCES.md` ("Web Pentest Expansion References").
 
-**Previous feature: Brute-force concurrency + progress** — `PluginBruteforceStep` and `ThemeBruteforceStep` now use bounded concurrency (`asyncio.Semaphore` + batched `gather`), progress logging every 500 probes, early abort on `http.unreachable`, and `WP_BRUTEFORCE_MAX_PROBES` cap. `LoginBruteforceStep` has progress logging. `HttpClient._execute` closes un-awaited coroutines when unreachable (fixes RuntimeWarning).
+**Previous feature: Generic web security (`webapp` module + `web` profile + Nmap)** — `webapp` module (tier 2) for non-WordPress web app checks: `SourceReviewStep` (credentials/info leaks in HTML/JS/sourcemaps, gitleaks-derived rules), `SourcemapStep` (`sourceMappingURL=` parsing), `HttpMethodsStep`, `CookieFlagsStep` (incl. SameSite audit), `CorsStep` (8 API paths + ACAM), `StackTraceStep` (incl. malformed-JSON POSTs), `ContentLeakStep` (BFS crawl + mixed content), `HeaderQualityStep`, `CspAuditStep` (WSTG 4.2.12), `ApiSurfaceStep` (robots/sitemap/OpenAPI/GraphQL, 4.12.1/4.12.99), `AdminSurfaceStep` (console/debug path enumeration, 4.2.5), `OpenRedirectStep` (canary probes, 4.11.4), `HostHeaderStep` (vhost/reflection probes, 4.7.17). Shared discovery helper `utils/source_discovery.py`; wordlists `wordlists/webapp/assets.txt` (27) and `admin_paths.txt` (46). Nmap integration in `tools` module: `NmapPortScanStep` (`-sT -sV --top-ports`) and `NmapScriptScanStep` (`-sC`), both `-oJ` JSON, min version 7.92. `-p web` profile for generic (non-WP) client assessments.
 
 ## Agent Working Protocol
 
@@ -186,8 +186,36 @@ CLI: `--nmap`, `--nmap-scripts`, `--nmap-top-ports`, `--nmap-ports`, `--nmap-tim
 
 Key files: `steps/webapp/*`, `utils/source_discovery.py`, `modules/webapp_module.py`, `wordlists/webapp/assets.txt`, `wordlists/webapp/api_paths.txt`, `wordlists/webapp/admin_paths.txt`.
 
+### Config Reference — Active / Intrusive Testing (tier 5)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_ACTIVE_ENABLED` | `false` | Master switch for the `active` module — all 15 steps skip when false |
+| `WP_ACTIVE_MAX_REQUESTS` | `100` | Hard cap on probe requests per active step (1-2000) |
+| `WP_ACTIVE_MAX_PARAMS` | `20` | Max query parameters tested per injection step (1-200) |
+| `WP_ACTIVE_DELAY` | `0.5` | Delay in seconds between probe requests (0-30) |
+| `WP_ACTIVE_TIME_BASED` | `false` | Enable time-based blind SQLi probes (SLEEP canaries; slow) |
+| `WP_ACTIVE_SMUGGLING` | `false` | Enable CL.TE/TE.CL raw-socket timing probes (noisy) |
+| `WP_ACTIVE_FILE_UPLOAD` | `false` | Enable file upload probing (safe marker file; leaves an artifact) |
+| `WP_ACTIVE_RACE_ENDPOINT` | `""` | Absolute path for race-condition probing (e.g. `/api/coupon/apply`); empty = skip |
+| `WP_ACTIVE_MASS_ASSIGN_ENDPOINT` | `""` | Absolute path for mass-assignment probing (e.g. `/api/register`); empty = skip |
+
+CLI: `--active` (append active module + set master switch) requires `--authorized` or the scan exits with an error. Profiles: `-p intrusive` (full recon + active), `-p web-intrusive` (passive/infrastructure/webapp + active). Key files: `modules/active_module.py`, `steps/active/base_active.py` (gate/caps/delay/param-discovery), `steps/active/*`.
+
+### Config Reference — Webapp Expansion (Tier A/B)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_WEBAPP_JWT_AUDIT` | `true` | Audit JWTs in cookies/HTML/JS (`jwt_audit` step) |
+| `WP_WEBAPP_WEBSOCKET_PROBE` | `true` | Probe WebSocket endpoints for cross-origin handshakes (`websocket` step) |
+| `WP_TAKEOVER_MAX_SUBDOMAINS` | `25` | Max subdomains checked by `subdomain_takeover` (1-200) |
+
 ### Scan Profiles
 
 `-p web` → `passive, infrastructure, webapp, secrets, tools` — generic (non-WP) web security profile. `tools` is a no-op unless a tool flag is passed. Usage: `python main.py -t https://site.com -p web --nmap --nmap-scripts -f all`.
+
+`-p intrusive` → `passive, infrastructure, discovery, fingerprint, vuln, users, api, xmlrpc, secrets, ssrf, webapp, active` — full recon + active testing. Requires `--authorized`. Usage: `python main.py -t https://client-site.com -p intrusive --authorized -f all`.
+
+`-p web-intrusive` → `passive, infrastructure, webapp, active` — generic web + active testing. Requires `--authorized`. Usage: `python main.py -t https://client-site.com -p web-intrusive --authorized -f all`.
 
 See `docs/NEXT_STEPS.md` for implementation details and `docs/REFERENCES.md` for external API/tool URLs (nmap, OWASP WSTG test mappings, gitleaks rules source).

@@ -25,6 +25,14 @@ EXPECTED_WEBAPP_STEPS = [
     "AdminSurfaceStep",
     "OpenRedirectStep",
     "HostHeaderStep",
+    "JwtAuditStep",
+    "ClientSideAuditStep",
+    "WebSocketStep",
+    "JsLibraryStep",
+    "SensitiveFilesStep",
+    "CacheAnalysisStep",
+    "FormSecurityStep",
+    "TechFingerprintStep",
 ]
 
 
