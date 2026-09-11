@@ -13,11 +13,13 @@ checkout, my-account, order-received).
 # WHY: WooCommerce stores expose order/customer endpoints that warrant
 #      dedicated review (Store API is unauthenticated by design)
 
+import json
 import re
 from typing import Optional
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 STORE_API = "wp-json/wc/store/v1/products"
 WC_AJAX_FRAGMENT = "?wc-ajax=get_refreshed_fragments"
@@ -40,6 +42,23 @@ def extract_version(readme: str) -> Optional[str]:
     """Extract the stable tag from a WooCommerce readme.txt."""
     match = re.search(r"Stable tag:\s*([\d.]+)", readme or "", re.I)
     return match.group(1) if match else None
+
+
+def is_json_body(response) -> bool:
+    """True when a response body parses as JSON (Store API / wc-ajax).
+
+    SPA catch-alls and plain-permalink WordPress installs answer 200
+    with an HTML page for wp-json paths; only real JSON counts as a
+    signal or an active AJAX endpoint.
+    """
+    text = (getattr(response, "text", "") or "").lstrip()
+    if not text or text[0] not in "[{":
+        return False
+    try:
+        json.loads(text)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 class WooCommerceStep(BaseHttpStep):
@@ -95,6 +114,8 @@ class WooCommerceStep(BaseHttpStep):
             )
 
         # exposed store paths
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
         for path in STORE_PATHS:
             if len(self.findings) >= MAX_FINDINGS:
                 break
@@ -105,6 +126,11 @@ class WooCommerceStep(BaseHttpStep):
                 continue
             status = getattr(response, "status_code", None)
             if status != 200:
+                continue
+            if detector.is_soft404(response):
+                self.logger.debug(
+                    f"Store path {path}: SPA/soft-404 shell - skipped"
+                )
                 continue
             if "cart" in path or "checkout" in path or "my-account" in path:
                 self._add_finding(
@@ -123,7 +149,7 @@ class WooCommerceStep(BaseHttpStep):
         # wc-ajax endpoint
         try:
             response = await self.fetch(WC_AJAX_FRAGMENT)
-            if getattr(response, "status_code", None) == 200:
+            if getattr(response, "status_code", None) == 200 and is_json_body(response):
                 self._add_finding(
                     module=self.MODULE,
                     severity="info",
@@ -147,7 +173,7 @@ class WooCommerceStep(BaseHttpStep):
         """Return a detection signal string or None."""
         try:
             response = await self.fetch(STORE_API)
-            if getattr(response, "status_code", None) == 200:
+            if getattr(response, "status_code", None) == 200 and is_json_body(response):
                 return f"Store API reachable at {STORE_API}"
         except Exception as e:
             self.logger.debug(f"Store API probe failed: {e}")
