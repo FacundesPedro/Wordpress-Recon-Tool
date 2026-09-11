@@ -62,9 +62,12 @@ class TestRateLimitStep:
         return RateLimitStep(target=mock_target, config=mock_config, http=mock_http)
 
     async def test_no_rate_limit_reported(self, mock_http, mock_target, mock_config):
-        mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="<form>login</form>")
-        )
+        async def requestor(method, url, **kwargs):
+            if url.endswith("/wp-login.php"):
+                return MagicMock(status_code=200, text="<form>login</form>")
+            return MagicMock(status_code=404, text="Not Found")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
         step = self.make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert any("No rate limiting" in f.title for f in findings)
@@ -73,6 +76,8 @@ class TestRateLimitStep:
         count = {"n": 0}
 
         async def requestor(method, url, **kwargs):
+            if not url.endswith("/wp-login.php"):
+                return MagicMock(status_code=404, text="Not Found")
             if method == "POST":
                 count["n"] += 1
                 if count["n"] >= 3:
@@ -95,21 +100,30 @@ class TestPasswordResetStep:
         return PasswordResetStep(target=mock_target, config=mock_config, http=mock_http)
 
     async def test_no_limit_reported(self, mock_http, mock_target, mock_config):
-        mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="<form>reset</form>")
-        )
+        reset_markers = ("lostpassword", "forgot", "password/reset", "/reset")
+
+        async def requestor(method, url, **kwargs):
+            if any(marker in url for marker in reset_markers):
+                return MagicMock(status_code=200, text="<form>reset</form>")
+            return MagicMock(status_code=404, text="Not Found")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
         step = self.make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert any("No rate limiting observed on password reset" in f.title
                    for f in findings)
 
     async def test_host_reflection_reported(self, mock_http, mock_target, mock_config):
+        reset_markers = ("lostpassword", "forgot", "password/reset", "/reset")
+
         async def requestor(method, url, **kwargs):
             headers = kwargs.get("headers") or {}
             if headers.get("Host") == "reset-canary-7q4.example" and method == "POST":
                 return MagicMock(status_code=200,
                                  text="link: https://reset-canary-7q4.example/reset")
-            return MagicMock(status_code=200, text="<form>reset</form>")
+            if any(marker in url for marker in reset_markers):
+                return MagicMock(status_code=200, text="<form>reset</form>")
+            return MagicMock(status_code=404, text="Not Found")
 
         mock_http.request = AsyncMock(side_effect=requestor)
         step = self.make_step(mock_http, mock_target, mock_config)

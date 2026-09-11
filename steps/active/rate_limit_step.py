@@ -13,6 +13,7 @@ rate-limiting or lockout signal (429, lockout message) is observed.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 from steps.active.base_active import ActiveHttpStep
 
@@ -55,12 +56,21 @@ class RateLimitStep(ActiveHttpStep):
 
         self.logger.info("Probing login rate limiting (capped burst)...")
 
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         for path in LOGIN_PATHS:
             if not self.budget_left() or len(self.findings) >= MAX_FINDINGS:
                 break
-            # baseline: does the login endpoint exist?
+            # baseline: does the login endpoint exist and process POSTs?
             baseline = await self.probe(path)
             if baseline is None or baseline.status_code >= 400:
+                continue
+            if detector.is_soft404(baseline):
+                # catch-all shell: this login endpoint does not exist
+                self.logger.debug(
+                    f"Rate limit probe {path}: SPA/soft-404 shell - skipped"
+                )
                 continue
 
             saw_limit = False

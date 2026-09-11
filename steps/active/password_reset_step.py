@@ -15,6 +15,7 @@ surface). Token entropy/reuse cannot be verified without mailbox access.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 from steps.active.base_active import ActiveHttpStep
 
@@ -46,11 +47,19 @@ class PasswordResetStep(ActiveHttpStep):
 
         self.logger.info("Probing password reset endpoints...")
 
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         for path in RESET_PATHS:
             if len(self.findings) >= MAX_FINDINGS or not self.budget_left():
                 break
             baseline = await self.probe(path)
             if baseline is None or baseline.status_code >= 400:
+                continue
+            if detector.is_soft404(baseline):
+                self.logger.debug(
+                    f"Password reset probe {path}: SPA/soft-404 shell - skipped"
+                )
                 continue
 
             # 1. Rate limiting on reset requests
