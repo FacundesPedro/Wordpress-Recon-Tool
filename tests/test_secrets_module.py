@@ -108,7 +108,7 @@ class TestDebugLogStep:
 
     async def test_debug_log_found_warning(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="PHP Warning:  cannot modify")
+            return_value=MagicMock(status_code=200, text="[11-Sep-2026 03:14:15 UTC] PHP Warning:  Cannot modify header information - headers already sent by /var/www/wp-content/plugins/x.php on line 12")
         )
         from steps.secrets.debug_log_step import DebugLogStep
         step = DebugLogStep(target=mock_target, config=mock_config, http=mock_http)
@@ -135,7 +135,10 @@ class TestDebugLogStep:
 
     async def test_mixed_results(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(side_effect=[
-            MagicMock(status_code=200, text="PHP Error: something broke"),
+            MagicMock(
+                status_code=200,
+                text="[11-Sep-2026 03:14:15 UTC] PHP Notice:  Undefined variable $foo in /var/www/wp-content/plugins/x.php on line 12",
+            ),
             MagicMock(status_code=404, text="Not Found"),
             MagicMock(status_code=404, text="Not Found"),
         ])
@@ -161,7 +164,7 @@ class TestPhpinfoStep:
 
     async def test_phpinfo_found_php_version(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="<h1>PHP Version 8.2</h1>")
+            return_value=MagicMock(status_code=200, text="<html><body><h1>PHP Version 8.2</h1>php.ini loaded from /etc/php/8.2/php.ini phpinfo()</body></html>")
         )
         from steps.secrets.phpinfo_step import PhpinfoStep
         step = PhpinfoStep(target=mock_target, config=mock_config, http=mock_http)
@@ -172,7 +175,7 @@ class TestPhpinfoStep:
 
     async def test_phpinfo_found_system(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="<td>System </td><td>Darwin</td>")
+            return_value=MagicMock(status_code=200, text="<html><body>phpinfo() PHP Version 8.2.0 System Darwin php.ini /etc/php.ini</body></html>")
         )
         from steps.secrets.phpinfo_step import PhpinfoStep
         step = PhpinfoStep(target=mock_target, config=mock_config, http=mock_http)
@@ -199,7 +202,7 @@ class TestPhpinfoStep:
 
     async def test_multiple_found(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="PHP Version")
+            return_value=MagicMock(status_code=200, text="PHP Version 8.2.0 php.ini /etc/php.ini")
         )
         from steps.secrets.phpinfo_step import PhpinfoStep
         step = PhpinfoStep(target=mock_target, config=mock_config, http=mock_http)

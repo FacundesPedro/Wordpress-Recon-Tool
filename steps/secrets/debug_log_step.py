@@ -13,6 +13,26 @@ from base.http_step import BaseHttpStep
 from core.finding import Finding
 
 
+def is_debug_log_content(content: str) -> bool:
+    """True when the body looks like a PHP debug log, not an SPA shell.
+
+    Real WP debug logs carry PHP log lines ([date] PHP Notice: ... in
+    /path on line N). HTML bodies (SPA catch-alls) never match.
+    """
+    from utils.soft404 import is_html_body
+    import re as _re
+
+    if not content:
+        return False
+    if is_html_body(content):
+        return False
+    log_line = _re.compile(
+        r"\[[0-9]{2}-[A-Za-z]{3}-[0-9]{4}.*\]\s+PHP\s+"
+        r"(Notice|Warning|Error|Fatal|Deprecated)"
+    )
+    return bool(log_line.search(content))
+
+
 class DebugLogStep(BaseHttpStep):
     """Check for wp-content/debug.log which may expose sensitive info."""
 
@@ -35,16 +55,10 @@ class DebugLogStep(BaseHttpStep):
         for path in self.DEBUG_PATHS:
             try:
                 response = await self.fetch(path)
-                if response.status_code == 200:
-                    content = response.text
-                    if (
-                        "PHP" in content
-                        or "Notice" in content
-                        or "Warning" in content
-                        or "Error" in content
-                    ):
-                        found_logs.append(path)
-                        self.logger.info(f"Found debug log: {path}")
+                if response.status_code == 200 and \
+                        is_debug_log_content(response.text or ""):
+                    found_logs.append(path)
+                    self.logger.info(f"Found debug log: {path}")
             except Exception as e:
                 self.logger.debug(f"Error checking {path}: {e}")
 

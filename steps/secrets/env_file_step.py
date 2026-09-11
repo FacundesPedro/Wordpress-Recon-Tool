@@ -12,6 +12,27 @@ Looks for exposed environment configuration files.
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import is_html_body
+
+import re
+
+# A real .env file: KEY=VALUE lines (optionally comments), no HTML markup
+_ENV_LINE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=", re.M)
+
+
+def is_env_content(content: str) -> bool:
+    """True when the body looks like a real .env file, not an SPA shell.
+
+    Requires at least one KEY=VALUE line and rejects HTML documents
+    (SPA catch-alls return the app shell with 200 for every path, and
+    shells contain '=' signs in attributes/JS that defeated the old
+    '"=" in content' check).
+    """
+    if not content:
+        return False
+    if is_html_body(content):
+        return False
+    return bool(_ENV_LINE_RE.search(content))
 
 
 class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
@@ -50,12 +71,7 @@ class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
                 response = await self.fetch(path)
                 if response.status_code == 200:
                     content = response.text
-                    if (
-                        "=" in content
-                        or "APP_" in content
-                        or "DB_" in content
-                        or "WP_" in content
-                    ):
+                    if is_env_content(content):
                         found_envs.append(path)
                         self.logger.info(f"Found .env file: {path}")
             except Exception as e:
