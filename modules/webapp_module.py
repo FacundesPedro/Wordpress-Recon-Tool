@@ -9,30 +9,42 @@ security assessments (e.g. internal clients that are not WordPress sites).
 
 # WHAT: Generic web app checks - source review, sourcemaps, HTTP methods,
 #       cookie flags, CORS, stack traces, content leaks, header quality,
-#       CSP audit, API surface, admin surface, open redirects, host headers
+#       CSP audit, API surface, admin surface, open redirects, host headers,
+#       JWT audit, client-side audit, WebSockets, JS libraries, sensitive
+#       files, cache analysis, form security, tech fingerprint
 # HOW: Non-intrusive HTTP probing (GET/OPTIONS/TRACE/PUT/DELETE/PROPFIND)
 #      plus canary-value probes (redirect params, Host/X-Forwarded-Host)
 # WHY: Extends the tool beyond WordPress for general web security analysis
 # STEPS: SourceReviewStep, SourcemapStep, HttpMethodsStep, CookieFlagsStep,
 #        CorsStep, StackTraceStep, ContentLeakStep, HeaderQualityStep,
 #        CspAuditStep, ApiSurfaceStep, AdminSurfaceStep, OpenRedirectStep,
-#        HostHeaderStep
+#        HostHeaderStep, JwtAuditStep, ClientSideAuditStep, WebSocketStep,
+#        JsLibraryStep, SensitiveFilesStep, CacheAnalysisStep,
+#        FormSecurityStep, TechFingerprintStep
 
 from modules.module import Module
 from steps.webapp import (
     AdminSurfaceStep,
     ApiSurfaceStep,
+    CacheAnalysisStep,
+    ClientSideAuditStep,
     ContentLeakStep,
     CookieFlagsStep,
     CorsStep,
     CspAuditStep,
+    FormSecurityStep,
     HeaderQualityStep,
     HostHeaderStep,
     HttpMethodsStep,
+    JsLibraryStep,
+    JwtAuditStep,
     OpenRedirectStep,
+    SensitiveFilesStep,
     SourcemapStep,
     SourceReviewStep,
     StackTraceStep,
+    TechFingerprintStep,
+    WebSocketStep,
 )
 
 
@@ -40,7 +52,8 @@ class WebappModule(Module):
     name = "webapp"
     description = (
         "Generic web app checks (source review, CORS, cookies, methods, leaks, "
-        "CSP, API/admin surface, open redirects, host headers)"
+        "CSP, API/admin surface, open redirects, host headers, JWT, client-side, "
+        "WebSockets, JS libs, sensitive files, cache, forms, tech fingerprint)"
     )
 
     def __init__(self):
@@ -58,3 +71,11 @@ class WebappModule(Module):
         self.add_step(AdminSurfaceStep)
         self.add_step(OpenRedirectStep)
         self.add_step(HostHeaderStep)
+        self.add_step(JwtAuditStep)
+        self.add_step(ClientSideAuditStep)
+        self.add_step(WebSocketStep)
+        self.add_step(JsLibraryStep)
+        self.add_step(SensitiveFilesStep)
+        self.add_step(CacheAnalysisStep)
+        self.add_step(FormSecurityStep)
+        self.add_step(TechFingerprintStep)

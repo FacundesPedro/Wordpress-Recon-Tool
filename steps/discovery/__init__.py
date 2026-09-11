@@ -10,8 +10,10 @@ from steps.discovery.spider_step import SpiderStep
 from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
 from steps.discovery.uploads_listing_step import UploadsListingStep
 from steps.discovery.wp_cron_step import WpCronStep
+from steps.discovery.woocommerce_step import WooCommerceStep
 
 __all__ = [
+    "WooCommerceStep",
     "ReadmeStep",
     "LicenseStep",
     "SitemapStep",

@@ -14,6 +14,7 @@ from modules.module import Module
 from steps.infrastructure import (
     HeadersStep,
     HostingStep,
+    PhpVersionStep,
     PortsStep,
     TlsStep,
     WafStep,
@@ -22,7 +23,7 @@ from steps.infrastructure import (
 
 class InfrastructureModule(Module):
     name = "infrastructure"
-    description = "Infrastructure checks (headers, TLS, WAF, ports, hosting)"
+    description = "Infrastructure checks (headers, TLS, WAF, ports, hosting, PHP version)"
 
     def __init__(self):
         super().__init__(self.name, self.description)
@@ -31,3 +32,4 @@ class InfrastructureModule(Module):
         self.add_step(TlsStep)
         self.add_step(WafStep)
         self.add_step(PortsStep)
+        self.add_step(PhpVersionStep)

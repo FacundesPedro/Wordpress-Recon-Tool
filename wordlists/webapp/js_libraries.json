@@ -1,0 +1,16 @@
+[
+  {"name": "jQuery", "file_pattern": "jquery", "banners": ["jQuery JavaScript Library v", "jQuery v"], "vulnerable_below": "3.5.0", "cve": "CVE-2020-11022/CVE-2020-11023", "summary": "XSS via untrusted HTML passed to jQuery DOM manipulation methods"},
+  {"name": "jQuery UI", "file_pattern": "jquery-ui", "banners": ["jQuery UI - v"], "vulnerable_below": "1.13.0", "cve": "CVE-2021-41184", "summary": "XSS in the tooltip/checkboxradio widgets via untrusted labels"},
+  {"name": "Bootstrap", "file_pattern": "bootstrap", "banners": ["Bootstrap v"], "vulnerable_below": "3.4.1", "cve": "CVE-2019-8331", "summary": "XSS via data-template/tooltip content (also affects <4.3.1 in v4)"},
+  {"name": "lodash", "file_pattern": "lodash", "banners": ["lodash ", "lodash.js"], "vulnerable_below": "4.17.21", "cve": "CVE-2020-8203/CVE-2021-23337", "summary": "Prototype pollution in zipObjectDeep/template functions"},
+  {"name": "underscore", "file_pattern": "underscore", "banners": ["Underscore.js "], "vulnerable_below": "1.12.1", "cve": "CVE-2021-23358", "summary": "Arbitrary code execution via template function input"},
+  {"name": "moment", "file_pattern": "moment", "banners": ["moment.js", "// moment.js"], "vulnerable_below": "2.29.4", "cve": "CVE-2022-24785/CVE-2022-31129", "summary": "Path traversal in locale loading and ReDoS in locale parsing"},
+  {"name": "AngularJS", "file_pattern": "angular", "banners": ["AngularJS v"], "vulnerable_below": "1.8.3", "cve": "CVE-2022-25844", "summary": "ReDoS in input[number] and multiple template-injection XSS in older 1.x"},
+  {"name": "axios", "file_pattern": "axios", "banners": ["axios v", "axios/"], "vulnerable_below": "0.21.4", "cve": "CVE-2020-28168/CVE-2023-45857", "summary": "SSRF via absolute redirect URLs and XSRF token disclosure to third parties"},
+  {"name": "DOMPurify", "file_pattern": "purify", "banners": ["DOMPurify "], "vulnerable_below": "2.0.17", "cve": "CVE-2020-26870", "summary": "Mutation XSS in older versions via nesting-based mXSS"},
+  {"name": "Handlebars", "file_pattern": "handlebars", "banners": ["Handlebars "], "vulnerable_below": "4.7.7", "cve": "CVE-2021-23369", "summary": "Remote code execution via crafted template lookup paths"},
+  {"name": "EJS", "file_pattern": "ejs", "banners": ["ejs:"], "vulnerable_below": "3.1.7", "cve": "CVE-2022-29078", "summary": "Server-side template injection / RCE via settings[view options]"},
+  {"name": "qs", "file_pattern": "qs", "banners": [], "vulnerable_below": "6.9.7", "cve": "CVE-2022-24999", "summary": "Prototype pollution via malicious query strings"},
+  {"name": "jquery-file-upload", "file_pattern": "jquery.fileupload|blueimp", "banners": ["jQuery File Upload"], "vulnerable_below": "9.22.1", "cve": "CVE-2018-9206", "summary": "Unrestricted file upload leading to remote code execution"},
+  {"name": "marked", "file_pattern": "marked", "banners": ["marked "], "vulnerable_below": "4.0.10", "cve": "CVE-2022-21680/CVE-2022-21681", "summary": "ReDoS in markdown parsing"}
+]

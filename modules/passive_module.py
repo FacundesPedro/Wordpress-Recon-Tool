@@ -11,12 +11,20 @@ Gathers external intelligence without direct interaction with target.
 # STEPS: WhoisStep, DnsStep, CrtShStep, WaymachineStep, ShodanStep
 
 from modules.module import Module
-from steps.passive import CrtShStep, DnsStep, ShodanStep, WaymachineStep, WhoisStep
+from steps.passive import (
+    CrtShStep,
+    DnsStep,
+    EmailSecurityStep,
+    ShodanStep,
+    SubdomainTakeoverStep,
+    WaymachineStep,
+    WhoisStep,
+)
 
 
 class PassiveModule(Module):
     name = "passive"
-    description = "Passive reconnaissance (whois, dns, crt.sh, wayback, shodan)"
+    description = "Passive reconnaissance (whois, dns, crt.sh, wayback, shodan, takeover, email)"
 
     def __init__(self):
         super().__init__(self.name, self.description)
@@ -25,3 +33,5 @@ class PassiveModule(Module):
         self.add_step(CrtShStep)
         self.add_step(ShodanStep)
         self.add_step(WaymachineStep)
+        self.add_step(SubdomainTakeoverStep)
+        self.add_step(EmailSecurityStep)

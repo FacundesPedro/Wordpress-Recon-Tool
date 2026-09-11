@@ -15,13 +15,14 @@ from steps.users import (
     AuthorIdStep,
     LoginVerbosityStep,
     OembedUsersStep,
+    RegistrationStep,
     RestApiUsersStep,
 )
 
 
 class UsersModule(Module):
     name = "users"
-    description = "User enumeration (REST API, oembed, author ID, login verbosity)"
+    description = "User enumeration (REST API, oembed, author ID, login verbosity, registration)"
 
     def __init__(self):
         super().__init__(self.name, self.description)
@@ -29,3 +30,4 @@ class UsersModule(Module):
         self.add_step(RestApiUsersStep)
         self.add_step(OembedUsersStep)
         self.add_step(LoginVerbosityStep)
+        self.add_step(RegistrationStep)
