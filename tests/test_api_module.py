@@ -12,12 +12,20 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 class TestAppPasswordsStep:
-    """AppPasswordsStep — GET app-password endpoints, 200/401 detection."""
+    """AppPasswordsStep — GET app-password endpoints, JSON 200/401 detection."""
 
     async def test_both_endpoints_found(self, mock_http, mock_target, mock_config):
         mock_http.get = AsyncMock(side_effect=[
-            MagicMock(status_code=200, headers={}),
-            MagicMock(status_code=401, headers={}),
+            MagicMock(
+                status_code=200,
+                headers={"content-type": "application/json"},
+                text='[{"id": 1}]',
+            ),
+            MagicMock(
+                status_code=401,
+                headers={"content-type": "application/json"},
+                text='{"code": "rest_forbidden"}',
+            ),
         ])
         from steps.api.app_passwords_step import AppPasswordsStep
         step = AppPasswordsStep(target=mock_target, config=mock_config, http=mock_http)
@@ -30,7 +38,11 @@ class TestAppPasswordsStep:
 
     async def test_public_access_detected(self, mock_http, mock_target, mock_config):
         mock_http.get = AsyncMock(
-            return_value=MagicMock(status_code=200, headers={})
+            return_value=MagicMock(
+                status_code=200,
+                headers={"content-type": "application/json"},
+                text='[{"id": 1}]',
+            )
         )
         from steps.api.app_passwords_step import AppPasswordsStep
         step = AppPasswordsStep(target=mock_target, config=mock_config, http=mock_http)
@@ -41,17 +53,50 @@ class TestAppPasswordsStep:
 
     async def test_no_endpoints_found(self, mock_http, mock_target, mock_config):
         mock_http.get = AsyncMock(
-            return_value=MagicMock(status_code=404, headers={})
+            return_value=MagicMock(
+                status_code=404,
+                headers={"content-type": "application/json"},
+                text='{"code": "rest_no_route"}',
+            )
         )
         from steps.api.app_passwords_step import AppPasswordsStep
         step = AppPasswordsStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
         assert len(findings) == 0
 
+    async def test_html_shell_ignored(self, mock_http, mock_target, mock_config):
+        mock_http.get = AsyncMock(
+            return_value=MagicMock(
+                status_code=200,
+                headers={"content-type": "text/html"},
+                text="<!doctype html><html><body>homepage</body></html>",
+            )
+        )
+        from steps.api.app_passwords_step import AppPasswordsStep
+        step = AppPasswordsStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+        assert len(findings) == 0
+
+    async def test_plain_permalink_fallback(self, mock_http, mock_target, mock_config):
+        async def requestor(url, **kwargs):
+            if "rest_route=" in url:
+                return MagicMock(
+                    status_code=200,
+                    headers={"content-type": "application/json"},
+                    text='[{"id": 1}]',
+                )
+            return MagicMock(status_code=200, text="<html>homepage</html>")
+
+        mock_http.get = AsyncMock(side_effect=requestor)
+        from steps.api.app_passwords_step import AppPasswordsStep
+        step = AppPasswordsStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+        assert len(findings) == 1
+
     async def test_no_endpoints_found_different_codes(self, mock_http, mock_target, mock_config):
         mock_http.get = AsyncMock(side_effect=[
-            MagicMock(status_code=403, headers={}),
-            MagicMock(status_code=500, headers={}),
+            MagicMock(status_code=403, text="forbidden"),
+            MagicMock(status_code=500, text="error"),
         ])
         from steps.api.app_passwords_step import AppPasswordsStep
         step = AppPasswordsStep(target=mock_target, config=mock_config, http=mock_http)
@@ -182,14 +227,23 @@ class TestPagesIpLeakStep:
 # ---------------------------------------------------------------------------
 
 class TestRestSurfaceStep:
-    """RestSurfaceStep — HEAD on 20 REST routes, INTERESTING_CODES detection."""
+    """RestSurfaceStep — GET on REST routes, JSON-only detection."""
+
+    @staticmethod
+    def json_response(status, body):
+        return MagicMock(
+            status_code=status,
+            headers={"content-type": "application/json"},
+            text=body,
+        )
 
     async def test_endpoints_found_multiple(self, mock_http, mock_target, mock_config):
-        mock_http.head = AsyncMock(side_effect=[
-            MagicMock(status_code=200, headers={"content-type": "application/json"}),
-            MagicMock(status_code=401, headers={"content-type": "text/html"}),
-            MagicMock(status_code=404, headers={}),
-        ])
+        async def requestor(method, url, **kwargs):
+            if url.endswith("/wp-json/") or url.endswith("/wp-json/wp/v2/"):
+                return self.json_response(200, "{}")
+            return self.json_response(404, '{"code": "rest_no_route"}')
+
+        mock_http.request = AsyncMock(side_effect=requestor)
         from steps.api.rest_surface_step import RestSurfaceStep
         step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
@@ -199,8 +253,8 @@ class TestRestSurfaceStep:
         assert "2 accessible" in findings[0].description
 
     async def test_no_endpoints_found(self, mock_http, mock_target, mock_config):
-        mock_http.head = AsyncMock(
-            return_value=MagicMock(status_code=404, headers={})
+        mock_http.request = AsyncMock(
+            return_value=self.json_response(404, '{"code": "rest_no_route"}')
         )
         from steps.api.rest_surface_step import RestSurfaceStep
         step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)
@@ -208,31 +262,61 @@ class TestRestSurfaceStep:
         assert len(findings) == 0
 
     async def test_some_endpoints_found(self, mock_http, mock_target, mock_config):
-        mock_http.head = AsyncMock(side_effect=[
-            MagicMock(status_code=200, headers={}),
-            MagicMock(status_code=404, headers={}),
-            MagicMock(status_code=403, headers={}),
-            MagicMock(status_code=404, headers={}),
-        ] + [MagicMock(status_code=404, headers={})] * 16)
+        async def requestor(method, url, **kwargs):
+            if "/wp-json/wp/v2/users" in url:
+                return self.json_response(401, '{"code": "rest_forbidden"}')
+            if "/wp-json/wp/v2/posts" in url:
+                return self.json_response(200, "[]")
+            return self.json_response(404, '{"code": "rest_no_route"}')
+
+        mock_http.request = AsyncMock(side_effect=requestor)
         from steps.api.rest_surface_step import RestSurfaceStep
         step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
         assert len(findings) == 1
         assert "2 accessible" in findings[0].description
 
+    async def test_html_shell_ignored(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            return_value=MagicMock(
+                status_code=200,
+                headers={"content-type": "text/html"},
+                text="<!doctype html><html><body>homepage</body></html>",
+            )
+        )
+        from steps.api.rest_surface_step import RestSurfaceStep
+        step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+        assert len(findings) == 0
+
+    async def test_plain_permalink_fallback(self, mock_http, mock_target, mock_config):
+        async def requestor(method, url, **kwargs):
+            if "rest_route=" in url:
+                return self.json_response(200, "{}")
+            return MagicMock(
+                status_code=200,
+                headers={"content-type": "text/html"},
+                text="<html>homepage</html>",
+            )
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        from steps.api.rest_surface_step import RestSurfaceStep
+        step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+
+        assert len(findings) == 1
+        assert findings[0].raw["endpoints"][0]["path"].startswith("?rest_route=")
+
     async def test_http_exception(self, mock_http, mock_target, mock_config):
-        mock_http.head = AsyncMock(side_effect=ConnectionError("network error"))
+        mock_http.request = AsyncMock(side_effect=ConnectionError("network error"))
         from steps.api.rest_surface_step import RestSurfaceStep
         step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
         assert len(findings) == 0
 
     async def test_content_type_captured(self, mock_http, mock_target, mock_config):
-        mock_http.head = AsyncMock(
-            return_value=MagicMock(
-                status_code=200,
-                headers={"content-type": "application/json"},
-            )
+        mock_http.request = AsyncMock(
+            return_value=self.json_response(200, "{}")
         )
         from steps.api.rest_surface_step import RestSurfaceStep
         step = RestSurfaceStep(target=mock_target, config=mock_config, http=mock_http)

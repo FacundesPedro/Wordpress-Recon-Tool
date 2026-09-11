@@ -13,6 +13,7 @@ whether it leaks any information.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_json_body, rest_route_fallbacks
 
 
 class AppPasswordsStep(BaseHttpStep):
@@ -42,25 +43,13 @@ class AppPasswordsStep(BaseHttpStep):
         found_routes = []
 
         for route in self.APP_PASSWORDS_ROUTES:
-            try:
-                url = self.urljoin(route)
-                response = await self.http.get(url)
-
-                if response.status_code in (200, 401):
-                    # 200 = publicly accessible, 401 = exists but requires auth
-                    auth_required = response.status_code == 401
-                    found_routes.append({
-                        "route": route,
-                        "status": response.status_code,
-                        "auth_required": auth_required,
-                    })
-                    self.logger.debug(
-                        f"Found Application Passwords endpoint: {route} "
-                        f"({'auth required' if auth_required else 'public'})"
-                    )
-
-            except Exception as e:
-                self.logger.debug(f"Error probing {route}: {e}")
+            result = await self._probe_route(route)
+            if result:
+                found_routes.append(result)
+                self.logger.debug(
+                    f"Found Application Passwords endpoint: {route} "
+                    f"({'auth required' if result['auth_required'] else 'public'})"
+                )
 
         if found_routes:
             public_routes = [r for r in found_routes if not r["auth_required"]]
@@ -102,3 +91,29 @@ class AppPasswordsStep(BaseHttpStep):
             self.logger.info("Application Passwords API not detected")
 
         return self.findings
+
+    async def _probe_route(self, route: str) -> dict | None:
+        """Probe pretty- and plain-permalink forms; only JSON counts.
+
+        200 JSON means the endpoint is public, 401/403 JSON means it
+        exists behind auth, anything else (HTML shells) is not a route.
+        """
+        for path in rest_route_fallbacks(route):
+            try:
+                response = await self.http.get(self.urljoin(path))
+            except Exception as e:
+                self.logger.debug(f"Error probing {route}: {e}")
+                continue
+
+            status = getattr(response, "status_code", None)
+            if not is_json_body(response):
+                continue
+            if status in (200, 401, 403):
+                return {
+                    "route": route,
+                    "status": status,
+                    "auth_required": status in (401, 403),
+                }
+            if status == 404:
+                return None
+        return None

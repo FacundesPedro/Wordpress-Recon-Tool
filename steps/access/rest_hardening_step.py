@@ -4,6 +4,7 @@
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_json_body, json_body, rest_route_fallbacks
 
 
 class RestHardeningStep(BaseHttpStep):
@@ -84,18 +85,19 @@ class RestHardeningStep(BaseHttpStep):
                 self.logger.debug(f"CORS check failed for {origin}: {e}")
 
     async def _check_route_leakage(self) -> None:
-        try:
-            resp = await self.http.get(self.urljoin("wp-json/"))
-        except Exception as e:
-            self.logger.debug(f"Route discovery failed: {e}")
-            return
+        data = None
+        for path in rest_route_fallbacks("wp-json/"):
+            try:
+                resp = await self.http.get(self.urljoin(path))
+            except Exception as e:
+                self.logger.debug(f"Route discovery failed: {e}")
+                continue
+            if resp.status_code == 200:
+                data = json_body(resp)
+                if data is not None:
+                    break
 
-        if resp.status_code != 200:
-            return
-
-        try:
-            data = resp.json()
-        except Exception:
+        if not isinstance(data, dict):
             return
 
         routes = data.get("routes", {})
@@ -132,55 +134,66 @@ class RestHardeningStep(BaseHttpStep):
             )
 
     async def _check_user_endpoint(self) -> None:
-        try:
-            resp = await self.http.get(
-                self.urljoin("wp-json/wp/v2/users"),
-                follow_redirects=False,
-            )
-        except Exception as e:
-            self.logger.debug(f"User endpoint check failed: {e}")
+        response = None
+        for path in rest_route_fallbacks("wp-json/wp/v2/users"):
+            try:
+                candidate = await self.http.get(
+                    self.urljoin(path), follow_redirects=False
+                )
+            except Exception as e:
+                self.logger.debug(f"User endpoint check failed: {e}")
+                continue
+            if candidate.status_code == 200 and is_json_body(candidate):
+                response = candidate
+                break
+            if is_json_body(candidate):
+                return
+
+        if response is None:
             return
 
-        if resp.status_code in (200,):
-            try:
-                data = resp.json()
-            except Exception:
-                data = []
-            user_count = len(data) if isinstance(data, list) else 1
+        data = json_body(response)
+        if data is None:
+            return
+        user_count = len(data) if isinstance(data, list) else 1
 
-            self._add_finding(
-                module=self.MODULE,
-                severity="medium",
-                title="User list publicly accessible via REST API",
-                description=(
-                    f"GET /wp-json/wp/v2/users returned {resp.status_code} "
-                    f"with {user_count} user(s) — no authentication required"
-                ),
-                evidence=(
-                    f"Status: {resp.status_code}\n"
-                    f"Users exposed: {user_count}"
-                ),
-                recommendation=(
-                    "WordPress blocks the users endpoint by default. "
-                    "A plugin or theme is likely overriding this. "
-                    "Add 'if (is_user_logged_in())' checks or use a "
-                    "rest_endpoints hook to restrict access."
-                ),
-                raw={"status": resp.status_code, "user_count": user_count},
-            )
+        self._add_finding(
+            module=self.MODULE,
+            severity="medium",
+            title="User list publicly accessible via REST API",
+            description=(
+                f"GET /wp-json/wp/v2/users returned {response.status_code} "
+                f"with {user_count} user(s) — no authentication required"
+            ),
+            evidence=(
+                f"Status: {response.status_code}\n"
+                f"Users exposed: {user_count}"
+            ),
+            recommendation=(
+                "WordPress blocks the users endpoint by default. "
+                "A plugin or theme is likely overriding this. "
+                "Add 'if (is_user_logged_in())' checks or use a "
+                "rest_endpoints hook to restrict access."
+            ),
+            raw={"status": response.status_code, "user_count": user_count},
+        )
 
     async def _check_plugin_endpoints(self) -> None:
         accessible = []
-        for path in self.COMMON_PLUGIN_ENDPOINTS:
-            try:
-                resp = await self.http.get(
-                    self.urljoin(path),
-                    follow_redirects=False,
-                )
-                if resp.status_code == 200:
-                    accessible.append(path)
-            except Exception:
-                continue
+        for route in self.COMMON_PLUGIN_ENDPOINTS:
+            for path in rest_route_fallbacks(route):
+                try:
+                    resp = await self.http.get(
+                        self.urljoin(path),
+                        follow_redirects=False,
+                    )
+                except Exception:
+                    continue
+                if resp.status_code == 200 and is_json_body(resp):
+                    accessible.append(route)
+                    break
+                if is_json_body(resp):
+                    break
 
         if accessible:
             self._add_finding(

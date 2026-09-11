@@ -12,6 +12,7 @@ sensitive information or functionality.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_json_body, rest_route_fallbacks
 
 
 class RestSurfaceStep(BaseHttpStep):
@@ -43,11 +44,10 @@ class RestSurfaceStep(BaseHttpStep):
         "wp-json/wp/v2/block-renderer",
         "wp-json/oembed/1.0/",
         "wp-json/application-passwords/1.0/",
-        "rest_route/",
     ]
 
-    # Response codes considered as "found"
-    INTERESTING_CODES = {200, 201, 301, 302, 307, 401, 403}
+    # Statuses that prove a JSON REST route exists (200 public, 401/403 protected)
+    INTERESTING_CODES = {200, 401, 403}
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress
@@ -63,20 +63,12 @@ class RestSurfaceStep(BaseHttpStep):
         found_endpoints = []
 
         for route in self.REST_ROUTES:
-            try:
-                url = self.urljoin(route)
-                response = await self.http.head(url)
-
-                if response.status_code in self.INTERESTING_CODES:
-                    found_endpoints.append({
-                        "route": route,
-                        "status": response.status_code,
-                        "content_type": response.headers.get("content-type", ""),
-                    })
-                    self.logger.debug(f"Found API endpoint: {route} ({response.status_code})")
-
-            except Exception as e:
-                self.logger.debug(f"Error probing {route}: {e}")
+            endpoint = await self._probe_route(route)
+            if endpoint:
+                found_endpoints.append(endpoint)
+                self.logger.debug(
+                    f"Found API endpoint: {route} ({endpoint['status']})"
+                )
 
         if found_endpoints:
             self._add_finding(
@@ -102,3 +94,30 @@ class RestSurfaceStep(BaseHttpStep):
             self.logger.info("No REST API endpoints detected")
 
         return self.findings
+
+    async def _probe_route(self, route: str) -> dict | None:
+        """Probe a route with pretty- and plain-permalink forms.
+
+        Only JSON responses count: catch-all shells answer 200 text/html
+        for every wp-json path. A JSON 404 means the route does not exist.
+        """
+        for path in rest_route_fallbacks(route):
+            try:
+                response = await self.fetch(path, "GET")
+            except Exception as e:
+                self.logger.debug(f"Error probing {route}: {e}")
+                continue
+
+            status = getattr(response, "status_code", None)
+            if not is_json_body(response):
+                continue
+            if status in self.INTERESTING_CODES:
+                return {
+                    "route": route,
+                    "status": status,
+                    "content_type": response.headers.get("content-type", ""),
+                    "path": path,
+                }
+            if status == 404:
+                return None
+        return None
