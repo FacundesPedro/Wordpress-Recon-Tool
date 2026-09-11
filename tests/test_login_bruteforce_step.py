@@ -4,68 +4,106 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from utils.soft404 import ResponseFingerprint
 
 pytestmark = pytest.mark.asyncio
 
+EMPTY_BASELINE = ResponseFingerprint()
+SPA_BASELINE = ResponseFingerprint(
+    status=200, title="OWASP Juice Shop", length=9393,
+    head="<!doctype html>", content_type="text/html",
+)
+
+
+def make_step(mock_http, mock_target, mock_config):
+    from steps.access.login_bruteforce_step import LoginBruteforceStep
+    return LoginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+
 
 class TestTryLogin:
-    """Tests for _try_login method."""
+    """Tests for _try_login method (baseline-calibrated semantics)."""
 
     async def test_redirect_to_wp_admin_is_success(self, mock_http, mock_target, mock_config):
-        from steps.access.login_bruteforce_step import LoginBruteforceStep
-        step = LoginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+        step = make_step(mock_http, mock_target, mock_config)
 
         mock_resp = MagicMock(**{"status_code": 302, "headers": {"location": "https://example.com/wp-admin/"}})
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        success, detail = await step._try_login("admin", "password")
+        success, detail = await step._try_login("admin", "password", EMPTY_BASELINE, None)
 
         assert success is True
         assert detail == "redirect_to_wp_admin"
 
-    async def test_redirect_to_other_path_is_success(self, mock_http, mock_target, mock_config):
-        from steps.access.login_bruteforce_step import LoginBruteforceStep
-        step = LoginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+    async def test_redirect_differing_from_baseline_is_success(self, mock_http, mock_target, mock_config):
+        step = make_step(mock_http, mock_target, mock_config)
 
         mock_resp = MagicMock(**{"status_code": 302, "headers": {"location": "https://custom.com/dashboard"}})
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        success, detail = await step._try_login("admin", "password")
+        # baseline was a 200 shell -> any 302 is a real signal
+        success, detail = await step._try_login("admin", "password", SPA_BASELINE, None)
 
         assert success is True
-        assert "custom.com" in detail
+        assert "redirect" in detail
 
-    async def test_200_no_login_error_is_success(self, mock_http, mock_target, mock_config):
-        from steps.access.login_bruteforce_step import LoginBruteforceStep
-        step = LoginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+    async def test_200_matching_baseline_is_failure(self, mock_http, mock_target, mock_config):
+        """SPA catch-all: 200 shell for every credential = not processed."""
+        step = make_step(mock_http, mock_target, mock_config)
 
-        mock_resp = MagicMock(**{"status_code": 200, "text": "Welcome to WordPress"})
+        mock_resp = MagicMock(**{
+            "status_code": 200,
+            "text": "<!doctype html><html><title>OWASP Juice Shop</title></html>" + "x" * 9300,
+            "headers": {},
+        })
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        success, detail = await step._try_login("admin", "password")
-
-        assert success is True
-        assert detail == "no_error_in_response"
-
-    async def test_200_with_login_error_is_failure(self, mock_http, mock_target, mock_config):
-        from steps.access.login_bruteforce_step import LoginBruteforceStep
-        step = LoginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
-
-        mock_resp = MagicMock(**{"status_code": 200, "text": '<div id="login_error">Error</div>'})
-        mock_http.post = AsyncMock(return_value=mock_resp)
-
-        success, detail = await step._try_login("admin", "password")
+        success, detail = await step._try_login("admin", "password", SPA_BASELINE, None)
 
         assert success is False
-        assert detail == ""
+
+    async def test_200_differing_from_baseline_is_success(self, mock_http, mock_target, mock_config):
+        step = make_step(mock_http, mock_target, mock_config)
+
+        mock_resp = MagicMock(**{
+            "status_code": 200,
+            "text": "<html><head><title>Dashboard</title></head><body>" + "y" * 5000 + "</body></html>",
+            "headers": {},
+        })
+        mock_http.post = AsyncMock(return_value=mock_resp)
+
+        success, detail = await step._try_login("admin", "password", SPA_BASELINE, None)
+
+        assert success is True
+        assert detail == "response_differs_from_baseline"
+
+    async def test_200_with_login_error_no_baseline_is_failure(self, mock_http, mock_target, mock_config):
+        step = make_step(mock_http, mock_target, mock_config)
+
+        mock_resp = MagicMock(**{"status_code": 200, "text": '<div id="login_error">Error</div>', "headers": {}})
+        mock_http.post = AsyncMock(return_value=mock_resp)
+
+        success, detail = await step._try_login("admin", "password", EMPTY_BASELINE, None)
+
+        assert success is False
+
+    async def test_ambiguous_200_no_baseline_is_failure(self, mock_http, mock_target, mock_config):
+        """A bare 200 with no baseline is never a success signal."""
+        step = make_step(mock_http, mock_target, mock_config)
+
+        mock_resp = MagicMock(**{"status_code": 200, "text": "Welcome to WordPress", "headers": {}})
+        mock_http.post = AsyncMock(return_value=mock_resp)
+
+        success, detail = await step._try_login("admin", "password", EMPTY_BASELINE, None)
+
+        assert success is False
+        assert detail == "ambiguous_200_no_baseline"
 
     async def test_exception_returns_failure(self, mock_http, mock_target, mock_config):
-        from steps.access.login_bruteforce_step import LoginBruteforceStep
-        step = LoginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+        step = make_step(mock_http, mock_target, mock_config)
 
         mock_http.post = AsyncMock(side_effect=Exception("Connection error"))
 
-        success, detail = await step._try_login("admin", "password")
+        success, detail = await step._try_login("admin", "password", EMPTY_BASELINE, None)
 
         assert success is False
         assert detail == ""
