@@ -13,12 +13,12 @@ checkout, my-account, order-received).
 # WHY: WooCommerce stores expose order/customer endpoints that warrant
 #      dedicated review (Store API is unauthenticated by design)
 
-import json
 import re
 from typing import Optional
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_json_body
 from utils.soft404 import Soft404Detector
 
 STORE_API = "wp-json/wc/store/v1/products"
@@ -42,23 +42,6 @@ def extract_version(readme: str) -> Optional[str]:
     """Extract the stable tag from a WooCommerce readme.txt."""
     match = re.search(r"Stable tag:\s*([\d.]+)", readme or "", re.I)
     return match.group(1) if match else None
-
-
-def is_json_body(response) -> bool:
-    """True when a response body parses as JSON (Store API / wc-ajax).
-
-    SPA catch-alls and plain-permalink WordPress installs answer 200
-    with an HTML page for wp-json paths; only real JSON counts as a
-    signal or an active AJAX endpoint.
-    """
-    text = (getattr(response, "text", "") or "").lstrip()
-    if not text or text[0] not in "[{":
-        return False
-    try:
-        json.loads(text)
-    except (TypeError, ValueError):
-        return False
-    return True
 
 
 class WooCommerceStep(BaseHttpStep):
