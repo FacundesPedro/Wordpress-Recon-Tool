@@ -13,7 +13,7 @@ reports when the server issues a redirect (3xx) to the canary.
 # WHY: Open redirects enable phishing and break OAuth redirect validation
 
 import secrets
-from urllib.parse import quote, unquote
+from urllib.parse import quote, urlsplit
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
@@ -79,12 +79,23 @@ def build_canary() -> str:
 
 
 def canary_in_location(location: str, canary: str) -> bool:
-    """True if a Location header redirects to (or through) the canary host."""
+    """True when a Location header redirects to the canary host itself.
+
+    Checks the parsed destination hostname instead of substring
+    containment: servers commonly echo query-string values into
+    same-origin redirects (e.g. /login -> /login/?url=<canary>), and
+    that is not an open redirect.
+    """
     if not location:
         return False
-    host = canary.split("//", 1)[1].split("/", 1)[0]
-    candidates = [location, unquote(location)]
-    return any(host in candidate for candidate in candidates)
+    canary_host = canary.split("//", 1)[1].split("/", 1)[0].lower()
+    if location.startswith("//"):
+        location = "https:" + location
+    try:
+        target_host = urlsplit(location).hostname
+    except ValueError:
+        return False
+    return bool(target_host) and target_host == canary_host
 
 
 class OpenRedirectStep(BaseHttpStep):

@@ -44,7 +44,10 @@ class TestCanaryHelpers:
         host = canary.split("//", 1)[1].split("/", 1)[0]
         assert canary_in_location(canary, canary)
         assert canary_in_location(canary + "/next", canary)
-        assert canary_in_location("https://x.example/?u=" + quote(host, safe=""), canary)
+        assert canary_in_location("//" + host + "/next", canary)
+        assert not canary_in_location(
+            "https://x.example/?u=" + quote(host, safe=""), canary
+        )
         assert not canary_in_location("https://other.example/", canary)
         assert not canary_in_location("", canary)
 
@@ -83,7 +86,7 @@ class TestOpenRedirectStep:
         assert findings[0].raw["path"] == "/redirect"
         assert findings[0].raw["param"] == "next"
 
-    async def test_encoded_location_detected(self, mock_http, mock_target, mock_config):
+    async def test_canary_echoed_in_query_not_reported(self, mock_http, mock_target, mock_config):
         async def redirector(method, url, **kwargs):
             if "/go" in url and "to=" in url:
                 target = unquote(parse_qs(url.split("?", 1)[1])["to"][0])
@@ -96,7 +99,21 @@ class TestOpenRedirectStep:
         mock_http.request = AsyncMock(side_effect=redirector)
         step = make_step(mock_http, mock_target, mock_config, max_requests=150)
         findings = await step.run()
-        assert any(f.raw["path"] == "/go" for f in findings)
+        assert not any(f.raw["path"] == "/go" for f in findings)
+
+    async def test_same_origin_slash_redirect_not_reported(self, mock_http, mock_target, mock_config):
+        async def redirector(method, url, **kwargs):
+            if "/login" in url:
+                return response(
+                    301,
+                    {"location": "http://example.com/login/" + url.split("/login", 1)[1]},
+                )
+            return response(200, text="ok")
+
+        mock_http.request = AsyncMock(side_effect=redirector)
+        step = make_step(mock_http, mock_target, mock_config, max_requests=150)
+        findings = await step.run()
+        assert findings == []
 
     async def test_no_redirects_no_findings(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(return_value=response(200, text="ok"))
