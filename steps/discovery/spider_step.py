@@ -19,9 +19,15 @@ class SpiderStep(BaseHttpStep):
     MAX_PAGES = 50
 
     UPLOAD_PATTERNS = re.compile(
-        r"(/wp-content/uploads/|/uploads/|/files/|/media/)",
+        r"(/wp-content/uploads/|/(?:uploads|files|media)/)",
         re.IGNORECASE,
     )
+    # Characters that can follow a path in HTML/CSS when it is used as a
+    # directory reference (href="/media/", url("./media/")). Generic
+    # upload/storage patterns must hit one of these; otherwise the match
+    # is just the prefix of a static asset filename (./media/font.woff2)
+    # and is not an upload-directory reference.
+    DIR_REFERENCE_BOUNDARY = "\"'()<>,; \t\r\n"
     FORM_PATTERN = re.compile(
         r'<form[^>]*\s+action\s*=\s*["\']([^"\']+)["\']',
         re.IGNORECASE,
@@ -86,8 +92,16 @@ class SpiderStep(BaseHttpStep):
                     discovered_forms.append(absolute)
 
             for match in self.UPLOAD_PATTERNS.finditer(body):
-                if match.group(0) not in discovered_uploads:
-                    discovered_uploads.append(match.group(0))
+                candidate = match.group(0)
+                if not candidate.lower().startswith("/wp-content/"):
+                    following = body[match.end():match.end() + 1]
+                    if following and following not in self.DIR_REFERENCE_BOUNDARY:
+                        self.logger.debug(
+                            f"Skipping static asset prefix reference: {candidate}"
+                        )
+                        continue
+                if candidate not in discovered_uploads:
+                    discovered_uploads.append(candidate)
 
             for match in self.ADMIN_LIKE_PATTERNS.finditer(body):
                 if match.group(0) not in discovered_admin:

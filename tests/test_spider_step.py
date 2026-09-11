@@ -207,6 +207,26 @@ class TestRun:
         upload_findings = [f for f in findings if "upload" in f.title.lower()]
         assert len(upload_findings) >= 1
 
+    async def test_ignores_static_asset_prefixes(self, mock_http, mock_target, mock_config):
+        findings, _ = await self._run_with_mocks(mock_http, mock_target, mock_config, [
+            MagicMock(**{
+                "status_code": 200,
+                "text": '@font-face{src:url("./media/material-icons.woff2")}',
+            }),
+        ])
+
+        upload_findings = [f for f in findings if "upload" in f.title.lower()]
+        assert upload_findings == []
+
+    async def test_discovers_generic_media_directory(self, mock_http, mock_target, mock_config):
+        findings, _ = await self._run_with_mocks(mock_http, mock_target, mock_config, [
+            MagicMock(**{"status_code": 200, "text": '<a href="/media/">Media</a>'}),
+        ])
+
+        upload_findings = [f for f in findings if "upload" in f.title.lower()]
+        assert len(upload_findings) == 1
+        assert "/media/" in upload_findings[0].evidence
+
     async def test_discovers_admin_paths(self, mock_http, mock_target, mock_config):
         findings, _ = await self._run_with_mocks(mock_http, mock_target, mock_config, [
             MagicMock(**{"status_code": 200, "text": '<a href="/wp-admin/">Admin</a>'}),
