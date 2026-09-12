@@ -118,7 +118,7 @@ class SourcemapStep(BaseHttpStep):
                 seen.add(fallback)
                 map_candidates.append((fallback, "map_suffix"))
 
-        found_maps: list[tuple[str, int, str]] = []
+        found_maps: list[tuple[str, int, str, str]] = []
         for map_url, origin in map_candidates:
             try:
                 response = await self.http.request("GET", map_url)
@@ -132,10 +132,11 @@ class SourcemapStep(BaseHttpStep):
                         f"(likely an SPA/soft-404 shell) - skipped"
                     )
                     continue
-                found_maps.append((map_url, len(text.splitlines()), origin))
+                final_url = str(getattr(response, "url", None) or map_url)
+                found_maps.append((map_url, len(text.splitlines()), origin, final_url))
                 self.logger.info(f"Exposed sourcemap: {map_url}")
 
-        for map_url, line_count, origin in found_maps:
+        for map_url, line_count, origin, final_url in found_maps:
             self._add_finding(
                 module=self.MODULE,
                 severity=self.severity,
@@ -151,6 +152,7 @@ class SourcemapStep(BaseHttpStep):
                 ),
                 raw={
                     "map_url": map_url,
+                    "final_url": final_url,
                     "source_lines": line_count,
                     "discovery": origin,
                 },

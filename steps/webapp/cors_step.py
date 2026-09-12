@@ -70,7 +70,9 @@ class CorsStep(BaseHttpStep):
                 if policy_class is None:
                     continue
                 key = (policy_class, acao, acac)
-                observations.setdefault(key, []).append(f"{path} ({label})")
+                observations.setdefault(key, []).append(
+                    f"{self.urljoin(path)} ({label})"
+                )
                 if acam and key not in methods_by_policy:
                     methods_by_policy[key] = acam
 

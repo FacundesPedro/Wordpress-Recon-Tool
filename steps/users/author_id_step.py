@@ -11,6 +11,7 @@ Discovers valid user IDs by testing author redirects.
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 
 class AuthorIdStep(BaseHttpStep):
@@ -34,7 +35,12 @@ class AuthorIdStep(BaseHttpStep):
 
         self.logger.info("Enumerating author IDs...")
 
-        found_ids = []
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
+        found_ids: list[int] = []
+        found_urls: list[str] = []
+        final_urls: list[str] = []
 
         for author_id in range(1, 21):
             try:
@@ -42,9 +48,18 @@ class AuthorIdStep(BaseHttpStep):
                 response = await self.http.get(url, follow_redirects=True)
 
                 if response.status_code in (200, 301, 302, 303):
+                    if detector.is_soft404(response):
+                        self.logger.debug(
+                            f"Author ID {author_id}: catch-all shell - skipped"
+                        )
+                        continue
                     content_lower = response.text.lower()
-                    if "wp-login" not in content_lower and response.status_code != 400:
+                    if "wp-login" not in content_lower:
                         found_ids.append(author_id)
+                        found_urls.append(url)
+                        final_urls.append(
+                            str(getattr(response, "url", None) or url)
+                        )
                         self.logger.debug(f"Found valid author ID: {author_id}")
 
             except Exception as e:
@@ -56,9 +71,13 @@ class AuthorIdStep(BaseHttpStep):
                 severity=self.severity,
                 title="Author IDs enumerated",
                 description=f"Found {len(found_ids)} valid author ID(s)",
-                evidence=", ".join(str(i) for i in found_ids),
+                evidence=", ".join(found_urls),
                 recommendation="Consider using /?author= redirect to hide user IDs",
-                raw={"author_ids": found_ids},
+                raw={
+                    "author_ids": found_ids,
+                    "urls": found_urls,
+                    "final_urls": final_urls,
+                },
             )
             self.logger.info(f"Found author IDs: {found_ids}")
 

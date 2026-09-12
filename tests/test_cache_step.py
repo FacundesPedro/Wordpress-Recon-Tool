@@ -71,3 +71,24 @@ class TestCacheAnalysisStep:
         mock_http.request = AsyncMock(side_effect=ConnectionError("down"))
         step = CacheAnalysisStep(target=mock_target, config=mock_config, http=mock_http)
         assert await step.run() == []
+
+    async def test_catch_all_shell_not_reported(self, mock_http, mock_target, mock_config):
+        """A cacheable catch-all shell on the canary path is not cache deception."""
+        shell = (
+            "<!doctype html><html><head><title>App</title></head>"
+            "<body>" + "x" * 500 + "</body></html>"
+        )
+
+        async def requestor(method, url, **kwargs):
+            return MagicMock(
+                status_code=200,
+                text=shell,
+                headers=HeaderDict(
+                    {"X-Cache": "MISS", "Cache-Control": "public, max-age=60"}
+                ),
+            )
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = CacheAnalysisStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+        assert not any("cache deception" in f.title.lower() for f in findings)

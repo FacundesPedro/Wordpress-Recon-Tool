@@ -9,7 +9,25 @@ verify that the body actually matches the expected format.
 
 import json
 
-__all__ = ["is_json_body", "is_xml_body", "json_body", "rest_route_fallbacks"]
+from utils.soft404 import is_html_body
+
+__all__ = [
+    "is_json_body",
+    "is_xml_body",
+    "json_body",
+    "rest_route_fallbacks",
+    "is_php_config",
+    "is_wp_readme",
+    "is_wp_license",
+    "is_robots",
+    "is_plugin_readme",
+]
+
+
+def _body_text(response) -> str:
+    """Return the response body as a string, or "" for non-string bodies."""
+    text = getattr(response, "text", "") or ""
+    return text if isinstance(text, str) else ""
 
 
 def is_json_body(response) -> bool:
@@ -72,3 +90,95 @@ def rest_route_fallbacks(route: str) -> list[str]:
     rest = rest.lstrip("/")
     pretty = f"wp-json/{rest}" if rest else "wp-json/"
     return [pretty, f"?rest_route=/{rest}"]
+
+
+def is_php_config(response) -> bool:
+    """True when the body looks like a PHP wp-config file.
+
+    Real wp-config backups define multiple database/auth constants;
+    catch-all HTML shells and generic error pages do not. HTML bodies are
+    always rejected.
+    """
+    text = _body_text(response)
+    if not text or is_html_body(text):
+        return False
+    lower = text.lower()
+    if "define(" not in lower:
+        return False
+    constants = (
+        "db_name",
+        "db_user",
+        "db_password",
+        "db_host",
+        "auth_key",
+        "table_prefix",
+    )
+    return sum(1 for name in constants if name in lower) >= 2
+
+
+def is_wp_readme(response) -> bool:
+    """True when the body is the WordPress core readme.html document.
+
+    A soft-404 homepage shell also contains the word "WordPress", so the
+    core readme markers must be present too.
+    """
+    text = _body_text(response)
+    if not text:
+        return False
+    lower = text.lower()
+    if "wordpress" not in lower:
+        return False
+    return (
+        "semantic personal publishing platform" in lower
+        or "wordpress &#8250; readme" in lower
+        or "wordpress » readme" in lower
+        or ("readme" in lower and "install.css" in lower)
+    )
+
+
+def is_wp_license(response) -> bool:
+    """True when the body is the WordPress license.txt document."""
+    text = _body_text(response)
+    if not text:
+        return False
+    lower = text.lower()
+    if "wordpress" not in lower:
+        return False
+    return (
+        "web publishing software" in lower
+        or "gnu general public license" in lower
+    )
+
+
+def is_robots(response) -> bool:
+    """True when the body is a robots.txt document.
+
+    Requires a User-agent group and at least one directive line; an HTML
+    shell or empty soft-404 body never matches.
+    """
+    text = _body_text(response)
+    if not text or is_html_body(text):
+        return False
+    lower = text.lower()
+    if "user-agent" not in lower:
+        return False
+    return any(
+        line.strip().startswith(("disallow:", "allow:", "sitemap:"))
+        for line in lower.splitlines()
+    )
+
+
+def is_plugin_readme(response) -> bool:
+    """True when the body is a WordPress plugin/theme readme.txt.
+
+    Real readmes carry the wp.org header (``=== Name ===``) or metadata
+    fields (``Stable tag:`` / ``Requires at least:``); HTML shells do not.
+    """
+    text = _body_text(response)
+    if not text or is_html_body(text):
+        return False
+    lower = text.lower()
+    if "stable tag:" in lower or "requires at least:" in lower:
+        return True
+    stripped = lower.lstrip()
+    return stripped.startswith("===") and "===" in stripped[3:]

@@ -72,7 +72,16 @@ class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
                 if response.status_code == 200:
                     content = response.text
                     if is_env_content(content):
-                        found_envs.append(path)
+                        url = self.urljoin(path)
+                        found_envs.append(
+                            {
+                                "path": path,
+                                "url": url,
+                                "final_url": str(
+                                    getattr(response, "url", None) or url
+                                ),
+                            }
+                        )
                         self.logger.info(f"Found .env file: {path}")
             except Exception as e:
                 self.logger.debug(f"Error checking {path}: {e}")
@@ -83,9 +92,13 @@ class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
                 severity=self.severity,
                 title=".env file found",
                 description=f"Found {len(found_envs)} .env file(s) which may contain sensitive data",
-                evidence=", ".join(found_envs),
+                evidence=", ".join(f["url"] for f in found_envs),
                 recommendation="Remove .env files from web root and use server-side only storage",
-                raw={"env_files": found_envs},
+                raw={
+                    "env_files": [f["path"] for f in found_envs],
+                    "urls": [f["url"] for f in found_envs],
+                    "final_urls": [f["final_url"] for f in found_envs],
+                },
             )
 
         return self.findings

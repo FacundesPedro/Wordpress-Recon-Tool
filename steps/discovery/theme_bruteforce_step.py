@@ -109,7 +109,12 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                 processed += 1
                 if exists:
                     found.append(
-                        {"slug": slug, "version": version, "status": status}
+                        {
+                            "slug": slug,
+                            "version": version,
+                            "status": status,
+                            "url": self.urljoin(f"wp-content/themes/{slug}/"),
+                        }
                     )
                     self.logger.debug(
                         f"Found theme: {slug} (v{version or 'unknown'})"
@@ -128,7 +133,9 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         evidence_lines = []
         for t in sorted(found, key=lambda x: x["slug"]):
             v = f" v{t['version']}" if t["version"] else ""
-            evidence_lines.append(f"  {t['slug']}{v} [{t['status']}]")
+            evidence_lines.append(
+                f"  {t['slug']}{v} [{t['status']}] {t['url']}"
+            )
 
         self._add_finding(
             module=self.MODULE,

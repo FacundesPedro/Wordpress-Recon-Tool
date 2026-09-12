@@ -57,7 +57,16 @@ class DebugLogStep(BaseHttpStep):
                 response = await self.fetch(path)
                 if response.status_code == 200 and \
                         is_debug_log_content(response.text or ""):
-                    found_logs.append(path)
+                    url = self.urljoin(path)
+                    found_logs.append(
+                        {
+                            "path": path,
+                            "url": url,
+                            "final_url": str(
+                                getattr(response, "url", None) or url
+                            ),
+                        }
+                    )
                     self.logger.info(f"Found debug log: {path}")
             except Exception as e:
                 self.logger.debug(f"Error checking {path}: {e}")
@@ -68,9 +77,13 @@ class DebugLogStep(BaseHttpStep):
                 severity=self.severity,
                 title="Debug log found",
                 description=f"Found {len(found_logs)} debug log file(s) which may expose sensitive information",
-                evidence=", ".join(found_logs),
+                evidence=", ".join(f["url"] for f in found_logs),
                 recommendation="Disable debug mode or move debug log to secure location",
-                raw={"debug_logs": found_logs},
+                raw={
+                    "debug_logs": [f["path"] for f in found_logs],
+                    "urls": [f["url"] for f in found_logs],
+                    "final_urls": [f["final_url"] for f in found_logs],
+                },
             )
 
         return self.findings

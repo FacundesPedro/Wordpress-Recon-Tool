@@ -16,7 +16,10 @@ class TestWpConfigBackupStep:
 
     async def test_backup_found_valid_content(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="define( DB_NAME")
+            return_value=MagicMock(
+                status_code=200,
+                text="define('DB_NAME', 'wp');\ndefine('DB_USER', 'wp');",
+            )
         )
         from steps.secrets.wp_config_backup_step import WpConfigBackupStep
         step = WpConfigBackupStep(target=mock_target, config=mock_config, http=mock_http)
@@ -31,7 +34,10 @@ class TestWpConfigBackupStep:
 
     async def test_multiple_backups_found(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
-            return_value=MagicMock(status_code=200, text="dbname")
+            return_value=MagicMock(
+                status_code=200,
+                text="define('DB_NAME', 'wp');\ndefine('AUTH_KEY', 'x');",
+            )
         )
         from steps.secrets.wp_config_backup_step import WpConfigBackupStep
         step = WpConfigBackupStep(target=mock_target, config=mock_config, http=mock_http)
@@ -54,6 +60,26 @@ class TestWpConfigBackupStep:
         )
         findings = await step.run()
         assert len(findings) == 0
+
+    async def test_html_shell_with_config_words_not_reported(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A soft-404 homepage containing 'database'/'define(' is not a backup."""
+        shell = (
+            "<!doctype html><html><body>"
+            "define('DB_NAME') database connection"
+            "</body></html>"
+        )
+        mock_http.request = AsyncMock(
+            return_value=MagicMock(status_code=200, text=shell)
+        )
+        from steps.secrets.wp_config_backup_step import WpConfigBackupStep
+        step = WpConfigBackupStep(target=mock_target, config=mock_config, http=mock_http)
+        step.resolve_wordlist_or_fallback = MagicMock(
+            return_value=["wp-config.php.bak"]
+        )
+        findings = await step.run()
+        assert findings == []
 
     async def test_no_backups_found(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

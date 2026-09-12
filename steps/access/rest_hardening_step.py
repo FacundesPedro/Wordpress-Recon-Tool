@@ -48,14 +48,15 @@ class RestHardeningStep(BaseHttpStep):
         return self.findings
 
     async def _check_cors(self) -> None:
+        url = self.urljoin("wp-json/")
         for origin in self.SUSPICIOUS_ORIGINS:
             try:
                 resp = await self.http.get(
-                    self.urljoin("wp-json/"),
+                    url,
                     headers={"Origin": origin},
                 )
                 acao = resp.headers.get("Access-Control-Allow-Origin", "")
-                if acao == "*":
+                if acao == "*" and is_json_body(resp):
                     self._add_finding(
                         module=self.MODULE,
                         severity="high",
@@ -66,6 +67,7 @@ class RestHardeningStep(BaseHttpStep):
                             "cross-origin requests from any website"
                         ),
                         evidence=(
+                            f"GET {url}\n"
                             f"Origin: {origin}\n"
                             f"Access-Control-Allow-Origin: {acao}"
                         ),
@@ -74,6 +76,7 @@ class RestHardeningStep(BaseHttpStep):
                             "Avoid using wildcard (*) with the REST API."
                         ),
                         raw={
+                            "url": url,
                             "origin": origin,
                             "access_control_allow_origin": acao,
                         },
@@ -84,6 +87,7 @@ class RestHardeningStep(BaseHttpStep):
 
     async def _check_route_leakage(self) -> None:
         data = None
+        used_url = None
         for path in rest_route_fallbacks("wp-json/"):
             try:
                 resp = await self.http.get(self.urljoin(path))
@@ -93,6 +97,7 @@ class RestHardeningStep(BaseHttpStep):
             if resp.status_code == 200:
                 data = json_body(resp)
                 if data is not None:
+                    used_url = self.urljoin(path)
                     break
 
         if not isinstance(data, dict):
@@ -120,7 +125,8 @@ class RestHardeningStep(BaseHttpStep):
                     f"Discovered {total} non-core route(s) across "
                     f"{len(namespaces)} namespace(s) via /wp-json/"
                 ),
-                evidence="\n".join(
+                evidence=(f"{used_url}\n" if used_url else "")
+                + "\n".join(
                     f"  {ns}: {len(routes)} route(s)" for ns, routes in namespaces.items()
                 ),
                 recommendation=(
@@ -128,7 +134,10 @@ class RestHardeningStep(BaseHttpStep):
                     "Some plugins expose endpoints that should require "
                     "authentication."
                 ),
-                raw={"namespaces": {ns: rts for ns, rts in namespaces.items()}},
+                raw={
+                    "url": used_url,
+                    "namespaces": {ns: rts for ns, rts in namespaces.items()},
+                },
             )
 
     async def _check_user_endpoint(self) -> None:
@@ -185,23 +194,26 @@ class RestHardeningStep(BaseHttpStep):
         )
 
     async def _check_plugin_endpoints(self) -> None:
-        accessible = []
+        accessible: list[tuple[str, str]] = []
         for route in self.COMMON_PLUGIN_ENDPOINTS:
             for path in rest_route_fallbacks(route):
+                url = self.urljoin(path)
                 try:
                     resp = await self.http.get(
-                        self.urljoin(path),
+                        url,
                         follow_redirects=False,
                     )
                 except Exception:
                     continue
                 if resp.status_code == 200 and is_json_body(resp):
-                    accessible.append(route)
+                    accessible.append((route, url))
                     break
                 if is_json_body(resp):
                     break
 
         if accessible:
+            routes = [route for route, _ in accessible]
+            urls = [url for _, url in accessible]
             self._add_finding(
                 module=self.MODULE,
                 severity="medium",
@@ -210,11 +222,11 @@ class RestHardeningStep(BaseHttpStep):
                     f"Found {len(accessible)} plugin REST API endpoint(s) "
                     f"that return 200 without authentication"
                 ),
-                evidence="\n".join(f"  - {p}" for p in accessible),
+                evidence="\n".join(f"  - {url}" for url in urls),
                 recommendation=(
                     "Review each plugin's REST API permission callbacks. "
                     "Endpoints should verify user capabilities before "
                     "returning data."
                 ),
-                raw={"accessible_endpoints": accessible},
+                raw={"accessible_endpoints": routes, "urls": urls},
             )

@@ -62,14 +62,16 @@ class StackTraceStep(BaseHttpStep):
         reported: set[str] = set()
 
         for suffix, label in PROBE_PATHS:
+            probe_url = self.urljoin(f"/{suffix.lstrip('/')}")
             try:
                 response = await self.fetch(f"/{suffix.lstrip('/')}")
             except Exception as e:
                 self.logger.debug(f"Probe {label} failed: {e}")
                 continue
-            self._scan_response(label, response, reported)
+            self._scan_response(label, response, reported, probe_url)
 
         for path, label in POST_PROBES:
+            probe_url = self.urljoin(path)
             try:
                 response = await self.post(
                     path,
@@ -79,14 +81,16 @@ class StackTraceStep(BaseHttpStep):
             except Exception as e:
                 self.logger.debug(f"POST probe {path} failed: {e}")
                 continue
-            self._scan_response(label, response, reported)
+            self._scan_response(label, response, reported, probe_url)
 
         if not reported:
             self.logger.info("No verbose error signatures detected")
 
         return self.findings
 
-    def _scan_response(self, label: str, response, reported: set[str]) -> bool:
+    def _scan_response(
+        self, label: str, response, reported: set[str], probe_url: str
+    ) -> bool:
         """Scan one response for error signatures; emit finding(s) per new match."""
         status = response.status_code
         text = getattr(response, "text", "") or ""
@@ -105,17 +109,18 @@ class StackTraceStep(BaseHttpStep):
                     severity=self.severity,
                     title=f"{name} leaked in error response",
                     description=(
-                        f"A {label} probe ({self.target.url}) returned HTTP "
+                        f"A {label} probe ({probe_url}) returned HTTP "
                         f"{status} containing a {name}"
                         + (f" ({framework})" if framework != "unknown" else "")
                         + "."
                     ),
-                    evidence=excerpt,
+                    evidence=f"{probe_url}: {excerpt}",
                     recommendation=(
                         "Disable debug mode and return generic error pages "
                         "in production; log details server-side only"
                     ),
                     raw={
+                        "url": probe_url,
                         "label": label,
                         "status": status,
                         "signature": name,

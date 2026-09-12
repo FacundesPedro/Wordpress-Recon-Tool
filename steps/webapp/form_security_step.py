@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlparse
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 FORM_RE = re.compile(r"<form\b[^>]*>(.*?)</form>", re.I | re.S)
 FORM_TAG_RE = re.compile(r"<form\b[^>]*>", re.I)
@@ -66,10 +67,13 @@ class FormSecurityStep(BaseHttpStep):
     async def run(self) -> list[Finding]:
         self.logger.info("Auditing forms for credential security...")
 
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         pages: list[tuple[str, str, object]] = []
         try:
             response = await self.fetch("/")
-            pages.append(("/", response.text or "", response.headers))
+            pages.append((self.target.url, response.text or "", response.headers))
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")
 
@@ -79,11 +83,21 @@ class FormSecurityStep(BaseHttpStep):
             try:
                 response = await self.fetch(path)
                 if getattr(response, "status_code", None) == 200:
-                    pages.append((path, response.text or "", response.headers))
+                    if detector.is_soft404(response):
+                        self.logger.debug(
+                            f"Login path {path}: catch-all shell - skipped"
+                        )
+                        continue
+                    pages.append(
+                        (self.urljoin(path), response.text or "", response.headers)
+                    )
             except Exception as e:
                 self.logger.debug(f"Login path {path} fetch failed: {e}")
 
-        for page_path, html, headers in pages:
+        seen_forms: set[tuple] = set()
+
+        for page_url, html, headers in pages:
+            page_path = urlparse(page_url).path or "/"
             for match in FORM_RE.finditer(html):
                 if len(self.findings) >= MAX_FINDINGS:
                     return self.findings
@@ -94,16 +108,23 @@ class FormSecurityStep(BaseHttpStep):
                 if not has_password:
                     continue
 
+                signature = (
+                    form["action"],
+                    form["method"],
+                    tuple(sorted(i["name"] for i in form["inputs"])),
+                )
+                if signature in seen_forms:
+                    continue
+                seen_forms.add(signature)
+
                 # 1. Plaintext transport
                 action = form["action"]
                 if action:
-                    absolute = urljoin(
-                        self.target.url.rstrip("/") + page_path, action
-                    )
+                    absolute = urljoin(page_url, action)
                     scheme = urlparse(absolute).scheme
                 else:
-                    absolute = self.target.url
-                    scheme = urlparse(self.target.url).scheme
+                    absolute = page_url
+                    scheme = urlparse(page_url).scheme
                 if scheme == "http":
                     self._add_finding(
                         module=self.MODULE,
@@ -114,9 +135,13 @@ class FormSecurityStep(BaseHttpStep):
                             "http://. Credentials are transmitted without "
                             "encryption."
                         ),
-                        evidence=f"form action={action or '(self)'} scheme={scheme}",
+                        evidence=f"GET {page_url} -> form action={absolute} scheme={scheme}",
                         recommendation="Serve and submit the form over HTTPS only",
-                        raw={"page": page_path, "action": action},
+                        raw={
+                            "page_url": page_url,
+                            "action": action,
+                            "action_url": absolute,
+                        },
                     )
 
                 # 2. Autocomplete on password fields
@@ -132,10 +157,17 @@ class FormSecurityStep(BaseHttpStep):
                                 "autocomplete, which may store credentials on "
                                 "shared machines."
                             ),
-                            evidence=f"input name={inp['name']} autocomplete={inp['autocomplete']}",
+                            evidence=(
+                                f"{page_url}: input name={inp['name']} "
+                                f"autocomplete={inp['autocomplete']}"
+                            ),
                             recommendation="Set autocomplete=\"new-password\" or \"off\" "
                                            "on password fields",
-                            raw={"page": page_path, "input": inp},
+                            raw={
+                                "page_url": page_url,
+                                "page": page_path,
+                                "input": inp,
+                            },
                         )
 
             # 3. Cacheable login page
@@ -148,9 +180,9 @@ class FormSecurityStep(BaseHttpStep):
                         "The login page is served with cacheable headers. "
                         "Shared caches may store it (WSTG 4.4.6)."
                     ),
-                    evidence=f"page {page_path} cacheable",
+                    evidence=f"GET {page_url} -> cacheable",
                     recommendation="Send Cache-Control: no-store on login pages",
-                    raw={"page": page_path},
+                    raw={"page_url": page_url, "page": page_path},
                 )
 
         self.logger.info(f"Form security: {len(self.findings)} finding(s)")

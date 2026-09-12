@@ -185,7 +185,7 @@ class JwtAuditStep(BaseHttpStep):
 
         self.logger.info("Auditing JWTs (offline decode, no auth probes)...")
 
-        tokens: list[str] = []
+        token_sources: list[tuple[str, str]] = []
 
         # 1. Homepage body + cookies
         try:
@@ -193,11 +193,18 @@ class JwtAuditStep(BaseHttpStep):
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")
             return self.findings
-        tokens.extend(JWT_RE.findall(response.text or ""))
+        home_url = self.target.url
+
+        def _collect(raw: str, source_url: str) -> None:
+            for match in JWT_RE.findall(raw or ""):
+                token = ".".join(match) if isinstance(match, tuple) else match
+                token_sources.append((source_url, token))
+
+        _collect(response.text or "", home_url)
         for cookie_header in response.headers.get_list("set-cookie") \
                 if hasattr(response.headers, "get_list") else \
                 [response.headers.get("set-cookie") or ""]:
-            tokens.extend(JWT_RE.findall(cookie_header))
+            _collect(cookie_header, home_url)
 
         # 2. JS assets (bounded)
         try:
@@ -207,20 +214,19 @@ class JwtAuditStep(BaseHttpStep):
                 max_files=int(getattr(self.config, "source_scan_max_js", 20)),
                 max_bytes=int(getattr(self.config, "source_scan_max_bytes", 1000000)),
             )
-            for _url, content in assets:
-                tokens.extend(JWT_RE.findall(content))
+            for asset_url, content in assets:
+                _collect(content, asset_url)
         except Exception as e:
             self.logger.debug(f"JS asset fetch failed: {e}")
 
-        # dedupe, keep unique tokens by payload signature
-        unique: list[str] = []
+        # dedupe, keep unique tokens by payload signature (first source wins)
+        unique: list[tuple[str, str]] = []
         seen: set[str] = set()
-        for match in tokens:
-            token = ".".join(match) if isinstance(match, tuple) else match
+        for source_url, token in token_sources:
             if token in seen:
                 continue
             seen.add(token)
-            unique.append(token)
+            unique.append((source_url, token))
             if len(unique) >= MAX_TOKENS:
                 break
 
@@ -229,7 +235,7 @@ class JwtAuditStep(BaseHttpStep):
             return self.findings
 
         weak_secrets = WEAK_SECRETS
-        for token in unique:
+        for source_url, token in unique:
             decoded = decode_jwt(token)
             if decoded is None:
                 continue
@@ -263,9 +269,10 @@ class JwtAuditStep(BaseHttpStep):
                     severity=issue["severity"],
                     title=issue["title"],
                     description=issue["description"],
-                    evidence=f"JWT header (b64): {evidence}",
+                    evidence=f"{source_url}: JWT header (b64): {evidence}",
                     recommendation=issue["recommendation"],
-                    raw={"header": header,
+                    raw={"source_url": source_url,
+                         "header": header,
                          "claims": sorted(payload.keys()),
                          "alg": header.get("alg")},
                 )

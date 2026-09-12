@@ -84,7 +84,8 @@ class CookieFlagsStep(BaseHttpStep):
                 continue
             for header in collect_set_cookies(response):
                 cookie = parse_set_cookie(header)
-                key = f"{path}:{cookie['name']}"
+                cookie["source_url"] = self.urljoin(path)
+                key = f"{cookie['source_url']}:{cookie['name']}"
                 if cookie["name"] and key not in seen:
                     seen[key] = cookie
 
@@ -97,7 +98,7 @@ class CookieFlagsStep(BaseHttpStep):
         missing_samesite = []
 
         for key, cookie in seen.items():
-            label = f"{cookie['name']} ({key.split(':')[0]})"
+            label = f"{cookie['name']} ({cookie['source_url']})"
             if not cookie["httponly"]:
                 missing_httponly.append(label)
             if is_https and not cookie["secure"]:

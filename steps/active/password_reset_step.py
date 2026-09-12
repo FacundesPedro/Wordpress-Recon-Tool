@@ -92,10 +92,10 @@ class PasswordResetStep(ActiveHttpStep):
                         "signal. Reset flooding enables mail-bombing and "
                         "token brute-force support."
                     ),
-                    f"POST {path} x5 -> no limiting signal",
+                    f"POST {self.urljoin(path)} x5 -> no limiting signal",
                     "Rate-limit reset requests per identity and add "
                     "exponential backoff",
-                    raw={"path": path},
+                    raw={"path": path, "url": self.urljoin(path)},
                 )
 
             # 2. Host header reflection (reset-link poisoning surface)
@@ -115,10 +115,11 @@ class PasswordResetStep(ActiveHttpStep):
                             "response. If reset links are built from Host, "
                             "password-reset link poisoning is possible."
                         ),
-                        f"POST {path} with Host: {CANARY_HOST} -> reflected in body",
+                        f"POST {self.urljoin(path)} with Host: {CANARY_HOST} -> reflected in body",
                         "Generate reset links from server-side configuration, "
                         "never from the Host header",
-                        raw={"path": path, "canary_host": CANARY_HOST},
+                        raw={"path": path, "url": self.urljoin(path),
+                             "canary_host": CANARY_HOST},
                     )
 
         self.logger.info(

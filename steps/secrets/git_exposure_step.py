@@ -70,7 +70,16 @@ class GitExposureStep(BaseHttpStep):
                 response = await self.fetch(path)
                 if response.status_code == 200 and \
                         is_git_file_content(path, response.text or ""):
-                    found_git.append(path)
+                    url = self.urljoin(path)
+                    found_git.append(
+                        {
+                            "path": path,
+                            "url": url,
+                            "final_url": str(
+                                getattr(response, "url", None) or url
+                            ),
+                        }
+                    )
                     self.logger.info(f"Found .git file: {path}")
             except Exception as e:
                 self.logger.debug(f"Error checking {path}: {e}")
@@ -82,9 +91,13 @@ class GitExposureStep(BaseHttpStep):
                 title=".git directory exposed",
                 description=f"Found {len(found_git)} .git file(s) exposed via web server. "
                 "This can allow attackers to download the entire repository.",
-                evidence=", ".join(found_git),
+                evidence=", ".join(f["url"] for f in found_git),
                 recommendation="Block access to .git directory in web server config",
-                raw={"git_files": found_git},
+                raw={
+                    "git_files": [f["path"] for f in found_git],
+                    "urls": [f["url"] for f in found_git],
+                    "final_urls": [f["final_url"] for f in found_git],
+                },
             )
 
         return self.findings

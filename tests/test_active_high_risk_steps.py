@@ -81,6 +81,21 @@ class TestMassAssignmentStep:
         findings = await step.run()
         assert any("mass assignment" in f.title.lower() for f in findings)
 
+    async def test_generic_marker_words_not_reported(self, mock_http, mock_target, mock_config):
+        """A response mentioning 'role'/'admin' generically is not reflection."""
+        async def requestor(method, url, **kwargs):
+            return MagicMock(
+                status_code=200,
+                text='{"message": "your role is user; contact an admin"}',
+            )
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config,
+                              endpoint="/api/register")
+        findings = await step.run()
+
+        assert findings == []
+
 
 class TestRaceConditionStep:
     def make_step(self, mock_http, mock_target, mock_config, enabled=True,

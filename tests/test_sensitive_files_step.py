@@ -51,6 +51,24 @@ class TestContentHeuristics:
     def test_html_body_on_file_path_rejected(self):
         assert not is_interesting_content("<html>anything at all</html>", "db.sql")
 
+    def test_non_json_catchall_not_interesting(self):
+        """A plain-text/HTML error handler must not satisfy extension checks."""
+        assert not is_interesting_content("service unavailable", "credentials.json")
+        assert not is_interesting_content("plain error text", "error.log")
+        assert not is_interesting_content("generic body", "dump.sql")
+        assert not is_interesting_content("generic body", "config.yml")
+
+    def test_signature_formats_still_detected(self):
+        assert is_interesting_content(
+            "INSERT INTO users VALUES (1);", "dump.sql"
+        )
+        assert is_interesting_content(
+            "[01-Jan-2026 10:00:00 UTC] PHP Warning:  something", "error.log"
+        )
+        assert is_interesting_content(
+            "<?xml version=\"1.0\"?><root></root>", "config.xml"
+        )
+
 
 class TestSensitiveFilesStep:
     async def test_exposed_file_reported(self, mock_http, mock_target, mock_config):

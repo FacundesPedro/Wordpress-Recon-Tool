@@ -52,6 +52,28 @@ class TestAuthBypassStep:
         findings = await step.run()
         assert any("X-Forwarded-For" in f.title for f in findings)
 
+    async def test_bypass_to_login_shell_not_reported(self, mock_http, mock_target, mock_config):
+        """2xx bypass responses that serve the login form are not access granted."""
+        login_shell = (
+            "<!doctype html><html><body>"
+            "<form action=\"/login\" method=\"post\">"
+            "<input type=\"password\" name=\"pwd\"></form></body></html>"
+        )
+
+        async def requestor(method, url, **kwargs):
+            path = url.replace("https://example.com", "")
+            if path in ("/admin", "/admin.php", "/wp-admin/"):
+                return MagicMock(status_code=403, text="denied")
+            if path == "/admin/.":
+                return MagicMock(status_code=200, text=login_shell)
+            return MagicMock(status_code=404, text="nope")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        assert not any("path confusion" in f.title.lower() for f in findings)
+
 
 class TestRateLimitStep:
     def make_step(self, mock_http, mock_target, mock_config, enabled=True):

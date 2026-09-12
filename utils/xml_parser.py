@@ -107,7 +107,9 @@ def parse_xmlrpc_response(content: str) -> XmlrpcResponse:
                         val = member.find("value")
                         if name_elem is not None and val is not None and name_elem.text:
                             if name_elem.text == "faultCode":
-                                int_val = val.find("int") or val.find("i4")
+                                int_val = val.find("int")
+                                if int_val is None:
+                                    int_val = val.find("i4")
                                 if int_val is not None and int_val.text:
                                     try:
                                         result.fault_code = int(int_val.text)

@@ -5,6 +5,7 @@
 from base.http_step import BaseHttpStep
 from core.auth import get_wp_auth_header
 from core.finding import Finding
+from utils.http_validation import is_plugin_readme
 
 
 class InactivePluginCheckStep(BaseHttpStep):
@@ -31,9 +32,13 @@ class InactivePluginCheckStep(BaseHttpStep):
             return self.findings
 
         accessible = []
+        accessible_urls = {}
         for slug in inactive:
             if await self._is_readable(slug):
                 accessible.append(slug)
+                accessible_urls[slug] = self.urljoin(
+                    f"wp-content/plugins/{slug}/readme.txt"
+                )
                 self.logger.debug(f"Inactive plugin files accessible: {slug}")
 
         if not accessible:
@@ -63,7 +68,7 @@ class InactivePluginCheckStep(BaseHttpStep):
                 "are still readable on the web server"
             ),
             evidence="\n".join(
-                f"  - {s}: /wp-content/plugins/{s}/readme.txt (HTTP 200)"
+                f"  - {s}: {accessible_urls[s]} (HTTP 200)"
                 for s in accessible
             ),
             recommendation=(
@@ -74,6 +79,7 @@ class InactivePluginCheckStep(BaseHttpStep):
             raw={
                 "inactive_total": len(inactive),
                 "accessible": accessible,
+                "urls": accessible_urls,
                 "protected": [s for s in inactive if s not in accessible],
             },
         )
@@ -106,6 +112,8 @@ class InactivePluginCheckStep(BaseHttpStep):
         path = f"wp-content/plugins/{slug}/readme.txt"
         try:
             resp = await self.http.get(self.urljoin(path))
-            return resp.status_code == 200
+            if resp.status_code != 200:
+                return False
+            return is_plugin_readme(resp)
         except Exception:
             return False

@@ -16,7 +16,11 @@ class TestCheckCors:
         from steps.access.rest_hardening_step import RestHardeningStep
         step = RestHardeningStep(target=mock_target, config=mock_config, http=mock_http)
 
-        mock_resp = MagicMock(status_code=200, headers={"Access-Control-Allow-Origin": "*"})
+        mock_resp = MagicMock(
+            status_code=200,
+            text='{"namespaces": ["wp/v2"]}',
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
         mock_http.get.return_value = mock_resp
 
         await step._check_cors()
@@ -27,6 +31,7 @@ class TestCheckCors:
         assert f.module == "access"
         assert "CORS" in f.title
         assert "*" in f.evidence
+        assert f.raw["url"] == "https://example.com/wp-json/"
 
     async def test_restricted_cors_no_finding(self, mock_http, mock_target, mock_config):
         from steps.access.rest_hardening_step import RestHardeningStep
@@ -47,6 +52,22 @@ class TestCheckCors:
         step = RestHardeningStep(target=mock_target, config=mock_config, http=mock_http)
 
         mock_http.get.side_effect = Exception("Timeout")
+
+        await step._check_cors()
+
+        assert len(step.findings) == 0
+
+    async def test_acao_wildcard_on_html_shell_no_finding(self, mock_http, mock_target, mock_config):
+        """A catch-all shell echoing ACAO:* is not a REST API CORS finding."""
+        from steps.access.rest_hardening_step import RestHardeningStep
+        step = RestHardeningStep(target=mock_target, config=mock_config, http=mock_http)
+
+        mock_resp = MagicMock(
+            status_code=200,
+            text="<!doctype html><html><body>shell</body></html>",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+        mock_http.get.return_value = mock_resp
 
         await step._check_cors()
 

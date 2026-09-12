@@ -215,20 +215,21 @@ class AdminSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
             )
 
         if protected:
+            protected_urls = [self.urljoin(p) for p in protected]
             self._add_finding(
                 module=self.MODULE,
                 severity="info",
                 title="Admin interfaces behind authentication",
                 description=(
                     "Path(s) requiring authentication (401/403): "
-                    + ", ".join(protected[:_MAX_PROTECTED_LIST])
+                    + ", ".join(protected_urls[:_MAX_PROTECTED_LIST])
                 ),
-                evidence=", ".join(protected[:_MAX_PROTECTED_LIST]),
+                evidence=", ".join(protected_urls[:_MAX_PROTECTED_LIST]),
                 recommendation=(
                     "Verify these interfaces enforce strong authentication "
                     "and are not reachable with default credentials"
                 ),
-                raw={"paths": protected},
+                raw={"paths": protected, "urls": protected_urls},
             )
 
         if security_txt is not None:

@@ -404,7 +404,8 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
             return self.findings
 
         html = getattr(response, "text", "") or ""
-        sources: list[tuple[str, str]] = [("/", html)]
+        home_url = self.target.url
+        sources: list[tuple[str, str]] = [(home_url, html)]
 
         asset_urls = extract_asset_urls(html, base_url)
         if asset_urls:
@@ -430,14 +431,12 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
             self.http, base_url, asset_urls, max_files=max_js, max_bytes=max_bytes
         )
         for url, text in assets:
-            from urllib.parse import urlsplit
-
-            sources.append((urlsplit(url).path or url, text))
+            sources.append((url, text))
 
         hits = 0
         for source_name, content in sources:
             # HTML pages are covered by ContentLeakStep for email/IP rules
-            skip_page_rules = source_name == "/"
+            skip_page_rules = source_name == home_url
             for hit in scan_for_secrets(content, source_name, skip_page_rules):
                 if hits >= MAX_TOTAL_HITS:
                     break
@@ -456,7 +455,7 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
                         "source": source_name,
                         "line": hit["line"],
                         "masked": hit["masked"],
-                        "value": hit["value"],
+                        "redacted": True,
                     },
                 )
                 hits += 1

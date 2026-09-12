@@ -117,16 +117,23 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
                 )
 
                 content = response.text
+                if not isinstance(content, str):
+                    content = ""
                 scanned_count += 1
 
+                # A successful pingback call means the XML-RPC server
+                # fetched the supplied URL: the port answered. Fault
+                # responses (unreachable port/service) are not open.
+                lower_content = content.lower()
+                fault_code = self._extract_fault_code(content)
                 if (
-                    "<faultCode>0</faultCode>" in content
-                    and self._extract_fault_code(content) > 0
+                    response.status_code == 200
+                    and "<methodresponse" in lower_content
+                    and "<fault>" not in lower_content
+                    and fault_code == 0
                 ):
                     open_ports.append(port)
                     self.logger.debug(f"Port {port} appears to be open")
-                elif response.status_code == 200 and "pingback.ping" in content.lower():
-                    open_ports.append(port)
 
                 await asyncio.sleep(self.REQUEST_DELAY)
 
@@ -144,10 +151,11 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
                 title="Open ports detected via SSRF",
                 description=f"Found {len(open_ports)} open port(s) via pingback.ping SSRF. "
                 f"Scanned {scanned_count} ports, {blocked_count} blocked by SSRF protection.",
-                evidence=", ".join(str(p) for p in open_ports),
+                evidence=f"{url} -> ports: " + ", ".join(str(p) for p in open_ports),
                 recommendation="Ensure internal services are not exposed to the WordPress server. "
                 "Disable XML-RPC if not needed.",
                 raw={
+                    "url": url,
                     "open_ports": open_ports,
                     "scanned_count": scanned_count,
                     "blocked_count": blocked_count,

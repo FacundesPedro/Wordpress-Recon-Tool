@@ -110,7 +110,12 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                 processed += 1
                 if exists:
                     found.append(
-                        {"slug": slug, "version": version, "status": status}
+                        {
+                            "slug": slug,
+                            "version": version,
+                            "status": status,
+                            "url": self.urljoin(f"wp-content/plugins/{slug}/"),
+                        }
                     )
                     self.logger.debug(
                         f"Found plugin: {slug} (v{version or 'unknown'})"
@@ -129,7 +134,9 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         evidence_lines = []
         for p in sorted(found, key=lambda x: x["slug"]):
             v = f" v{p['version']}" if p["version"] else ""
-            evidence_lines.append(f"  {p['slug']}{v} [{p['status']}]")
+            evidence_lines.append(
+                f"  {p['slug']}{v} [{p['status']}] {p['url']}"
+            )
 
         self._add_finding(
             module=self.MODULE,

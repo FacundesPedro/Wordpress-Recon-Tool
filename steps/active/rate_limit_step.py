@@ -109,11 +109,11 @@ class RateLimitStep(ActiveHttpStep):
                     f"lockout message, or CAPTCHA challenge. Credential "
                     f"stuffing and brute force are viable."
                 ),
-                f"POST {path} x{BURST} -> statuses: {statuses[:10]}",
+                f"POST {self.urljoin(path)} x{BURST} -> statuses: {statuses[:10]}",
                 "Rate-limit per identity (not spoofable IP), add exponential "
                 "backoff/lockout and monitor failed-login anomalies",
-                raw={"path": path, "attempts": len(statuses),
-                     "statuses": statuses},
+                raw={"path": path, "url": self.urljoin(path),
+                     "attempts": len(statuses), "statuses": statuses},
             )
 
         self.logger.info(

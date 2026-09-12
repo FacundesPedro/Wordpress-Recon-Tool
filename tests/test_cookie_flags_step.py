@@ -129,8 +129,8 @@ class TestCookieFlagsStep:
         findings = await step.run()
         httponly = [f for f in findings if "HttpOnly" in f.title]
         assert len(httponly) == 1
-        assert "session (/)" in httponly[0].evidence
-        assert "pref (/)" in httponly[0].evidence
+        assert "session (https://example.com/)" in httponly[0].evidence
+        assert "pref (https://example.com/)" in httponly[0].evidence
 
     async def test_no_cookies_no_findings(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

@@ -96,7 +96,7 @@ class LoginPageStep(BaseHttpStep, WordlistDependencyMixin):
                 severity=self.severity,
                 title="WordPress login page detected",
                 description=f"Found {len(found_logins)} WordPress login endpoint(s)",
-                evidence=", ".join([f["path"] for f in found_logins]),
+                evidence=", ".join([f["url"] for f in found_logins]),
                 recommendation="Consider restricting access to login pages",
                 raw={"login_pages": found_logins},
             )

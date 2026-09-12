@@ -77,7 +77,8 @@ class RestSurfaceStep(BaseHttpStep):
                 title="REST API surface detected",
                 description=f"Found {len(found_endpoints)} accessible REST API endpoint(s)",
                 evidence=", ".join(
-                    [f"{e['route']} ({e['status']})" for e in found_endpoints]
+                    [f"{e.get('url', e['route'])} ({e['status']})"
+                     for e in found_endpoints]
                 ),
                 recommendation=(
                     "Review exposed REST API endpoints and restrict access "
@@ -117,6 +118,7 @@ class RestSurfaceStep(BaseHttpStep):
                     "status": status,
                     "content_type": response.headers.get("content-type", ""),
                     "path": path,
+                    "url": self.urljoin(path),
                 }
             if status == 404:
                 return None

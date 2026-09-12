@@ -116,6 +116,7 @@ class WooCommerceStep(BaseHttpStep):
                 )
                 continue
             if "cart" in path or "checkout" in path or "my-account" in path:
+                url = self.urljoin(path)
                 self._add_finding(
                     module=self.MODULE,
                     severity="info",
@@ -124,15 +125,16 @@ class WooCommerceStep(BaseHttpStep):
                         f"The WooCommerce endpoint {path} is publicly "
                         f"reachable. Include it in manual review scope."
                     ),
-                    evidence=f"GET {path} -> 200",
+                    evidence=f"GET {url} -> 200",
                     recommendation="Verify authentication requirements on account endpoints",
-                    raw={"path": path},
+                    raw={"path": path, "url": url},
                 )
 
         # wc-ajax endpoint
         try:
             response = await self.fetch(WC_AJAX_FRAGMENT)
             if getattr(response, "status_code", None) == 200 and is_json_body(response):
+                ajax_url = self.urljoin(WC_AJAX_FRAGMENT)
                 self._add_finding(
                     module=self.MODULE,
                     severity="info",
@@ -142,9 +144,9 @@ class WooCommerceStep(BaseHttpStep):
                         "It is a common target for abuse/cart manipulation "
                         "testing."
                     ),
-                    evidence=f"GET {WC_AJAX_FRAGMENT} -> 200",
+                    evidence=f"GET {ajax_url} -> 200",
                     recommendation="Rate-limit wc-ajax endpoints; verify session handling",
-                    raw={"path": WC_AJAX_FRAGMENT},
+                    raw={"path": WC_AJAX_FRAGMENT, "url": ajax_url},
                 )
         except Exception as e:
             self.logger.debug(f"wc-ajax probe failed: {e}")

@@ -72,6 +72,34 @@ class TestAuthorIdStep:
         assert len(findings) == 1
         assert "1" in findings[0].evidence
 
+    async def test_soft404_shell_not_enumerated(self, mock_http, mock_target, mock_config):
+        shell = (
+            "<!doctype html><html><head><title>App</title></head>"
+            "<body>" + "x" * 500 + "</body></html>"
+        )
+        mock_http.request = AsyncMock(
+            return_value=MagicMock(status_code=200, text=shell)
+        )
+        mock_http.get = AsyncMock(
+            return_value=MagicMock(status_code=200, text=shell)
+        )
+
+        from steps.users.author_id_step import AuthorIdStep
+        step = AuthorIdStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+
+        assert findings == []
+
+    async def test_urls_in_evidence(self, mock_http, mock_target, mock_config):
+        mock_http.get.side_effect = [self._AUTHOR_RESP] + [self._404_RESP] * 19
+
+        from steps.users.author_id_step import AuthorIdStep
+        step = AuthorIdStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+
+        assert findings[0].evidence == "https://example.com/?author=1"
+        assert findings[0].raw["urls"] == ["https://example.com/?author=1"]
+
 
 class TestLoginVerbosityStep:
     """Tests for LoginVerbosityStep — single GET to wp-login.php."""

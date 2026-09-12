@@ -196,6 +196,27 @@ class TestNonAngularSoft404s:
                 "<body><form><input name=user><input name=pass></form></body></html>")
         assert not detector.is_soft404(resp(200, real))
 
+    async def test_same_type_similar_length_different_title_kept(self, mock_http):
+        """WordPress author archives are ~same size as the homepage shell but
+        carry a different title - they must not be treated as soft-404s."""
+        headers = {"Content-Type": "text/html; charset=UTF-8"}
+        baseline_page = (
+            "<!doctype html><html><head><title>ReconTest</title></head>"
+            "<body>" + "x" * 60000 + "</body></html>"
+        )
+        author_page = (
+            "<!doctype html><html><head><title>admin - ReconTest</title></head>"
+            "<body>" + "y" * 59000 + "</body></html>"
+        )
+        mock_http.request = AsyncMock(
+            return_value=resp(200, baseline_page, headers)
+        )
+        detector, _ = make_detector(mock_http)
+        await detector.calibrate()
+
+        assert detector.calibrated
+        assert not detector.is_soft404(resp(200, author_page, headers))
+
     async def test_directory_listing_not_suppressed(self, mock_http):
         """Directory listings (real findings) differ from the shell."""
         mock_http.request = AsyncMock(return_value=resp(200, SPA_SHELL))

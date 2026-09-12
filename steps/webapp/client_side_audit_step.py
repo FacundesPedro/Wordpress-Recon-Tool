@@ -189,7 +189,12 @@ class ClientSideAuditStep(BaseHttpStep):
             return self.findings
 
         html = response.text or ""
-        issues = audit_html(html)
+        home_url = self.target.url
+        issues = []
+        for issue in audit_html(html):
+            issue = dict(issue)
+            issue["source_url"] = home_url
+            issues.append(issue)
 
         try:
             asset_urls = extract_asset_urls(html, self.target.url)
@@ -198,20 +203,24 @@ class ClientSideAuditStep(BaseHttpStep):
                 max_files=int(getattr(self.config, "source_scan_max_js", 20)),
                 max_bytes=int(getattr(self.config, "source_scan_max_bytes", 1000000)),
             )
-            for _url, content in assets:
-                issues.extend(audit_js(content))
+            for asset_url, content in assets:
+                for issue in audit_js(content):
+                    issue = dict(issue)
+                    issue["source_url"] = asset_url
+                    issues.append(issue)
         except Exception as e:
             self.logger.debug(f"JS asset fetch failed: {e}")
 
         for issue in issues[:MAX_FINDINGS]:
+            source_url = issue.get("source_url", self.target.url)
             self._add_finding(
                 module=self.MODULE,
                 severity=issue["severity"],
                 title=issue["title"],
                 description=issue["description"],
-                evidence=issue["evidence"],
+                evidence=f"{source_url}: {issue['evidence']}",
                 recommendation=issue["recommendation"],
-                raw=issue.get("raw", {}),
+                raw={**issue.get("raw", {}), "source_url": source_url},
             )
 
         if len(issues) > MAX_FINDINGS:

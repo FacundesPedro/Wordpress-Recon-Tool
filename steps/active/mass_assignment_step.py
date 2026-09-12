@@ -17,6 +17,8 @@ Requires `WP_ACTIVE_MASS_ASSIGN_ENDPOINT` to be set (app-specific surface).
 #      and profile-update endpoints
 
 import json as jsonlib
+import re
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 
@@ -29,8 +31,16 @@ EXTRA_FIELDS = [
     {"role": "admin", "is_admin": "true"},
 ]
 
-REFLECTION_MARKERS = ("administrator", "is_admin", '"admin"', "role")
 MAX_FINDINGS = 2
+
+
+def _reflects_field(body: str, key: str, value: str) -> bool:
+    """True when the body echoes key=value (JSON or form style)."""
+    pattern = (
+        r"[\"']?" + re.escape(key) + r"[\"']?\s*[:=]\s*[\"']?"
+        + re.escape(value)
+    )
+    return re.search(pattern, body, re.IGNORECASE) is not None
 
 
 class MassAssignmentStep(ActiveHttpStep):
@@ -54,6 +64,8 @@ class MassAssignmentStep(ActiveHttpStep):
 
         self.logger.info(f"Probing mass assignment at {endpoint}...")
 
+        url = self.urljoin(endpoint)
+
         baseline = await self.probe(
             endpoint, method="POST",
             content=jsonlib.dumps({"username": "recon-canary-x9"}),
@@ -62,6 +74,9 @@ class MassAssignmentStep(ActiveHttpStep):
         if baseline is None:
             self.logger.info("Mass assignment: baseline request failed")
             return self.findings
+        baseline_body = getattr(baseline, "text", "") or ""
+        if not isinstance(baseline_body, str):
+            baseline_body = ""
 
         for extra in EXTRA_FIELDS:
             if len(self.findings) >= MAX_FINDINGS or not self.budget_left():
@@ -76,8 +91,17 @@ class MassAssignmentStep(ActiveHttpStep):
                 continue
             if not (200 <= response.status_code < 300):
                 continue
-            body = response.text or ""
-            reflected = [m for m in REFLECTION_MARKERS if m in body.lower()]
+            body = getattr(response, "text", "") or ""
+            if not isinstance(body, str):
+                body = ""
+            # Only flag the exact key/value pair submitted, and only when
+            # it is absent from the baseline response (no generic markers).
+            reflected = [
+                key
+                for key, value in extra.items()
+                if _reflects_field(body, key, value)
+                and not _reflects_field(baseline_body, key, value)
+            ]
             if not reflected:
                 continue
             fields = ", ".join(f"{k}={v}" for k, v in extra.items())
@@ -90,10 +114,10 @@ class MassAssignmentStep(ActiveHttpStep):
                     f"reflects elevated-field markers ({', '.join(reflected)}). "
                     f"Verify whether the privilege fields were actually bound."
                 ),
-                f"POST {endpoint} {fields} -> {response.status_code}",
+                f"POST {url} {fields} -> {response.status_code}",
                 "Use explicit DTOs/allowlists for bindable fields; never bind "
                 "client input directly to role/permission attributes",
-                raw={"endpoint": endpoint, "fields": extra,
+                raw={"endpoint": endpoint, "url": url, "fields": extra,
                      "status": response.status_code,
                      "reflected": reflected},
             )

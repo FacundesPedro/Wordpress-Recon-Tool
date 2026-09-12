@@ -31,9 +31,14 @@ _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 LENGTH_TOLERANCE = 0.1
 LENGTH_ABSOLUTE_FLOOR = 64
 
+# Non-200 statuses that catch-all servers return for unknown paths.
+_CATCHALL_STATUSES = frozenset({301, 302, 303, 307, 308, 401, 403})
+
 
 def extract_title(text: str) -> str:
     """Extract a cleaned <title> from HTML, or "" if absent."""
+    if not isinstance(text, str):
+        return ""
     match = _TITLE_RE.search(text or "")
     if not match:
         return ""
@@ -53,10 +58,14 @@ class ResponseFingerprint:
     @classmethod
     def from_response(cls, response) -> "ResponseFingerprint":
         text = getattr(response, "text", "") or ""
+        if not isinstance(text, str):
+            text = ""
         headers = getattr(response, "headers", None) or {}
         try:
             content_type = headers.get("content-type") or ""
         except Exception:
+            content_type = ""
+        if not isinstance(content_type, str):
             content_type = ""
         return cls(
             status=getattr(response, "status_code", 0) or 0,
@@ -102,13 +111,15 @@ class Soft404Detector:
         self.logger = logger
         self.probes = max(1, probes)
         self.baseline = ResponseFingerprint()
+        self._catchall_baselines: dict[int, ResponseFingerprint] = {}
         self._token = secrets.token_hex(6)
 
     async def calibrate(self) -> ResponseFingerprint:
         """Probe random nonexistent paths and fingerprint the shell.
 
-        Only 200 responses build the baseline; a server that correctly
-        404s unknown paths needs no calibration.
+        A 200 response becomes the primary baseline. Other catch-all
+        statuses (301/302/303/307/308/401/403) are recorded per status so
+        blanket redirects and blanket denials are also suppressed.
         """
         canaries = [
             f"/recon-baseline-{self._token}",
@@ -123,17 +134,25 @@ class Soft404Detector:
                 self.logger.debug(f"Soft-404 calibration {path} failed: {e}")
                 continue
             status = getattr(response, "status_code", None)
+            fingerprint = ResponseFingerprint.from_response(response)
+            if fingerprint.empty:
+                continue
             if status == 200:
-                fingerprint = ResponseFingerprint.from_response(response)
-                if not fingerprint.empty:
-                    self.baseline = fingerprint
-                    self.logger.debug(
-                        f"Soft-404 baseline: status={fingerprint.status} "
-                        f"len={fingerprint.length} "
-                        f"title='{fingerprint.title[:40]}' "
-                        f"ct='{fingerprint.content_type[:40]}'"
-                    )
-                    break
+                self.baseline = fingerprint
+                self.logger.debug(
+                    f"Soft-404 baseline: status={fingerprint.status} "
+                    f"len={fingerprint.length} "
+                    f"title='{fingerprint.title[:40]}' "
+                    f"ct='{fingerprint.content_type[:40]}'"
+                )
+                break
+            if status in _CATCHALL_STATUSES:
+                self._catchall_baselines.setdefault(status, fingerprint)
+                self.logger.debug(
+                    f"Soft-404 catch-all baseline: status={status} "
+                    f"len={fingerprint.length} "
+                    f"title='{fingerprint.title[:40]}'"
+                )
         return self.baseline
 
     @property
@@ -144,48 +163,70 @@ class Soft404Detector:
     def is_soft404(self, response) -> bool:
         """Classify a response against the calibrated baseline.
 
-        A response is a soft-404/catch-all when it matches the baseline on
-        any of (in order of confidence):
+        A response is a soft-404/catch-all when it matches the baseline for
+        its status code on any of (in order of confidence):
         1. byte-identical body head
         2. same HTML title AND body length within tolerance
         3. same content-type AND body length within tolerance
+
+        The primary baseline covers 200 shells; per-status baselines cover
+        blanket redirects and blanket denials (301/302/303/307/308/401/403)
+        recorded during calibration.
         """
-        if not self.calibrated:
-            return False
         fingerprint = ResponseFingerprint.from_response(response)
-
-        if fingerprint.status != self.baseline.status:
+        if self.calibrated and fingerprint.status == self.baseline.status:
+            baseline = self.baseline
+        else:
+            baseline = self._catchall_baselines.get(fingerprint.status)
+        if baseline is None or baseline.empty:
             return False
+        return self._matches(fingerprint, baseline)
 
+    @staticmethod
+    def _matches(fingerprint: ResponseFingerprint, baseline: ResponseFingerprint) -> bool:
         # 0. both bodies empty (some servers return bare 200s)
-        if fingerprint.length == 0 and self.baseline.length == 0:
+        if fingerprint.length == 0 and baseline.length == 0:
             return True
 
+        # Both pages carry titles: a different title means a different page,
+        # even when the template boilerplate (head) and size match.
+        if (
+            baseline.title
+            and fingerprint.title
+            and fingerprint.title != baseline.title
+        ):
+            return False
+
         # 1. byte-identical head (strongest signal)
-        if fingerprint.head and fingerprint.head == self.baseline.head:
+        if fingerprint.head and fingerprint.head == baseline.head:
             return True
 
         # 2. same title + similar length
         if (
-            self.baseline.title
-            and fingerprint.title == self.baseline.title
-            and self._similar_length(fingerprint.length)
+            baseline.title
+            and fingerprint.title == baseline.title
+            and _similar_length(fingerprint.length, baseline.length)
         ):
             return True
 
-        # 3. same content-type + similar length (title-less shells)
+        # 3. same content-type + similar length (title-less shells only;
+        #    a differing title means a different page even at similar size)
         if (
-            self.baseline.content_type
-            and fingerprint.content_type == self.baseline.content_type
-            and self._similar_length(fingerprint.length)
+            not baseline.title
+            and baseline.content_type
+            and fingerprint.content_type == baseline.content_type
+            and _similar_length(fingerprint.length, baseline.length)
         ):
             return True
 
         return False
 
     def _similar_length(self, length: int) -> bool:
-        baseline_len = self.baseline.length
-        if baseline_len <= 0:
-            return length == 0
-        tolerance = max(LENGTH_TOLERANCE * baseline_len, LENGTH_ABSOLUTE_FLOOR)
-        return abs(length - baseline_len) <= tolerance
+        return _similar_length(length, self.baseline.length)
+
+
+def _similar_length(length: int, baseline_len: int) -> bool:
+    if baseline_len <= 0:
+        return length == 0
+    tolerance = max(LENGTH_TOLERANCE * baseline_len, LENGTH_ABSOLUTE_FLOOR)
+    return abs(length - baseline_len) <= tolerance

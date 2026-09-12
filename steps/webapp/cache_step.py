@@ -19,6 +19,7 @@ from typing import Optional
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 CACHE_INDICATOR_HEADERS = [
     "age", "x-cache", "cf-cache-status", "x-varnish", "x-served-by",
@@ -103,19 +104,23 @@ class CacheAnalysisStep(BaseHttpStep):
             )
 
         # Path-suffix canary (cache deception surface)
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         canary_paths = ["/account", "/profile", "/api/user", "/dashboard", "/me"]
         for path in canary_paths[:MAX_CANARY_PATHS]:
             if len(self.findings) >= MAX_FINDINGS:
                 break
-            await self._probe_deception(path)
+            await self._probe_deception(path, detector)
 
         self.logger.info(f"Cache analysis: {len(self.findings)} finding(s)")
         return self.findings
 
-    async def _probe_deception(self, path: str) -> None:
+    async def _probe_deception(self, path: str, detector: Soft404Detector) -> None:
         """Probe a dynamic-looking path with static suffixes."""
         for suffix in SUFFIXES:
             probe_path = f"{path}/canary7q4{suffix}"
+            probe_url = self.urljoin(probe_path)
             try:
                 response = await self.fetch(probe_path, follow_redirects=False)
             except Exception as e:
@@ -123,6 +128,11 @@ class CacheAnalysisStep(BaseHttpStep):
                 continue
             status = getattr(response, "status_code", None)
             if status is None or status >= 400:
+                continue
+            if detector.is_soft404(response):
+                self.logger.debug(
+                    f"Cache canary {probe_path}: catch-all shell - skipped"
+                )
                 continue
             # dynamic path tolerated the suffix -> origin ignores it
             layer_seen = cache_layer(response.headers) is not None
@@ -139,12 +149,12 @@ class CacheAnalysisStep(BaseHttpStep):
                         f"store it under a public URL. Manual verification "
                         f"with an authenticated session is required."
                     ),
-                    evidence=f"GET {probe_path} -> {status}, "
+                    evidence=f"GET {probe_url} -> {status}, "
                              f"Cache-Control: "
                              f"{response.headers.get('cache-control', '')[:80]}",
                     recommendation="Mark dynamic responses private, no-store; "
                                    "align cache rules with response types",
-                    raw={"path": path, "probe": probe_path,
+                    raw={"path": path, "url": probe_url,
                          "status": status},
                 )
                 return

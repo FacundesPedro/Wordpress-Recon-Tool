@@ -55,7 +55,16 @@ class PhpinfoStep(BaseHttpStep):
                 response = await self.fetch(path)
                 if response.status_code == 200 and \
                         is_phpinfo_content(response.text or ""):
-                    found_phpinfo.append(path)
+                    url = self.urljoin(path)
+                    found_phpinfo.append(
+                        {
+                            "path": path,
+                            "url": url,
+                            "final_url": str(
+                                getattr(response, "url", None) or url
+                            ),
+                        }
+                    )
                     self.logger.info(f"Found phpinfo: {path}")
             except Exception as e:
                 self.logger.debug(f"Error checking {path}: {e}")
@@ -66,9 +75,13 @@ class PhpinfoStep(BaseHttpStep):
                 severity=self.severity,
                 title="phpinfo file found",
                 description=f"Found {len(found_phpinfo)} phpinfo file(s) which expose PHP configuration",
-                evidence=", ".join(found_phpinfo),
+                evidence=", ".join(f["url"] for f in found_phpinfo),
                 recommendation="Remove phpinfo files from web root",
-                raw={"phpinfo_files": found_phpinfo},
+                raw={
+                    "phpinfo_files": [f["path"] for f in found_phpinfo],
+                    "urls": [f["url"] for f in found_phpinfo],
+                    "final_urls": [f["final_url"] for f in found_phpinfo],
+                },
             )
 
         return self.findings

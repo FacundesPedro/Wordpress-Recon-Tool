@@ -14,10 +14,17 @@ reports when access is granted.
 #      trust-forwarding headers (X-Forwarded-For, X-Original-URL)
 # WHY: 403 bypasses on admin surfaces are a direct path to compromise
 
+import re
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.soft404 import Soft404Detector
 
 from steps.active.base_active import ActiveHttpStep
+
+_PASSWORD_INPUT_RE = re.compile(
+    r"<input[^>]+type=[\"']password[\"']", re.IGNORECASE
+)
 
 ADMIN_PATHS = [
     "/admin",
@@ -65,6 +72,9 @@ class AuthBypassStep(ActiveHttpStep):
 
         self.logger.info("Probing for auth bypass on admin paths...")
 
+        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        await detector.calibrate()
+
         protected: list[str] = []
         for path in ADMIN_PATHS:
             if not self.budget_left():
@@ -82,8 +92,8 @@ class AuthBypassStep(ActiveHttpStep):
         for path in protected:
             if len(self.findings) >= MAX_FINDINGS:
                 break
-            await self._probe_path_bypasses(path)
-            await self._probe_header_bypasses(path)
+            await self._probe_path_bypasses(path, detector)
+            await self._probe_header_bypasses(path, detector)
 
         self.logger.info(
             f"Auth bypass done: {len(self.findings)} finding(s), "
@@ -91,7 +101,22 @@ class AuthBypassStep(ActiveHttpStep):
         )
         return self.findings
 
-    async def _probe_path_bypasses(self, path: str) -> None:
+    @staticmethod
+    def _is_granted_access(response) -> bool:
+        """True when a 2xx bypass response is real content, not a shell/login page."""
+        if not (200 <= response.status_code < 300):
+            return False
+        body = getattr(response, "text", "") or ""
+        if not isinstance(body, str):
+            body = ""
+        if _PASSWORD_INPUT_RE.search(body):
+            # The auth page is still being served - not a bypass.
+            return False
+        return True
+
+    async def _probe_path_bypasses(
+        self, path: str, detector: Soft404Detector
+    ) -> None:
         for suffix in PATH_BYPASSES:
             if not self.budget_left() or len(self.findings) >= MAX_FINDINGS:
                 return
@@ -99,46 +124,65 @@ class AuthBypassStep(ActiveHttpStep):
             response = await self.probe(bypass_path)
             if response is None:
                 continue
-            if 200 <= response.status_code < 300:
-                self.add_finding(
-                    "high",
-                    f"Auth bypass via path confusion at {path}",
-                    (
-                        f"{path} returns 401/403 but {bypass_path} returns "
-                        f"HTTP {response.status_code}. Path normalization "
-                        f"differences allow bypassing authorization."
-                    ),
-                    f"GET {bypass_path} -> {response.status_code} "
-                    f"(baseline {path} -> 401/403)",
-                    "Normalize paths before authorization checks; validate "
-                    "at the router level, not middleware-only",
-                    raw={"path": path, "bypass": bypass_path,
-                         "status": response.status_code},
+            if not self._is_granted_access(response):
+                continue
+            if detector.is_soft404(response):
+                self.logger.debug(
+                    f"Auth bypass candidate {bypass_path}: catch-all shell - skipped"
                 )
+                continue
+            url = self.urljoin(path)
+            bypass_url = self.urljoin(bypass_path)
+            self.add_finding(
+                "high",
+                f"Auth bypass via path confusion at {path}",
+                (
+                    f"{path} returns 401/403 but {bypass_path} returns "
+                    f"HTTP {response.status_code}. Path normalization "
+                    f"differences allow bypassing authorization."
+                ),
+                f"GET {bypass_url} -> {response.status_code} "
+                f"(baseline {url} -> 401/403)",
+                "Normalize paths before authorization checks; validate "
+                "at the router level, not middleware-only",
+                raw={"path": path, "url": url, "bypass": bypass_path,
+                     "bypass_url": bypass_url,
+                     "status": response.status_code},
+            )
 
-    async def _probe_header_bypasses(self, path: str) -> None:
+    async def _probe_header_bypasses(
+        self, path: str, detector: Soft404Detector
+    ) -> None:
         for headers in HEADER_BYPASSES:
             if not self.budget_left() or len(self.findings) >= MAX_FINDINGS:
                 return
             response = await self.probe(path, headers=headers)
             if response is None:
                 continue
-            if 200 <= response.status_code < 300:
-                header_name = next(iter(headers))
-                self.add_finding(
-                    "high",
-                    f"Auth bypass via {header_name} header at {path}",
-                    (
-                        f"{path} returns 401/403 normally but returns "
-                        f"HTTP {response.status_code} when {header_name} is "
-                        f"spoofed. Trust-forwarding headers influence "
-                        f"authorization."
-                    ),
-                    f"GET {path} with {header_name}: "
-                    f"{headers[header_name]} -> {response.status_code}",
-                    "Do not derive authorization from spoofable headers; "
-                    "strip or validate them at the edge",
-                    raw={"path": path, "header": header_name,
-                         "value": headers[header_name],
-                         "status": response.status_code},
+            if not self._is_granted_access(response):
+                continue
+            if detector.is_soft404(response):
+                self.logger.debug(
+                    f"Auth bypass candidate {path} ({next(iter(headers))}): "
+                    f"catch-all shell - skipped"
                 )
+                continue
+            header_name = next(iter(headers))
+            url = self.urljoin(path)
+            self.add_finding(
+                "high",
+                f"Auth bypass via {header_name} header at {path}",
+                (
+                    f"{path} returns 401/403 normally but returns "
+                    f"HTTP {response.status_code} when {header_name} is "
+                    f"spoofed. Trust-forwarding headers influence "
+                    f"authorization."
+                ),
+                f"GET {url} with {header_name}: "
+                f"{headers[header_name]} -> {response.status_code}",
+                "Do not derive authorization from spoofable headers; "
+                "strip or validate them at the edge",
+                raw={"path": path, "url": url, "header": header_name,
+                     "value": headers[header_name],
+                     "status": response.status_code},
+            )

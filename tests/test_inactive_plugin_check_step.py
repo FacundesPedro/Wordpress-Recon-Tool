@@ -183,7 +183,10 @@ class TestIsReadable:
     """Tests for _is_readable internal method."""
 
     async def test_200_returns_true(self, mock_http, mock_target, mock_config):
-        mock_resp = MagicMock(status_code=200)
+        mock_resp = MagicMock(
+            status_code=200,
+            text="=== Test Plugin ===\nStable tag: 1.0\n",
+        )
         mock_http.get = AsyncMock(return_value=mock_resp)
 
         from steps.access.inactive_plugin_check_step import InactivePluginCheckStep

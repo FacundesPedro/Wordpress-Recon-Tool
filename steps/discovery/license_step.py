@@ -13,6 +13,7 @@ import re
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_wp_license
 
 
 class LicenseStep(BaseHttpStep):
@@ -30,25 +31,36 @@ class LicenseStep(BaseHttpStep):
         try:
             response = await self.http.get(url)
             if response.status_code == 200:
-                content = response.text
+                content = getattr(response, "text", "") or ""
 
-                version_match = re.search(
-                    r"version\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)", content
-                )
-                if version_match:
-                    version = version_match.group(1)
+                if is_wp_license(response):
+                    version_match = re.search(
+                        r"version\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)", content
+                    )
+                    version = version_match.group(1) if version_match else "Unknown"
                     self._add_finding(
                         module=self.MODULE,
                         severity=self.severity,
                         title="license.txt found",
-                        description=f"WordPress license.txt found exposing version {version}",
+                        description=(
+                            "WordPress license.txt found"
+                            + (
+                                f" exposing version {version}"
+                                if version != "Unknown"
+                                else ""
+                            )
+                        ),
                         evidence=url,
                         recommendation="Remove license.txt from production servers",
-                        raw={"url": url, "version": version},
+                        raw={
+                            "url": url,
+                            "final_url": str(getattr(response, "url", None) or url),
+                            "version": version,
+                        },
                     )
                     self.logger.info(f"Found license.txt with version {version}")
                 else:
-                    self.logger.debug("license.txt found but no version detected")
+                    self.logger.debug("license.txt found but no WordPress signature")
             else:
                 self.logger.debug(
                     f"license.txt not found (status: {response.status_code})"

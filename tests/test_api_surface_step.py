@@ -71,7 +71,8 @@ class TestApiSurfaceStep:
 
         finding = [f for f in findings if "robots.txt" in f.title][0]
         assert finding.severity == "info"
-        assert "/internal" in finding.evidence
+        assert finding.evidence == "https://example.com/robots.txt"
+        assert finding.raw["url"] == "https://example.com/robots.txt"
         assert "/admin/export" in finding.raw["disallowed"]
 
     async def test_sitemap_inventory_reported(self, mock_http, mock_target, mock_config):
@@ -163,6 +164,21 @@ class TestApiSurfaceStep:
 
     async def test_404s_ignored(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(return_value=response(404, "Not Found"))
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings == []
+
+    async def test_spa_shell_paths_not_reported(self, mock_http, mock_target, mock_config):
+        """Catch-all 200 shells must not produce API/robots/sitemap findings."""
+        shell = (
+            "<!doctype html><html><head><title>App</title></head>"
+            "<body>" + "x" * 500 + "</body></html>"
+        )
+
+        async def shell_responder(method, url, **kwargs):
+            return response(200, shell)
+
+        mock_http.request = AsyncMock(side_effect=shell_responder)
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert findings == []

@@ -79,9 +79,12 @@ class LoginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                     f"Found {len(found)} valid credential pair(s) via "
                     f"POST to wp-login.php"
                 ),
-                evidence="\n".join(
-                    f"  - {c['username']}:{c['password']} ({c['detail']})"
-                    for c in found
+                evidence=(
+                    f"{self.urljoin('wp-login.php')}\n"
+                    + "\n".join(
+                        f"  - {c['username']}:{c['password']} ({c['detail']})"
+                        for c in found
+                    )
                 ),
                 recommendation=(
                     "Strengthen all user passwords, enable 2FA, and consider "
@@ -89,6 +92,7 @@ class LoginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                     "default or test accounts."
                 ),
                 raw={
+                    "url": self.urljoin("wp-login.php"),
                     "valid_credentials": found,
                     "total_attempts": len(credentials),
                 },
@@ -102,12 +106,19 @@ class LoginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                     f"Tested {len(credentials)} credential pair(s) against "
                     f"wp-login.php — none succeeded"
                 ),
-                evidence=f"Total attempts: {len(credentials)}",
+                evidence=(
+                    f"{self.urljoin('wp-login.php')} -> "
+                    f"Total attempts: {len(credentials)}"
+                ),
                 recommendation=(
                     "No action needed. Continue monitoring for brute-force "
                     "attempts via audit logs."
                 ),
-                raw={"total_attempts": len(credentials), "valid": []},
+                raw={
+                    "url": self.urljoin("wp-login.php"),
+                    "total_attempts": len(credentials),
+                    "valid": [],
+                },
             )
 
         return self.findings

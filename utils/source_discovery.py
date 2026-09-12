@@ -13,6 +13,8 @@ import re
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
+from utils.soft404 import is_html_body
+
 ASSET_EXTENSIONS = (".js", ".mjs", ".css", ".map")
 
 _SCRIPT_SRC_RE = re.compile(r"<script[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
@@ -112,6 +114,21 @@ def strip_query(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
 
+def _is_shell_response(response) -> bool:
+    """True when a 200 asset response is actually an HTML catch-all shell."""
+    text = getattr(response, "text", "") or ""
+    if not isinstance(text, str):
+        return False
+    try:
+        headers = getattr(response, "headers", None) or {}
+        content_type = headers.get("content-type") or ""
+    except Exception:
+        content_type = ""
+    if not isinstance(content_type, str):
+        content_type = ""
+    return is_html_body(text, content_type)
+
+
 async def fetch_assets(
     http,
     base_url: str,
@@ -146,6 +163,8 @@ async def fetch_assets(
         except Exception:
             continue
         if getattr(response, "status_code", None) != 200:
+            continue
+        if _is_shell_response(response):
             continue
         text = getattr(response, "text", "") or ""
         fetched.append((url, text[:max_bytes]))
@@ -187,6 +206,8 @@ async def fuzz_common_assets(
         except Exception:
             continue
         if getattr(response, "status_code", None) == 200:
+            if _is_shell_response(response):
+                continue
             found.append(url)
 
     return found

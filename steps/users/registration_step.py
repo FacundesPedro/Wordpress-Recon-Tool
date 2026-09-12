@@ -64,6 +64,7 @@ class RegistrationStep(BaseHttpStep):
 
         status = getattr(response, "status_code", None)
         body = response.text or ""
+        register_url = self.urljoin(REGISTER_PATH)
 
         if status == 200 and looks_like_registration(body, REGISTRATION_MARKERS):
             self._add_finding(
@@ -75,10 +76,14 @@ class RegistrationStep(BaseHttpStep):
                     "form. Anyone can create an account and reach the "
                     "authenticated attack surface."
                 ),
-                evidence=f"GET {REGISTER_PATH} -> 200 with registration form",
+                evidence=f"GET {register_url} -> 200 with registration form",
                 recommendation="Disable open registration (Settings > General) "
                                "unless self-serve signup is required",
-                raw={"path": REGISTER_PATH, "status": status},
+                raw={
+                    "path": REGISTER_PATH,
+                    "url": register_url,
+                    "status": status,
+                },
             )
         elif status == 200:
             self.logger.debug("Register endpoint returned 200 but no form markers")
@@ -88,6 +93,7 @@ class RegistrationStep(BaseHttpStep):
             response = await self.fetch(SIGNUP_PATH)
             if getattr(response, "status_code", None) == 200 and \
                     looks_like_registration(response.text or "", SIGNUP_MARKERS):
+                signup_url = self.urljoin(SIGNUP_PATH)
                 self._add_finding(
                     module=self.MODULE,
                     severity="medium",
@@ -96,9 +102,9 @@ class RegistrationStep(BaseHttpStep):
                         "wp-signup.php renders the multisite signup flow. "
                         "Anyone can create sites/users on the network."
                     ),
-                    evidence=f"GET {SIGNUP_PATH} -> 200 with signup form",
+                    evidence=f"GET {signup_url} -> 200 with signup form",
                     recommendation="Restrict wp-signup.php or disable open multisite signup",
-                    raw={"path": SIGNUP_PATH},
+                    raw={"path": SIGNUP_PATH, "url": signup_url},
                 )
         except Exception as e:
             self.logger.debug(f"Signup probe failed: {e}")

@@ -28,7 +28,8 @@ class TestLicenseStep:
     async def test_found_without_version(self, mock_http, mock_target, mock_config):
         mock_http.get = AsyncMock(
             return_value=MagicMock(
-                status_code=200, text="Some license text without version info"
+                status_code=200,
+                text="WordPress - Web publishing software\nGNU General Public License",
             )
         )
 
@@ -37,7 +38,23 @@ class TestLicenseStep:
         step = LicenseStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
 
-        assert len(findings) == 0
+        assert len(findings) == 1
+        assert findings[0].raw["version"] == "Unknown"
+
+    async def test_soft404_shell_not_reported(self, mock_http, mock_target, mock_config):
+        mock_http.get = AsyncMock(
+            return_value=MagicMock(
+                status_code=200,
+                text="<!doctype html><html><title>My Site</title><body>WordPress hosting</body></html>",
+            )
+        )
+
+        from steps.discovery.license_step import LicenseStep
+
+        step = LicenseStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+
+        assert findings == []
 
     async def test_not_found(self, mock_http, mock_target, mock_config):
         mock_http.get = AsyncMock(return_value=MagicMock(status_code=404))

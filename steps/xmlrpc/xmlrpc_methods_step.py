@@ -68,9 +68,10 @@ class XmlrpcMethodsStep(BaseHttpStep, WordlistDependencyMixin):
                         severity=self.severity,
                         title="XML-RPC methods enumerated",
                         description=f"Found {len(methods)} XML-RPC method(s), {len(found_dangerous)} potentially dangerous",
-                        evidence=f"Methods: {', '.join(methods[:10])}{'...' if len(methods) > 10 else ''}",
+                        evidence=f"{url}: Methods: {', '.join(methods[:10])}{'...' if len(methods) > 10 else ''}",
                         recommendation="Disable dangerous XML-RPC methods if not needed",
-                        raw={"methods": methods, "dangerous_methods": found_dangerous},
+                        raw={"url": url, "methods": methods,
+                             "dangerous_methods": found_dangerous},
                     )
                     self.logger.info(
                         f"Found {len(methods)} methods, {len(found_dangerous)} dangerous"

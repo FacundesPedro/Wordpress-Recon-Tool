@@ -12,6 +12,7 @@ Looks for exposed wp-config.php backup files.
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_php_config
 
 
 class WpConfigBackupStep(BaseHttpStep, WordlistDependencyMixin):
@@ -46,33 +47,41 @@ class WpConfigBackupStep(BaseHttpStep, WordlistDependencyMixin):
         if not backup_patterns:
             return self.findings
 
-        found_backups = []
+        found_backups: list[dict] = []
 
         for pattern in backup_patterns:
             path = pattern.lstrip("/")
             try:
                 response = await self.fetch(path)
-                if response.status_code == 200:
-                    content = response.text.lower()
-                    if (
-                        "dbname" in content
-                        or "database" in content
-                        or "define(" in content
-                    ):
-                        found_backups.append(path)
-                        self.logger.info(f"Found wp-config backup: {path}")
+                if response.status_code == 200 and is_php_config(response):
+                    url = self.urljoin(path)
+                    found_backups.append(
+                        {
+                            "path": path,
+                            "url": url,
+                            "final_url": str(
+                                getattr(response, "url", None) or url
+                            ),
+                        }
+                    )
+                    self.logger.info(f"Found wp-config backup: {path}")
             except Exception as e:
                 self.logger.debug(f"Error checking {path}: {e}")
 
         if found_backups:
+            urls = [b["url"] for b in found_backups]
             self._add_finding(
                 module=self.MODULE,
                 severity=self.severity,
                 title="wp-config.php backup found",
                 description=f"Found {len(found_backups)} backup file(s) of wp-config.php",
-                evidence=", ".join(found_backups),
+                evidence=", ".join(urls),
                 recommendation="Remove wp-config.php backup files immediately",
-                raw={"backups": found_backups},
+                raw={
+                    "backups": [b["path"] for b in found_backups],
+                    "urls": urls,
+                    "final_urls": [b["final_url"] for b in found_backups],
+                },
             )
 
         return self.findings

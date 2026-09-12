@@ -62,16 +62,24 @@ class XmlrpcSsrfStep(BaseHttpStep):
 
             fault_code = extract_fault_code(content)
             is_success = is_xmlrpc_success(content)
+            lower_content = content.lower()
+            mentions_pingback = "pingback.ping" in lower_content
+            clean_method_response = (
+                "<methodresponse" in lower_content
+                and "<fault" not in lower_content
+            )
 
             if fault_code > 0 or (
-                response.status_code == 200 and "pingback.ping" in content.lower()
+                response.status_code == 200
+                and clean_method_response
+                and (mentions_pingback or is_success)
             ):
                 self._add_finding(
                     module=self.MODULE,
                     severity=self.severity,
                     title="XML-RPC pingback.ping is available",
                     description="The pingback.ping method is available and could be abused for SSRF/DDoS attacks",
-                    evidence=f"URL: {url}",
+                    evidence=url,
                     recommendation="Disable pingback.ping if not needed",
                     raw={
                         "url": url,

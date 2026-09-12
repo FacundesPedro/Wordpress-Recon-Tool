@@ -63,6 +63,65 @@ def looks_like_html(body: str, content_type: str = "") -> bool:
     return is_html_body(body, content_type)
 
 
+def _looks_like_json(body: str) -> bool:
+    """True when the body is a JSON document (config/credentials)."""
+    import json
+
+    text = body.lstrip()
+    if not text or text[0] not in "[{":
+        return False
+    try:
+        json.loads(text)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _looks_like_sql(body: str) -> bool:
+    """True when the body contains SQL dump/DDL statements."""
+    lower = body.lower()
+    markers = (
+        "insert into",
+        "create table",
+        "drop table",
+        "mysqldump",
+        "-- mysql dump",
+        "begin transaction",
+        "alter table",
+    )
+    return any(marker in lower for marker in markers)
+
+
+def _looks_like_log(body: str) -> bool:
+    """True when the body contains stack/error log lines."""
+    import re
+
+    markers = (
+        r"\[\d{1,2}-[A-Za-z]{3}-\d{4}",
+        r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}",
+        r"\b(?:ERROR|WARNING|FATAL|TRACE|DEBUG)\b",
+        r"\S+ - - \[\d{2}/\w{3}/\d{4}",
+    )
+    return any(re.search(pattern, body) for pattern in markers)
+
+
+def _looks_like_xml(body: str) -> bool:
+    """True when the body is an XML document."""
+    text = body.lstrip()
+    return text.startswith("<?xml") or (
+        text.startswith("<") and "</" in text
+    )
+
+
+def _looks_like_yaml(body: str) -> bool:
+    """True when the body has YAML key lines."""
+    import re
+
+    if body.lstrip().startswith("---"):
+        return True
+    return bool(re.search(r"(?m)^\s*[\w.-]+:\s*\S", body))
+
+
 def is_interesting_content(
     body: str, path: str, content_type: str = ""
 ) -> bool:
@@ -71,6 +130,8 @@ def is_interesting_content(
     SPA servers (Angular/React/Next) return the index.html shell with HTTP
     200 for every unknown path. A real .sql/.bak/.json file is never an
     HTML document, so an HTML body on a file path is a soft-404 fallback.
+    Non-HTML catch-all bodies must additionally match a format signature
+    for their extension.
     """
     if not body:
         return False
@@ -83,8 +144,16 @@ def is_interesting_content(
         return False
     if looks_like_soft_404(body):
         return False
-    if path.endswith((".json", ".lock", ".log", ".sql", ".xml", ".yml", ".yaml")):
-        return True
+    if path.endswith((".json", ".lock")):
+        return _looks_like_json(body)
+    if path.endswith(".sql"):
+        return _looks_like_sql(body)
+    if path.endswith(".log"):
+        return _looks_like_log(body)
+    if path.endswith(".xml"):
+        return _looks_like_xml(body)
+    if path.endswith((".yml", ".yaml")):
+        return _looks_like_yaml(body)
     if path.endswith(("id_rsa", ".bak", "~", ".old", ".swp")):
         return True
     return False

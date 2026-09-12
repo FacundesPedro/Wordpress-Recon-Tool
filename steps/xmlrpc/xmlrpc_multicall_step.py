@@ -94,10 +94,11 @@ class XmlrpcMulticallStep(BaseHttpStep, WordlistDependencyMixin):
                 title="Valid credentials found via XML-RPC multicall",
                 description=f"Found {len(successful_logins)} valid credential(s) via XML-RPC multicall. "
                 f"Tested {batches_tested} batches.",
-                evidence=", ".join(f"{u}:{p}" for u, p in successful_logins[:5]),
+                evidence=f"{url}: " + ", ".join(f"{u}:{p}" for u, p in successful_logins[:5]),
                 recommendation="Disable XML-RPC if not needed, implement account lockout policies, "
                 "use strong unique passwords",
                 raw={
+                    "url": url,
                     "valid_credentials": successful_logins,
                     "batches_tested": batches_tested,
                     "mode": mode,
@@ -118,9 +119,10 @@ class XmlrpcMulticallStep(BaseHttpStep, WordlistDependencyMixin):
                 severity="low",
                 title="Possible lockout protection detected",
                 description="Multiple consecutive failures during brute force - possible account lockout",
-                evidence=f"{self._limiter.consecutive_failures} consecutive failures",
+                evidence=f"{url}: {self._limiter.consecutive_failures} consecutive failures",
                 recommendation="Consider slowing down or stopping to avoid lockouts",
-                raw={"consecutive_failures": self._limiter.consecutive_failures},
+                raw={"url": url,
+                     "consecutive_failures": self._limiter.consecutive_failures},
             )
 
         return self.findings

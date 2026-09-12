@@ -13,6 +13,7 @@ import re
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.http_validation import is_wp_readme
 
 
 class ReadmeStep(BaseHttpStep):
@@ -30,9 +31,9 @@ class ReadmeStep(BaseHttpStep):
         try:
             response = await self.http.get(url)
             if response.status_code == 200:
-                content = response.text.lower()
+                content = (getattr(response, "text", "") or "").lower()
 
-                if "wordpress" in content:
+                if is_wp_readme(response):
                     version_match = re.search(
                         r"version\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", content
                     )
@@ -45,7 +46,11 @@ class ReadmeStep(BaseHttpStep):
                         description=f"WordPress readme.html found. Potential version: {version}",
                         evidence=url,
                         recommendation="Remove readme.html from production servers",
-                        raw={"url": url, "version": version},
+                        raw={
+                            "url": url,
+                            "final_url": str(getattr(response, "url", None) or url),
+                            "version": version,
+                        },
                     )
                     self.logger.info(f"Found readme.html with version {version}")
                 else:

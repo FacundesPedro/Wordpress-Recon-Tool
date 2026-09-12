@@ -12,7 +12,11 @@ class TestReadmeStep:
         mock_http.get = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
-                text="WordPress is open source software<br/>version 6.4.2",
+                text=(
+                    "<title>WordPress &#8250; ReadMe</title>"
+                    "<p>Semantic Personal Publishing Platform</p>"
+                    "version 6.4.2"
+                ),
             )
         )
 
@@ -45,7 +49,10 @@ class TestReadmeStep:
         mock_http.get = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
-                text="WordPress is open source software",
+                text=(
+                    "<title>WordPress &#8250; ReadMe</title>"
+                    "<p>Semantic Personal Publishing Platform</p>"
+                ),
             )
         )
 
@@ -76,3 +83,23 @@ class TestReadmeStep:
         findings = await step.run()
 
         assert len(findings) == 0
+
+    async def test_soft404_homepage_shell_not_reported(self, mock_http, mock_target, mock_config):
+        """A WP homepage served for /readme.html contains "WordPress" but is not a readme."""
+        mock_http.get = AsyncMock(
+            return_value=MagicMock(
+                status_code=200,
+                text=(
+                    "<!doctype html><html><head><title>My WordPress Site</title>"
+                    '<meta name="generator" content="WordPress 6.4.2"></head>'
+                    "<body>Welcome to WordPress</body></html>"
+                ),
+            )
+        )
+
+        from steps.discovery.readme_step import ReadmeStep
+
+        step = ReadmeStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+
+        assert findings == []

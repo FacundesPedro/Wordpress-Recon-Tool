@@ -285,3 +285,26 @@ class TestPluginBruteforceStep:
         ]
         assert progress_messages
         assert "3/3" in progress_messages[-1]
+
+    async def test_blanket_403_catchall_not_reported(self, mock_target, mock_config):
+        """A WAF/blanket 403 for every path must not count as a plugin oracle hit."""
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        http = MagicMock()
+        http.unreachable = False
+        http.request = AsyncMock(
+            return_value=MagicMock(
+                status_code=403, text="Access Denied by firewall"
+            )
+        )
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["one", "two", "three"],
+        ):
+            step = PluginBruteforceStep(
+                target=mock_target, config=mock_config, http=http
+            )
+            findings = await step.run()
+
+        assert findings == []

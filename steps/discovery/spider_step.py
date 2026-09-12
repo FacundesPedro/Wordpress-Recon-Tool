@@ -56,11 +56,14 @@ class SpiderStep(BaseHttpStep):
         forbidden_paths = await self._fetch_robots(start_url)
 
         visited: set[str] = set()
+        fetched: set[str] = set()
         to_visit: list[tuple[str, int]] = [(start_url, 0)]
 
         discovered_forms: list[str] = []
         discovered_uploads: list[str] = []
+        seen_uploads: set[str] = set()
         discovered_admin: list[str] = []
+        seen_admin: set[str] = set()
         has_comments = False
 
         while to_visit and len(visited) < max_pages:
@@ -83,6 +86,7 @@ class SpiderStep(BaseHttpStep):
             if resp.status_code != 200:
                 continue
 
+            fetched.add(str(getattr(resp, "url", None) or url))
             body = resp.text
 
             for match in self.FORM_PATTERN.finditer(body):
@@ -100,12 +104,15 @@ class SpiderStep(BaseHttpStep):
                             f"Skipping static asset prefix reference: {candidate}"
                         )
                         continue
-                if candidate not in discovered_uploads:
-                    discovered_uploads.append(candidate)
+                if candidate not in seen_uploads:
+                    seen_uploads.add(candidate)
+                    discovered_uploads.append(urljoin(start_url, candidate))
 
             for match in self.ADMIN_LIKE_PATTERNS.finditer(body):
-                if match.group(0) not in discovered_admin:
-                    discovered_admin.append(match.group(0))
+                candidate = match.group(0)
+                if candidate not in seen_admin:
+                    seen_admin.add(candidate)
+                    discovered_admin.append(urljoin(start_url, candidate))
 
             if self.COMMENT_PATTERN.search(body):
                 has_comments = True
@@ -117,7 +124,7 @@ class SpiderStep(BaseHttpStep):
                         to_visit.append((abs_url, depth + 1))
 
         self.logger.info(
-            f"Spider completed: {len(visited)} pages visited, "
+            f"Spider completed: {len(fetched)} pages fetched, "
             f"{len(discovered_forms)} forms, {len(discovered_uploads)} upload dirs"
         )
 
@@ -131,7 +138,7 @@ class SpiderStep(BaseHttpStep):
                 recommendation="Review each form for CSRF protection and input validation.",
                 raw={
                     "forms": discovered_forms,
-                    "pages_visited": len(visited),
+                    "pages_visited": len(fetched),
                 },
             )
 
@@ -148,7 +155,7 @@ class SpiderStep(BaseHttpStep):
                 ),
                 raw={
                     "upload_dirs": discovered_uploads,
-                    "pages_visited": len(visited),
+                    "pages_visited": len(fetched),
                 },
             )
 
@@ -162,7 +169,7 @@ class SpiderStep(BaseHttpStep):
                 recommendation="Restrict access to admin and dashboard paths.",
                 raw={
                     "admin_paths": discovered_admin,
-                    "pages_visited": len(visited),
+                    "pages_visited": len(fetched),
                 },
             )
 
@@ -171,13 +178,14 @@ class SpiderStep(BaseHttpStep):
             severity="info",
             title="Content crawl summary",
             description=(
-                f"Crawled {len(visited)} pages across {max_depth} depth "
+                f"Crawled {len(fetched)} pages across {max_depth} depth "
                 f"level(s). Found: {len(discovered_forms)} forms, "
                 f"{len(discovered_uploads)} upload dirs, "
                 f"{'comments section' if has_comments else 'no comments'}."
             ),
             evidence=(
-                f"Pages visited: {len(visited)}\n"
+                f"Target: {start_url}\n"
+                f"Pages visited: {len(fetched)}\n"
                 f"Forms: {len(discovered_forms)}\n"
                 f"Upload dirs: {len(discovered_uploads)}\n"
                 f"Admin paths: {len(discovered_admin)}\n"
@@ -185,10 +193,11 @@ class SpiderStep(BaseHttpStep):
             ),
             recommendation="No action needed.",
             raw={
-                "pages_visited": len(visited),
+                "url": start_url,
+                "pages_visited": len(fetched),
                 "max_depth": max_depth,
                 "max_pages": max_pages,
-                "urls_visited": sorted(visited),
+                "urls_visited": sorted(fetched),
                 "forms": discovered_forms,
                 "upload_dirs": discovered_uploads,
                 "admin_paths": discovered_admin,

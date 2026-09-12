@@ -41,6 +41,10 @@ DEFAULT_PAIRS = [
 MAX_ATTEMPTS = 10
 MAX_FINDINGS = 3
 
+# Passwords used to fingerprint the failure response for each endpoint.
+INVALID_USER = "recon-invalid-7f3a"
+INVALID_PASSWORD = "recon-invalid-7f3a"
+
 
 class DefaultCredentialsStep(ActiveHttpStep):
     """Probe login endpoints with common default credential pairs."""
@@ -59,9 +63,27 @@ class DefaultCredentialsStep(ActiveHttpStep):
         for path in LOGIN_PATHS:
             if not self.budget_left() or len(self.findings) >= MAX_FINDINGS:
                 break
+            url = self.urljoin(path)
             baseline = await self.probe(path)
             if baseline is None or baseline.status_code >= 400:
                 continue
+
+            # Fingerprint the failure response with obviously invalid
+            # credentials: a catch-all redirect (e.g. every POST -> /home)
+            # must not be mistaken for a successful login.
+            invalid_baseline = await self.probe(
+                path,
+                method="POST",
+                data={
+                    "log": INVALID_USER,
+                    "pwd": INVALID_PASSWORD,
+                    "username": INVALID_USER,
+                    "password": INVALID_PASSWORD,
+                },
+                follow_redirects=False,
+            )
+            if not self.budget_left():
+                break
 
             for user, password in DEFAULT_PAIRS:
                 if not self.budget_left() or len(self.findings) >= MAX_FINDINGS:
@@ -75,7 +97,7 @@ class DefaultCredentialsStep(ActiveHttpStep):
                 )
                 if response is None:
                     continue
-                if self._login_success(response):
+                if self._login_success(response, invalid_baseline):
                     self.add_finding(
                         "critical",
                         f"Default credentials accepted at {path}",
@@ -84,12 +106,15 @@ class DefaultCredentialsStep(ActiveHttpStep):
                             f"{path}. Default or weak administrative "
                             f"credentials are in use."
                         ),
-                        f"POST {path} ({user}/{password}) -> "
+                        f"POST {url} ({user}/{password}) -> "
                         f"{response.status_code} "
                         f"Location: {response.headers.get('location', '')[:100]}",
                         "Change default credentials immediately; enforce "
                         "strong passwords and MFA",
-                        raw={"path": path, "user": user},
+                        raw={"path": path, "url": url, "user": user,
+                             "final_url": str(
+                                 getattr(response, "url", None) or url
+                             )},
                     )
                     break  # stop probing this endpoint on success
 
@@ -100,12 +125,30 @@ class DefaultCredentialsStep(ActiveHttpStep):
         return self.findings
 
     @staticmethod
-    def _login_success(response) -> bool:
-        """Heuristic login success: 302 redirect to an admin-ish location."""
-        if response.status_code in (301, 302, 303, 307, 308):
-            location = (response.headers.get("location") or "").lower()
-            admin_markers = ("wp-admin", "admin", "dashboard", "panel",
-                             "account", "home", "profile")
-            if any(marker in location for marker in admin_markers):
-                return True
-        return False
+    def _login_success(response, invalid_baseline=None) -> bool:
+        """Heuristic login success: 302 redirect to an admin-ish location.
+
+        Responses that match the invalid-credential baseline are failures.
+        """
+        if response.status_code not in (301, 302, 303, 307, 308):
+            return False
+        location = (response.headers.get("location") or "").lower()
+        admin_markers = ("wp-admin", "admin", "dashboard", "panel",
+                         "account", "home", "profile")
+        if not any(marker in location for marker in admin_markers):
+            return False
+        if invalid_baseline is not None:
+            baseline_status = getattr(invalid_baseline, "status_code", None)
+            baseline_headers = getattr(invalid_baseline, "headers", None) or {}
+            try:
+                baseline_location = (
+                    baseline_headers.get("location") or ""
+                ).lower()
+            except Exception:
+                baseline_location = ""
+            if (
+                response.status_code == baseline_status
+                and location == baseline_location
+            ):
+                return False
+        return True

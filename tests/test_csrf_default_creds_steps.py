@@ -91,3 +91,39 @@ class TestDefaultCredentialsStep:
         )
         step = self.make_step(mock_http, mock_target, mock_config)
         assert await step.run() == []
+
+    async def test_catchall_redirect_not_reported(self, mock_http, mock_target, mock_config):
+        """Every POST redirecting to /home must not look like a valid login."""
+        async def requestor(method, url, **kwargs):
+            if method == "POST":
+                return MagicMock(
+                    status_code=302,
+                    headers={"location": "/home"},
+                    text="",
+                )
+            return MagicMock(status_code=200, text="<form>login</form>")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        assert [f for f in findings if "Default credentials" in f.title] == []
+
+    async def test_url_in_finding(self, mock_http, mock_target, mock_config):
+        async def requestor(method, url, **kwargs):
+            data = kwargs.get("data") or {}
+            if data.get("log") == "admin" and data.get("pwd") == "admin":
+                return MagicMock(
+                    status_code=302, headers={"location": "/wp-admin/"}
+                )
+            if method == "POST":
+                return MagicMock(status_code=200, text="wrong")
+            return MagicMock(status_code=200, text="<form>login</form>")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        assert findings
+        assert "https://example.com/wp-login.php" in findings[0].evidence
+        assert findings[0].raw["url"] == "https://example.com/wp-login.php"
