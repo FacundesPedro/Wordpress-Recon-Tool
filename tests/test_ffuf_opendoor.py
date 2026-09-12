@@ -1,6 +1,7 @@
 """Tests for FFUF and OpenDoor steps."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -64,6 +65,17 @@ class TestFfufDirectoryStep:
         assert ffuf_directory_step.timeout == 300
         assert ffuf_directory_step.rate_limit == 0
         assert ffuf_directory_step.filter_status == "404"
+
+    def test_init_config_overrides(self, mock_target):
+        """Test FFUF config/env overrides."""
+        config = MagicMock(spec=ScanConfig)
+        config.ffuf_wordlist = "/custom/words.txt"
+        config.ffuf_timeout = 111
+        config.ffuf_rate_limit = 7
+        step = FfufDirectoryStep(target=mock_target, config=config)
+        assert step.wordlist == "/custom/words.txt"
+        assert step.timeout == 111
+        assert step.rate_limit == 7
 
     def test_build_command(self, ffuf_directory_step):
         """Test command building."""
@@ -147,26 +159,126 @@ class TestOpenDoorStep:
         assert opendoor_step.name == "opendoor"
         assert opendoor_step._tool_binary == "opendoor"
         assert opendoor_step.mode == "wp_paths"
+        assert opendoor_step.wordlist.endswith("wp_paths.txt")
+        assert opendoor_step.timeout == 300
+        assert opendoor_step.threads == 20
+        assert opendoor_step.delay == 0.5
+
+    def test_init_config_overrides(self, mock_target):
+        """Test OpenDoor config/env overrides."""
+        config = MagicMock(spec=ScanConfig)
+        config.opendoor_mode = "backup"
+        config.opendoor_wordlist = "/custom/backups.txt"
+        config.opendoor_timeout = 120
+        config.opendoor_rate_limit = 8
+        config.opendoor_delay = 0.2
+        step = OpenDoorStep(target=mock_target, config=config)
+        assert step.mode == "backup"
+        assert step.wordlist == "/custom/backups.txt"
+        assert step.timeout == 120
+        assert step.threads == 8
+        assert step.delay == 0.2
+
+    def test_init_unknown_mode_falls_back(self, mock_target):
+        """Unknown OpenDoor mode falls back to wp_paths wordlist."""
+        config = MagicMock(spec=ScanConfig)
+        config.opendoor_mode = "does_not_exist"
+        step = OpenDoorStep(target=mock_target, config=config)
+        assert step.mode == "wp_paths"
+        assert step.wordlist.endswith("wp_paths.txt")
 
     def test_build_command(self, opendoor_step):
-        """Test command building."""
+        """Test command building uses the modern OpenDoor CLI."""
         opendoor_step.config = MagicMock(quiet=False, insecure=False)
+        opendoor_step._reports_dir = "/tmp/opendoor-reports"
         cmd = opendoor_step.build_command()
         assert "opendoor" in cmd
+        assert "--host" in cmd
         assert "https://example.com" in cmd
-        assert "-mode" in cmd
-        assert "wp_paths" in cmd
+        assert "--scan" in cmd
+        assert "directories" in cmd
+        assert "--wordlist" in cmd
+        assert "--reports" in cmd
+        assert "json" in cmd
+        assert "/tmp/opendoor-reports" in cmd
+        assert "--port" not in cmd
 
-    def test_parse_output(self, opendoor_step):
-        """Test output parsing."""
-        mock_output = json.dumps({
-            "url": "https://example.com/wp-content",
-            "status": 200,
-            "length": 2000,
-            "word": "wp-content"
-        })
-        result = ToolResult(stdout=mock_output, stderr="", returncode=0, success=True)
+    def test_build_command_splits_explicit_port(self):
+        """OpenDoor rejects host:port, so explicit ports use --port."""
+        target = Target(url="http://127.0.0.1:8123", domain="127.0.0.1")
+        step = OpenDoorStep(target=target, config=MagicMock(spec=ScanConfig))
+        step._reports_dir = "/tmp/opendoor-reports"
+        cmd = step.build_command()
+        assert "http://127.0.0.1" in cmd
+        assert "127.0.0.1:8123" not in cmd
+        assert "--port" in cmd
+        assert cmd[cmd.index("--port") + 1] == "8123"
+
+    def test_parse_output_report_items(self, opendoor_step):
+        """Test parsing of the modern report_items JSON schema."""
+        report = {
+            "items": {"success": ["https://example.com/wp-content"]},
+            "report_items": {
+                "success": [
+                    {"url": "https://example.com/wp-content", "code": 200, "size": 2000}
+                ],
+                "indexof": [
+                    {"url": "https://example.com/uploads/", "code": 200, "size": 300}
+                ],
+                "failed": [
+                    {"url": "https://example.com/nope", "code": 404, "size": 0}
+                ],
+            },
+            "total": {"success": 1, "indexof": 1, "failed": 1},
+        }
+        result = ToolResult(
+            stdout=json.dumps(report), stderr="", returncode=0, success=True
+        )
         findings = opendoor_step.parse_output(result)
+        titles = {f.title for f in findings}
+        assert len(findings) == 2
+        assert "OpenDoor Path Found: wp-content" in titles
+        assert "OpenDoor Directory Listing: uploads" in titles
+
+    def test_parse_output_legacy_items(self, opendoor_step):
+        """Test parsing of the legacy items-only JSON schema."""
+        report = {"items": {"success": ["https://example.com/wp-admin"]}}
+        result = ToolResult(
+            stdout=json.dumps(report), stderr="", returncode=0, success=True
+        )
+        findings = opendoor_step.parse_output(result)
+        assert len(findings) == 1
+        assert findings[0].title == "OpenDoor Path Found: wp-admin"
+
+    def test_parse_output_invalid_json(self, opendoor_step):
+        result = ToolResult(stdout="not json", stderr="", returncode=0, success=True)
+        assert opendoor_step.parse_output(result) == []
+
+    async def test_run_reads_json_report(self, opendoor_step):
+        """run() should locate and parse the emitted JSON report file."""
+        report = {
+            "items": {"success": ["https://example.com/wp-content"]},
+            "report_items": {
+                "success": [
+                    {"url": "https://example.com/wp-content", "code": 200, "size": 2000}
+                ]
+            },
+            "total": {"success": 1},
+        }
+
+        async def fake_run(cmd, timeout=None):
+            reports_dir = cmd[cmd.index("--reports-dir") + 1]
+            target_dir = Path(reports_dir) / "example.com"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / "example.com.json").write_text(
+                json.dumps(report), encoding="utf-8"
+            )
+            return ToolResult(stdout="", stderr="", returncode=0, success=True)
+
+        opendoor_step.check_binary = lambda binary: (True, "")
+        opendoor_step._async_tool_runner.run = fake_run
+
+        findings = await opendoor_step.run()
         assert len(findings) == 1
         assert findings[0].title == "OpenDoor Path Found: wp-content"
 

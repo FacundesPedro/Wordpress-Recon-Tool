@@ -1,10 +1,27 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-08
+## Last Updated: 2026-09-11
 
 ---
 
 ## Recent Changes
+
+### S17 - Docker tool/wordlist build args + wordlist override plumbing + OpenDoor 5.x fix (2026-09-11)
+| File | Change | Notes |
+|------|--------|-------|
+| `Dockerfile` | **REWRITTEN** | Base bumped to `python:3.13-slim-trixie` (Ruby 3.3 for WPScan, Python >=3.12 for OpenDoor); builder now copies the full source (previously only `pyproject.toml`, producing an empty wheel); fixed `pip install` (`--find-links` instead of an invalid `*.whl[pdf]` glob); trixie PDF packages (`libgdk-pixbuf-2.0-0`, `libpangoft2-1.0-0`, `libharfbuzz-subset0`); `PYTHONPATH=/app` so wordlist paths resolve in-image |
+| `Dockerfile` | **ADDED** | `INSTALL_TOOLS=false` build arg — installs nmap, ruby+WPScan gem, ffuf v2.3.0, nuclei v3.11.1 (GitHub releases via `TARGETARCH`), opendoor 5.18.0 via pipx; bakes WPScan DB + nuclei templates |
+| `Dockerfile` | **ADDED** | `INSTALL_RECOMMENDED_WORDLISTS=true` build arg — downloads SecLists plugin/theme lists to `wordlists/external/plugins/` (loader prefers them; `~/.config` overrides still win); `SECLISTS_*_URL` and tool version overrides |
+| `docker-compose.yml` | **UPDATED** | `build.args` for `INSTALL_TOOLS`, `INSTALL_RECOMMENDED_WORDLISTS`, `FFUF_VERSION`, `NUCLEI_VERSION`, `WPSCAN_VERSION`, `OPENDOOR_VERSION` |
+| `config.py` | **ADDED** | Wordlist override fields (`wordlist`, `login_wordlist`, `plugin_wordlist`, `theme_wordlist`, `source_assets`, `api_paths`, `admin_paths`, `wp_config_backups`, `env_files`, `security_headers`, `common_ports`, `waf_signatures`, `xmlrpc_dangerous_methods`, `login_pages`) and `opendoor_delay`; `opendoor_rate_limit` now documented as thread count |
+| `base/dependencies.py` | **FIXED** | `resolve_wordlist_or_fallback` now reads `ScanConfig` attributes (previously only a nonexistent `config.keys` dict, so every `WP_*_WORDLIST` env override was dead); added `config_str` / `config_int` / `config_float` helpers with type guards |
+| `steps/discovery/plugin_bruteforce_step.py`, `theme_bruteforce_step.py` | **FIXED** | `config_key` wired to `plugin_wordlist` / `theme_wordlist`; log hints now reference real env vars |
+| `steps/tools/ffuf_directory_step.py`, `ffuf_files_step.py`, `ffuf_wp_step.py` | **FIXED** | Read `ffuf_wordlist` / `ffuf_timeout` / `ffuf_rate_limit` from config and resolve wordlists via `get_wordlist_path()` chain |
+| `steps/tools/opendoor_step.py` | **REWRITTEN** | Modern OpenDoor 5.x CLI (`--host --scan directories --method GET --wordlist --threads --timeout --auto-calibrate --reports json --reports-dir`); reads the emitted JSON report (`report_items` + legacy `items`); mode→wordlist mapping; config/env wiring for wordlist, timeout, threads, delay; explicit target ports are split into `--port` (OpenDoor rejects `host:port` in `--host`) |
+| `pyproject.toml`, `steps/__init__.py` | **FIXED** | Build backend was invalid (`setuptools.backends._legacy:_Backend`) → `setuptools.build_meta` with explicit `py-modules`/`packages.find`; added missing `steps/__init__.py` so the wheel includes the step tree |
+| `tests/test_ffuf_opendoor.py`, `tests/test_dependencies.py` | **UPDATED** | 23 tests — OpenDoor CLI/report schema (new + legacy), config overrides, unknown-mode fallback, `--port` split, mocked `run()` report read; config attribute lookup + helper units |
+| `README.md`, `wordlists/README.md`, `.env.example` | **UPDATED** | Docker build-arg table, wordlist override (env + mount) docs, per-step env var table, fixed broken SecLists URLs |
+| Verification | — | Full suite 1718 passing (4 pre-existing weasyprint/pango env failures); ruff clean on changed files; Docker default + `INSTALL_TOOLS=true` builds verified (nmap 7.95, ffuf 2.3.0, nuclei v3.11.1 + baked templates, wpscan, opendoor 5.18.0); live `OpenDoorStep.run()` in-container test found 2/2 seeded paths |
 
 ### S16 - Webapp Research Expansion: 5 new steps + 6 refinements (2026-09-08)
 | File | Change | Notes |

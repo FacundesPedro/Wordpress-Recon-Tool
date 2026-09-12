@@ -38,15 +38,38 @@ The tool resolves wordlists in this priority order:
 
 ```
 1. CLI flag (e.g., --ffuf-wordlist /path/to/list.txt)
-2. Config key (e.g., WP_FFUF_WORDLIST env var)
-3. Local ./wordlists/<file> (this directory)
-4. ~/.config/recon-wp/wordlists/<file> (user override)
-5. Hardcoded defaults (always available)
+2. Config field / env var (e.g., WP_FFUF_WORDLIST)
+3. ~/.config/recon-wp/wordlists/<file> (user override)
+4. ./wordlists/external/<file> (production wordlists)
+5. ./wordlists/<file> (built-in defaults)
+6. Hardcoded defaults (always available)
 ```
 
 You never need to edit files in this directory. To override a wordlist,
-place your file at `~/.config/recon-wp/wordlists/<path>` and the tool
-will pick it up automatically.
+place your file at `~/.config/recon-wp/wordlists/<path>` or point the
+matching `WP_*_WORDLIST` env var at it and the tool will pick it up
+automatically.
+
+### Env-var overrides per step
+
+| Step | Env var |
+|------|---------|
+| Plugin brute-force | `WP_PLUGIN_WORDLIST` |
+| Theme brute-force | `WP_THEME_WORDLIST` |
+| Login brute-force | `WP_LOGIN_WORDLIST` |
+| XML-RPC credential testing | `WP_WORDLIST` |
+| Source discovery asset fuzzing | `WP_SOURCE_ASSETS` |
+| API surface paths | `WP_API_PATHS` |
+| Admin surface paths | `WP_ADMIN_PATHS` |
+| WP config backups | `WP_WP_CONFIG_BACKUPS` |
+| Env files | `WP_ENV_FILES` |
+| Security headers | `WP_SECURITY_HEADERS` |
+| Common ports | `WP_COMMON_PORTS` |
+| WAF signatures | `WP_WAF_SIGNATURES` |
+| XML-RPC methods | `WP_XMLRPC_DANGEROUS_METHODS` |
+| Login pages | `WP_LOGIN_PAGES` |
+| FFUF (all 3 steps) | `WP_FFUF_WORDLIST` |
+| OpenDoor | `WP_OPENDOOR_WORDLIST` |
 
 ---
 

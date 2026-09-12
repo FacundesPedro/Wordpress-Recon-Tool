@@ -46,7 +46,7 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         self.logger.info("Brute-forcing WordPress themes...")
 
         slugs = self.resolve_wordlist_or_fallback(
-            config_key="",
+            config_key="theme_wordlist",
             defaults=self._default_theme_slugs(),
             name="theme wordlist",
             wordlist_file="plugins/theme_fallback.txt",
@@ -77,7 +77,8 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         if len(slugs) <= 15:
             self.logger.warning(
                 "Using small fallback theme list (15 entries). "
-                "For better coverage, provide a comprehensive theme wordlist via "
+                "For better coverage, configure WP_THEME_WORDLIST or place a "
+                "comprehensive list at "
                 "~/.config/recon-wp/wordlists/plugins/theme_fallback.txt"
             )
 

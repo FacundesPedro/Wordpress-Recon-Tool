@@ -132,10 +132,57 @@ class ScanConfig(BaseSettings):
         default=300, ge=60, description="OpenDoor timeout in seconds"
     )
     opendoor_rate_limit: int = Field(
-        default=0, ge=0, description="OpenDoor rate limit (0 = unlimited)"
+        default=0, ge=0, description="OpenDoor thread count (0 = default)"
+    )
+    opendoor_delay: float = Field(
+        default=0.5, ge=0.0, le=30.0, description="OpenDoor delay between requests in seconds"
     )
     opendoor_mode: str = Field(
         default="wp_paths", description="OpenDoor mode (wp_paths, backup, config, sensitive)"
+    )
+
+    # Wordlist overrides (env: WP_<NAME>). Empty = use built-in resolution chain.
+    wordlist: str = Field(
+        default="", description="Credential wordlist path (username:password per line)"
+    )
+    login_wordlist: str = Field(
+        default="", description="Login brute-force credential wordlist path"
+    )
+    plugin_wordlist: str = Field(
+        default="", description="Plugin brute-force wordlist path"
+    )
+    theme_wordlist: str = Field(
+        default="", description="Theme brute-force wordlist path"
+    )
+    source_assets: str = Field(
+        default="", description="Asset path wordlist for source discovery fuzzing"
+    )
+    api_paths: str = Field(
+        default="", description="API/documentation path wordlist for api_surface"
+    )
+    admin_paths: str = Field(
+        default="", description="Admin/management path wordlist for admin_surface"
+    )
+    wp_config_backups: str = Field(
+        default="", description="WP config backup pattern wordlist"
+    )
+    env_files: str = Field(
+        default="", description="Environment file path wordlist"
+    )
+    security_headers: str = Field(
+        default="", description="Security header wordlist"
+    )
+    common_ports: str = Field(
+        default="", description="Common port wordlist"
+    )
+    waf_signatures: str = Field(
+        default="", description="WAF signature wordlist (JSON)"
+    )
+    xmlrpc_dangerous_methods: str = Field(
+        default="", description="Dangerous XML-RPC method wordlist"
+    )
+    login_pages: str = Field(
+        default="", description="Login page path wordlist"
     )
 
     spider_max_depth: int = Field(
@@ -277,7 +324,10 @@ class ScanConfig(BaseSettings):
     )
     active_race_endpoint: str = Field(
         default="",
-        description="Absolute path for race-condition probing (e.g. /api/coupon/apply); empty = skip",
+        description=(
+            "Absolute path for race-condition probing "
+            "(e.g. /api/coupon/apply); empty = skip"
+        ),
     )
     active_mass_assign_endpoint: str = Field(
         default="",

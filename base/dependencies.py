@@ -32,6 +32,34 @@ from utils.wordlist_loader import get_wordlist_path, load_lines
 T = TypeVar("T")
 
 
+def config_str(config: Any, key: str, default: str = "") -> str:
+    """Read a string config value, ignoring non-string values (e.g. mocks)."""
+    value = getattr(config, key, None) if config is not None else None
+    return value if isinstance(value, str) else default
+
+
+def config_int(config: Any, key: str, default: int) -> int:
+    """Read an int config value, falling back to default on missing/invalid."""
+    value = getattr(config, key, None) if config is not None else None
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def config_float(config: Any, key: str, default: float) -> float:
+    """Read a float config value, falling back to default on missing/invalid."""
+    value = getattr(config, key, None) if config is not None else None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class WordlistDependencyMixin:
     """
     Handles wordlist/external file dependency loading with standardized warnings.
@@ -119,8 +147,25 @@ class WordlistDependencyMixin:
 
         if custom_path:
             wordlist_path = custom_path
-        elif hasattr(self, "config") and self.config and hasattr(self.config, "keys"):
-            wordlist_path = self.config.keys.get(config_key)
+        elif config_key and hasattr(self, "config") and self.config:
+            # Legacy dict-style config (tests/custom Config objects) first.
+            legacy = None
+            if hasattr(self.config, "keys"):
+                try:
+                    legacy = self.config.keys.get(config_key)
+                except (AttributeError, TypeError):
+                    legacy = None
+            if isinstance(legacy, Path):
+                legacy = str(legacy)
+            if isinstance(legacy, str) and legacy:
+                wordlist_path = legacy
+            else:
+                # ScanConfig fields (WP_<NAME> env vars / CLI flags).
+                configured = getattr(self.config, config_key, None)
+                if isinstance(configured, Path):
+                    configured = str(configured)
+                if isinstance(configured, str) and configured:
+                    wordlist_path = configured
 
         if wordlist_path:
             path = Path(wordlist_path)

@@ -46,7 +46,7 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         self.logger.info("Brute-forcing WordPress plugins...")
 
         slugs = self.resolve_wordlist_or_fallback(
-            config_key="",
+            config_key="plugin_wordlist",
             defaults=self._default_plugin_slugs(),
             name="plugin wordlist",
             wordlist_file="plugins/plugin_fallback.txt",
@@ -78,7 +78,7 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
             self.logger.warning(
                 "Using small fallback plugin list (30 entries). "
                 "For better coverage, download SecLists wordpress-plugins.fuzz.txt "
-                "(~20k entries) and configure via WP_PLUGIN_WORDLIST or place it in "
+                "(~20k entries) and configure via WP_PLUGIN_WORDLIST or place it at "
                 "~/.config/recon-wp/wordlists/plugins/plugin_fallback.txt"
             )
 

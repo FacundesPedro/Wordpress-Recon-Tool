@@ -10,12 +10,14 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from base.dependencies import config_int, config_str
 from base.step import BaseToolStep
 from base.tool import ToolResult
 from config import ScanConfig
 from core.exceptions import ToolTimeoutError
 from core.finding import Finding
 from core.target import Target
+from utils.wordlist_loader import get_wordlist_path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_WORDLISTS_DIR = PROJECT_ROOT / "wordlists" / "ffuf"
@@ -48,8 +50,8 @@ class FfufWpStep(BaseToolStep):
         config: ScanConfig,
         http=None,
         wordlist: Optional[str] = None,
-        timeout: int = 300,
-        rate_limit: int = 0,
+        timeout: Optional[int] = None,
+        rate_limit: Optional[int] = None,
         filter_status: str = "404",
     ):
         super().__init__(
@@ -58,9 +60,20 @@ class FfufWpStep(BaseToolStep):
             name=self.name,
             description=self.description,
         )
-        self.wordlist = wordlist or str(DEFAULT_WORDLISTS_DIR / "wp_paths.txt")
-        self.timeout = timeout
-        self.rate_limit = rate_limit
+        default_wordlist = get_wordlist_path("ffuf/wp_paths.txt") or (
+            DEFAULT_WORDLISTS_DIR / "wp_paths.txt"
+        )
+        self.wordlist = (
+            wordlist or config_str(config, "ffuf_wordlist") or str(default_wordlist)
+        )
+        self.timeout = (
+            timeout if timeout is not None else config_int(config, "ffuf_timeout", 300)
+        )
+        self.rate_limit = (
+            rate_limit
+            if rate_limit is not None
+            else config_int(config, "ffuf_rate_limit", 0)
+        )
         self.filter_status = filter_status
 
     def build_command(self) -> list[str]:

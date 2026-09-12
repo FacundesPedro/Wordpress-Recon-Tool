@@ -3,11 +3,18 @@
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from base.dependencies import BinaryDependencyMixin, WordlistDependencyMixin
+from base.dependencies import (
+    BinaryDependencyMixin,
+    WordlistDependencyMixin,
+    config_float,
+    config_int,
+    config_str,
+)
 from base.step import BaseStep, BaseToolStep
 
 
@@ -139,6 +146,49 @@ class TestResolveWordlistOrFallback:
             config_key="test", defaults=["d"]
         )
         assert result == ["d"]
+
+    def test_config_attribute_found_with_file(self, step):
+        with NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("p1\np2\n")
+            tmp_path = f.name
+        step.config = SimpleNamespace(plugin_wordlist=tmp_path)
+        try:
+            result = step.resolve_wordlist_or_fallback(
+                config_key="plugin_wordlist"
+            )
+            assert result == ["p1", "p2"]
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_mock_config_attribute_ignored(self, step):
+        step.config = MagicMock()  # attributes are MagicMocks, not strings
+        result = step.resolve_wordlist_or_fallback(
+            config_key="plugin_wordlist", defaults=["d"]
+        )
+        assert result == ["d"]
+
+
+class TestConfigHelpers:
+    def test_config_str(self):
+        assert config_str(None, "x", "default") == "default"
+        assert config_str(MagicMock(), "x", "default") == "default"
+        assert config_str(SimpleNamespace(x="value"), "x", "default") == "value"
+
+    def test_config_int(self):
+        assert config_int(None, "x", 3) == 3
+        assert config_int(MagicMock(), "x", 3) == 3
+        assert config_int(SimpleNamespace(x="42"), "x", 3) == 42
+        assert config_int(SimpleNamespace(x=7), "x", 3) == 7
+        assert config_int(SimpleNamespace(x=True), "x", 3) == 3
+        assert config_int(SimpleNamespace(x="bad"), "x", 3) == 3
+
+    def test_config_float(self):
+        assert config_float(None, "x", 0.5) == 0.5
+        assert config_float(MagicMock(), "x", 0.5) == 0.5
+        assert config_float(SimpleNamespace(x="1.5"), "x", 0.5) == 1.5
+        assert config_float(SimpleNamespace(x=2), "x", 0.5) == 2.0
+        assert config_float(SimpleNamespace(x=True), "x", 0.5) == 0.5
+        assert config_float(SimpleNamespace(x="bad"), "x", 0.5) == 0.5
 
 
 class TestLoadCredentialsFromWordlist:

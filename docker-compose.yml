@@ -1,6 +1,16 @@
 services:
   recon:
-    build: .
+    build:
+      context: .
+      args:
+        # Install nmap, ffuf, nuclei, wpscan and opendoor (opt-in, default off)
+        INSTALL_TOOLS: ${INSTALL_TOOLS:-false}
+        # Bake the recommended SecLists plugin/theme wordlists (default on)
+        INSTALL_RECOMMENDED_WORDLISTS: ${INSTALL_RECOMMENDED_WORDLISTS:-true}
+        FFUF_VERSION: ${FFUF_VERSION:-2.3.0}
+        NUCLEI_VERSION: ${NUCLEI_VERSION:-3.11.1}
+        WPSCAN_VERSION: ${WPSCAN_VERSION:-4.1.0}
+        OPENDOOR_VERSION: ${OPENDOOR_VERSION:-5.18.0}
     image: wp-recon-tool:latest
     container_name: wp-recon
     volumes:

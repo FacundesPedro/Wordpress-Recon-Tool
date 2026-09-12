@@ -155,8 +155,14 @@ Non-WordPress, non-intrusive checks for internal client assessments (OWASP WSTG-
 Build and run the tool via Docker (no local Python setup needed):
 
 ```bash
-# Build the image
+# Build the image (recommended wordlists are baked in by default)
 docker compose build
+
+# Build with the external tools (nmap, ffuf, nuclei, wpscan, opendoor)
+docker compose build --build-arg INSTALL_TOOLS=true
+
+# Build without the recommended SecLists wordlists
+docker compose build --build-arg INSTALL_RECOMMENDED_WORDLISTS=false
 
 # Quick scan
 WP_TARGET=https://example.com docker compose run --rm recon
@@ -173,7 +179,40 @@ cp .env.example .env
 docker compose up
 ```
 
+Build args (also settable in `docker-compose.yml` / the environment when using
+`docker compose build`):
+
+| Arg | Default | Purpose |
+|-----|---------|---------|
+| `INSTALL_TOOLS` | `false` | Install nmap, ffuf, nuclei, wpscan, opendoor |
+| `INSTALL_RECOMMENDED_WORDLISTS` | `true` | Download the recommended SecLists plugin/theme wordlists |
+| `FFUF_VERSION` / `NUCLEI_VERSION` / `WPSCAN_VERSION` / `OPENDOOR_VERSION` | pinned | Tool versions |
+
 Reports are written to `./reports/` (mounted as a volume).
+
+### Wordlists in Docker
+
+The image ships the built-in wordlists plus the recommended SecLists
+plugin/theme lists (when `INSTALL_RECOMMENDED_WORDLISTS=true`). Every wordlist
+can be overridden at runtime, in priority order:
+
+1. Per-list env var (e.g. `WP_PLUGIN_WORDLIST`, `WP_THEME_WORDLIST`,
+   `WP_WORDLIST`, `WP_FFUF_WORDLIST`, `WP_OPENDOOR_WORDLIST`,
+   `WP_SOURCE_ASSETS`, `WP_API_PATHS`, `WP_ADMIN_PATHS`, …)
+2. Mounted file at `/home/recon/.config/recon-wp/wordlists/<relative-path>`
+
+```bash
+# Replace one wordlist via mount
+docker compose run --rm \
+  -v "$PWD/my-plugins.txt:/home/recon/.config/recon-wp/wordlists/plugins/plugin_fallback.txt:ro" \
+  recon main -t https://example.com -p full
+
+# Replace via env var
+docker compose run --rm -e WP_PLUGIN_WORDLIST=/data/plugins.txt \
+  -v "$PWD/plugins.txt:/data/plugins.txt:ro" \
+  recon main -t https://example.com -p full
+```
+
 
 ## Installation
 
@@ -197,15 +236,16 @@ The tool works out-of-the-box with small fallback lists. For real scans, downloa
 
 ```bash
 # Download to project (git-ignored)
-mkdir -p wordlists/external
-curl -o wordlists/external/wp-plugins.txt \
-  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-plugins.fuzz.txt
-curl -o wordlists/external/wp-themes.txt \
-  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wordpress-themes-fuzz.txt
+mkdir -p wordlists/external/plugins
+curl -o wordlists/external/plugins/plugin_fallback.txt \
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-plugins.fuzz.txt
+curl -o wordlists/external/plugins/theme_fallback.txt \
+  https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-themes.fuzz.txt
 
 # Or make them persistent (picked up automatically)
-mkdir -p ~/.config/recon-wp/wordlists
-cp wordlists/external/wp-plugins.txt ~/.config/recon-wp/wordlists/
+mkdir -p ~/.config/recon-wp/wordlists/plugins
+cp wordlists/external/plugins/plugin_fallback.txt ~/.config/recon-wp/wordlists/plugins/
+cp wordlists/external/plugins/theme_fallback.txt ~/.config/recon-wp/wordlists/plugins/
 ```
 
 See [wordlists/README.md](wordlists/README.md) for the full resolution chain and guide.
