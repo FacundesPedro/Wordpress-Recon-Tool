@@ -31,8 +31,8 @@
 | [Nuclei — Fuzzing Templates](https://github.com/projectdiscovery/nuclei-templates/tree/main/http/fuzzing) | Fuzzing templates including `wordpress-plugins-detect.yaml` for plugin brute-force. |
 | [FFUF](https://github.com/ffuf/ffuf) | **Integrated in `tools` module.** Directory/file fuzzer. Invoked via `steps/tools/ffuf_*_step.py`. Used for wordlist-based path discovery. |
 | [OpenDoor](https://github.com/stanislav-web/OpenDoor) | **Integrated in `tools` module.** WordPress-focused path scanner. Invoked via `steps/tools/opendoor_step.py`. Includes WP-specific mode. |
-| [Nmap](https://nmap.org/) | **Integrated in `tools` module** via `steps/tools/nmap_step.py` (`NmapPortScanStep`, `NmapScriptScanStep`). Direct host port scanning (`-sT -sV --top-ports`) and default NSE scripts (`-sC`). JSON output to stdout with `-oJ -`. Requires nmap >= 7.92. |
-| [Nmap Reference Guide — Output Formats](https://nmap.org/book/output.html) | Reference for the `-oJ` JSON output format used by `nmap_step.py` (`nmap-run.host[].ports[]` with `portid`, `state`, `service`, `scripts`). |
+| [Nmap](https://nmap.org/) | **Integrated in `tools` module** via `steps/tools/nmap_step.py` (`NmapPortScanStep`, `NmapScriptScanStep`). Direct host port scanning (`-sT -sV --top-ports`) and default NSE scripts (`-sC`). XML output to stdout with `-oX -`. Requires nmap >= 7.92. |
+| [Nmap Reference Guide — Output Formats](https://nmap.org/book/output.html) | Reference for the `-oX` XML output format used by `nmap_step.py` (`nmaprun.host[].ports[].port` with `portid`, `state`, `service`, `script`). |
 | [Nmap Reference Guide — NSE](https://nmap.org/book/nse.html) | Nmap Scripting Engine reference. `-sC` runs default scripts; structured output (`scripts{}`) is parsed by `NmapScriptScanStep`. |
 
 ## Generic Web App References (`webapp` module)

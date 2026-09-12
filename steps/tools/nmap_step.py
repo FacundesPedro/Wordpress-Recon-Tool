@@ -4,18 +4,18 @@ Nmap integration - direct host port scanning and NSE script scanning.
 
 Two separate steps:
 - NmapPortScanStep: TCP connect scan with service/version detection (-sV)
-- NmapScriptScanStep: Nmap default NSE scripts (-sC)
+- NmapScriptScanStep: Nmap default NSE scripts (-sV -sC)
 
 Unlike the WordPress pingback SSRF ports step, these scan the target host
 directly from the local machine. Only use on authorized targets.
 """
 
 # WHAT: Direct port scanning + version detection, and NSE default script scan
-# HOW: Runs nmap -oJ (JSON to stdout) via AsyncToolRunner, parses host/port data
+# HOW: Runs nmap -oX (XML to stdout) via AsyncToolRunner, parses host/port data
 # WHY: Reveals exposed services, versions, and protocol-level weaknesses on the
 #      host itself, for generic web security assessments (non-WordPress too)
 
-import json
+import xml.etree.ElementTree as ET
 from typing import Optional
 
 from base.step import BaseToolStep
@@ -50,20 +50,127 @@ NOTABLE_SCRIPTS = {
 }
 
 
-def _clean_json(stdout: str) -> str:
-    """Strip nmap's XML declaration prologue from -oJ output."""
-    idx = stdout.find("{")
-    return stdout[idx:] if idx >= 0 else ""
+def _local_tag(element: ET.Element) -> str:
+    """Return an element's tag without any XML namespace prefix."""
+    tag = element.tag
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def parse_nmap_json(stdout: str) -> dict:
-    """Parse nmap -oJ output into the nmap-run dict ({} on failure)."""
-    try:
-        data = json.loads(_clean_json(stdout))
-    except (json.JSONDecodeError, TypeError, ValueError):
+def _table_value(table: ET.Element) -> object:
+    """Convert an NSE ``<table>`` into a dict, or a list when it nests tables."""
+    nested = [child for child in table if _local_tag(child) == "table"]
+    if nested:
+        items: list[object] = []
+        for nested_table in nested:
+            value = _table_value(nested_table)
+            if isinstance(value, dict):
+                _normalize_vuln_keys(value)
+            items.append(value)
+        return items
+
+    elems: dict[str, object] = {}
+    for child in table:
+        if _local_tag(child) == "elem":
+            key = child.get("key")
+            if key:
+                elems[key] = child.text
+    return elems
+
+
+def _normalize_vuln_keys(item: dict) -> None:
+    """Map real nmap NSE vuln fields (title/cvss) to the internal schema."""
+    if "name" not in item and item.get("title"):
+        item["name"] = item["title"]
+    if "severity" not in item:
+        try:
+            score = float(item.get("cvss", 0) or 0)
+        except (TypeError, ValueError):
+            score = 0.0
+        if score >= 9.0:
+            item["severity"] = "critical"
+        elif score >= 7.0:
+            item["severity"] = "high"
+        elif score >= 4.0:
+            item["severity"] = "medium"
+        elif score > 0:
+            item["severity"] = "low"
+
+
+def _parse_script(script: ET.Element) -> dict:
+    """Convert an NSE ``<script>`` element into a structured dict."""
+    result: dict = {}
+    for child in script:
+        tag = _local_tag(child)
+        if tag == "elem":
+            key = child.get("key")
+            if key:
+                result[key] = child.text
+        elif tag == "table":
+            key = child.get("key")
+            if key:
+                result[key] = _table_value(child)
+    if not result and script.get("output"):
+        result["output"] = script.get("output")
+    return result
+
+
+def parse_nmap_xml(stdout: str) -> dict:
+    """Parse nmap ``-oX`` output into the internal nmap-run dict ({} on failure)."""
+    if not stdout:
         return {}
-    run = data.get("nmap-run", data) if isinstance(data, dict) else {}
-    return run if isinstance(run, dict) else {}
+
+    start = stdout.find("<nmaprun")
+    if start < 0:
+        return {}
+    end = stdout.find("</nmaprun>")
+    xml_text = stdout[start : end + len("</nmaprun>")] if end >= 0 else stdout[start:]
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return {}
+
+    hosts: list[dict] = []
+    for host_el in root.findall("host"):
+        host: dict = {"ports": []}
+
+        status_el = host_el.find("status")
+        if status_el is not None:
+            host["status"] = dict(status_el.attrib)
+        address_el = host_el.find("address")
+        if address_el is not None:
+            host["address"] = dict(address_el.attrib)
+
+        ports_el = host_el.find("ports")
+        if ports_el is not None:
+            for port_el in ports_el.findall("port"):
+                port: dict = {
+                    "portid": int(port_el.get("portid", 0) or 0),
+                    "protocol": port_el.get("protocol", "tcp"),
+                }
+
+                state_el = port_el.find("state")
+                if state_el is not None:
+                    port["state"] = state_el.get("state", "")
+                    port["reason"] = state_el.get("reason", "")
+
+                service_el = port_el.find("service")
+                if service_el is not None:
+                    port["service"] = dict(service_el.attrib)
+
+                scripts: dict = {}
+                for script_el in port_el.findall("script"):
+                    script_id = script_el.get("id", "")
+                    if script_id:
+                        scripts[script_id] = _parse_script(script_el)
+                if scripts:
+                    port["scripts"] = scripts
+
+                host["ports"].append(port)
+
+        hosts.append(host)
+
+    return {"host": hosts}
 
 
 def iter_hosts(run: dict) -> list[dict]:
@@ -115,7 +222,7 @@ class NmapPortScanStep(BaseToolStep):
     def build_command(self) -> list[str]:
         cmd = [
             self._tool_binary,
-            "-oJ",
+            "-oX",
             "-",
             "-Pn",
             "-sT",
@@ -139,7 +246,7 @@ class NmapPortScanStep(BaseToolStep):
 
     def parse_output(self, result: ToolResult) -> list[Finding]:
         findings: list[Finding] = []
-        run = parse_nmap_json(result.stdout)
+        run = parse_nmap_xml(result.stdout)
         if not run:
             if result.stderr:
                 self.logger.debug(f"Nmap stderr: {result.stderr[:500]}")
@@ -242,11 +349,12 @@ class NmapScriptScanStep(BaseToolStep):
     def build_command(self) -> list[str]:
         cmd = [
             self._tool_binary,
-            "-oJ",
+            "-oX",
             "-",
             "-Pn",
             "-sT",
             "-T4",
+            "-sV",
             "-sC",
         ]
         if self.custom_ports:
@@ -263,7 +371,7 @@ class NmapScriptScanStep(BaseToolStep):
 
     def parse_output(self, result: ToolResult) -> list[Finding]:
         findings: list[Finding] = []
-        run = parse_nmap_json(result.stdout)
+        run = parse_nmap_xml(result.stdout)
         if not run:
             if result.stderr:
                 self.logger.debug(f"Nmap stderr: {result.stderr[:500]}")

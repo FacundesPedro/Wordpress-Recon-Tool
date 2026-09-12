@@ -1,10 +1,19 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-11
+## Last Updated: 2026-09-12
 
 ---
 
 ## Recent Changes
+
+### S18 - Nmap output-format fix found by Docker end-to-end run (2026-09-12)
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/tools/nmap_step.py` | **FIXED** | Both steps invoked `nmap -oJ -`, which is not a valid nmap flag (nmap only supports `-oN`/`-oX`/`-oG`/`-oA`). Real nmap interpreted `-oJ` as normal output to a file named `J`, so direct port/script scans silently failed (`Failed to open normal output file J`). Switched to `-oX -` (XML to stdout) and replaced the fabricated JSON parser (`nmap-run.host[].ports[]`) with `parse_nmap_xml`, which parses real `<nmaprun>` XML (ports, `state`, `service` attributes, nested NSE `<script>`/`<table>`/`<elem>` nodes, and `vulns` tables) into the internal schema. `NmapScriptScanStep` now also passes `-sV` because default NSE scripts are selected from detected services (`-sC` alone produced no output on non-standard ports). |
+| `tests/test_nmap_step.py` | **REWRITTEN** | Fixtures now use real nmap 7.95 `-oX` XML (including DOCTYPE/prologue and NSE script tables) instead of the fabricated JSON, and assert `-oX`/`-sV` in the built command. |
+| `docs/MODULES.md`, `docs/NEXT_STEPS.md`, `docs/REFERENCES.md`, `AGENTS.md` | **UPDATED** | Document `-oX` XML output and `-sV -sC` for the script scan. |
+
+**Verification (Docker, `INSTALL_TOOLS=true`)**: `NmapPortScanStep` reports real open ports/service versions (`3000/tcp ppp`, `8099/tcp http 2.4.68`); `NmapScriptScanStep` now emits NSE output (`http-title`). Full suite 1719 passing.
 
 ### S17 - Docker tool/wordlist build args + wordlist override plumbing + OpenDoor 5.x fix (2026-09-11)
 | File | Change | Notes |

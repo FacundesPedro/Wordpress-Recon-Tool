@@ -1548,14 +1548,14 @@ export WP_NUCLEI_SEVERITY=critical,high
 | **File** | `steps/tools/nmap_step.py` |
 | **Base Class** | `BaseToolStep` |
 | **Binary** | `nmap` (min version 7.92) |
-| **Command** | `nmap -oJ - -Pn -sT -T4 -sV --top-ports 100 <host>` |
+| **Command** | `nmap -oX - -Pn -sT -T4 -sV --top-ports 100 <host>` |
 | **Severity** | Info (open ports), Medium (risky services: SSH, RDP, VNC, DBs) |
 | **Enable Flag** | `--nmap` |
 | **Config** | `WP_NMAP_TOP_PORTS` (default 100), `WP_NMAP_PORTS`, `WP_NMAP_TIMEOUT` (default 300) |
 
 **What it does:**
 - Direct connect port scan (`-sT`, no root required) with service version detection
-- JSON output via `-oJ -`, no temp files
+- XML output via `-oX -` (parsed in-process), no temp files
 - Custom port list via `WP_NMAP_PORTS` overrides top ports
 - Direct host scan (no SSRF blocklist) — authorized targets only
 
@@ -1566,12 +1566,12 @@ export WP_NUCLEI_SEVERITY=critical,high
 | **File** | `steps/tools/nmap_step.py` |
 | **Base Class** | `BaseToolStep` |
 | **Binary** | `nmap` (min version 7.92) |
-| **Command** | `nmap -oJ - -Pn -sT -T4 -sC --top-ports 100 <host>` |
+| **Command** | `nmap -oX - -Pn -sT -T4 -sV -sC --top-ports 100 <host>` |
 | **Severity** | Info (notable scripts), High (NSE `vulns` entries) |
 | **Enable Flag** | `--nmap-scripts` |
 
 **What it does:**
-- Runs default Nmap Scripting Engine scripts (`-sC`)
+- Runs default Nmap Scripting Engine scripts (`-sV -sC`, version detection needed for service-specific scripts)
 - Parses notable script output (ftp-anon, http-headers, ssl-cert, ...) and NSE `vulns` entries with CVE identifiers
 
 **Installation:**

@@ -388,8 +388,8 @@ Both brute-force steps use `asyncio.Semaphore` + batched `asyncio.gather` for bo
 
 | Step | Command | Output |
 |------|---------|--------|
-| `NmapPortScanStep` (`--nmap`) | `nmap -oJ - -Pn -sT -T4 -sV --top-ports 100 <host>` | Open ports + service versions; `medium` severity when risky services exposed (SSH, RDP, VNC, DBs). |
-| `NmapScriptScanStep` (`--nmap-scripts`) | `nmap -oJ - -Pn -sT -T4 -sC --top-ports 100 <host>` | Notable NSE script output (ftp-anon, http-headers, ssl-cert, …) + NSE `vulns` entries with CVE ids. |
+| `NmapPortScanStep` (`--nmap`) | `nmap -oX - -Pn -sT -T4 -sV --top-ports 100 <host>` | Open ports + service versions; `medium` severity when risky services exposed (SSH, RDP, VNC, DBs). |
+| `NmapScriptScanStep` (`--nmap-scripts`) | `nmap -oX - -Pn -sT -T4 -sV -sC --top-ports 100 <host>` | Notable NSE script output (ftp-anon, http-headers, ssl-cert, …) + NSE `vulns` entries with CVE ids. |
 
 Connect scan (`-sT`) works without root; direct host scan (no SSRF blocklist — intended for authorized targets). Requires nmap >= 7.92 (version-checked like other tools).
 
