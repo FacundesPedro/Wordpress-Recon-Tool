@@ -19,7 +19,7 @@ dependencies = [
 wp-recon = "main:app"
 
 [project.optional-dependencies]
-pdf = ["weasyprint"]
+pdf = ["xhtml2pdf>=0.2.17"]
 
 [tool.setuptools]
 py-modules = ["main", "config"]

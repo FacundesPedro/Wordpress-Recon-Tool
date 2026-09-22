@@ -1,8 +1,8 @@
 # recon_wp/utils/report.py
 """Report generation utilities for scan results."""
 
+import io
 import json
-import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -236,224 +236,322 @@ class SarifFormatter:
 
 
 class HtmlFormatter:
-    """Format report as a self-contained HTML dashboard page."""
+    """Format report as a self-contained HTML report page."""
 
     SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 
     SEVERITY_COLORS: dict[str, tuple[str, str]] = {
-        "critical": ("#e63946", "#4d194d"),
-        "high": ("#e76f51", "#3e1f47"),
-        "medium": ("#e9c46a", "#312244"),
-        "low": ("#457b9d", "#272640"),
-        "info": ("#6c757d", "#212f45"),
+        "critical": ("#ff5c6c", "#3a1620"),
+        "high": ("#ff8a5c", "#3a2118"),
+        "medium": ("#f2c14e", "#382f14"),
+        "low": ("#5aa9e6", "#16283a"),
+        "info": ("#8b8a99", "#222230"),
     }
 
     _SEVERITY_ACCENT = {
-        "critical": "#e63946",
-        "high": "#e76f51",
-        "medium": "#e9c46a",
-        "low": "#457b9d",
-        "info": "#6c757d",
+        "critical": "#ff5c6c",
+        "high": "#ff8a5c",
+        "medium": "#f2c14e",
+        "low": "#5aa9e6",
+        "info": "#8b8a99",
+    }
+
+    _SEVERITY_LABEL = {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "info": "Info",
     }
 
     _CSS = """\
 :root {
-  --stormy-teal: #006466ff;
-  --dark-teal: #065a60ff;
-  --dark-teal-2: #0b525bff;
-  --dark-teal-3: #144552ff;
-  --charcoal-blue: #1b3a4bff;
-  --deep-space-blue: #212f45ff;
-  --space-indigo: #272640ff;
-  --midnight-violet: #312244ff;
-  --midnight-violet-2: #3e1f47ff;
-  --deep-purple: #4d194dff;
-  --severity-critical: #e63946;
-  --severity-high: #e76f51;
-  --severity-medium: #e9c46a;
-  --severity-low: #457b9d;
-  --severity-info: #6c757d;
-  --bg-page: #1a1a2e;
-  --bg-card: #212f45;
-  --bg-card-alt: #272640;
-  --bg-card-hover: #2a2f4a;
-  --border-color: #312244;
-  --border-light: #3e1f47;
-  --text-primary: #e9ecef;
-  --text-secondary: #8892a8;
-  --text-muted: #6c757d;
-  --health-good: #2d6a4f;
-  --health-fair: #e9c46a;
-  --health-poor: #e63946;
+  --bg-page: #131219;
+  --bg-surface: #1a1922;
+  --bg-raised: #22212c;
+  --bg-sunken: #0e0d13;
+  --line: #2b2a37;
+  --line-strong: #3a3848;
+  --text: #ecebf2;
+  --text-dim: #a3a0b5;
+  --text-faint: #6f6c82;
+  --accent: #56c2cf;
+  --sev-critical: #ff5c6c;
+  --sev-high: #ff8a5c;
+  --sev-medium: #f2c14e;
+  --sev-low: #5aa9e6;
+  --sev-info: #8b8a99;
+  --health-good: #43b581;
+  --health-fair: #f2c14e;
+  --health-poor: #ff5c6c;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  background: var(--bg-page); color: var(--text-primary); line-height: 1.6; padding: 24px;
+  font-family: var(--sans);
+  background: var(--bg-page);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  padding: 0 24px 80px;
+  -webkit-font-smoothing: antialiased;
 }
-.container { max-width: 1024px; margin: 0 auto; }
+.wrap { max-width: 1080px; margin: 0 auto; }
+h2 {
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+}
 
-/* Header */
-.header {
-  background: linear-gradient(135deg, var(--deep-space-blue), var(--space-indigo), var(--midnight-violet));
-  padding: 32px; border-radius: 12px; margin-bottom: 24px;
-  display: flex; flex-direction: column; gap: 8px;
+/* Masthead */
+.masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 44px 0 28px;
+  border-bottom: 1px solid var(--line);
 }
-.header-top { display: flex; justify-content: space-between; align-items: center; }
-.header-label { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-secondary); }
-.header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; }
-.header-meta { display: flex; flex-wrap: wrap; gap: 20px; font-size: 0.88rem; color: var(--text-secondary); }
+.kicker {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.masthead h1 {
+  font-size: 2rem;
+  font-weight: 660;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  word-break: break-word;
+}
+.masthead .lede { margin-top: 10px; color: var(--text-dim); font-size: 0.92rem; }
+.masthead .lede b { color: var(--text); font-weight: 600; }
+.health { text-align: right; flex-shrink: 0; }
+.health-value {
+  font-family: var(--mono);
+  font-size: 2.4rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.health-den { font-size: 1rem; color: var(--text-faint); margin-left: 2px; }
+.health-label {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.health-track {
+  margin-top: 10px;
+  height: 3px;
+  width: 116px;
+  background: var(--line-strong);
+  margin-left: auto;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.health-track span { display: block; height: 100%; }
 
-/* Health score badge */
-.health-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 14px; border-radius: 20px;
-  font-size: 0.82rem; font-weight: 700;
+/* Sections */
+.section { padding: 34px 0; border-bottom: 1px solid var(--line); }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
 }
-.health-badge.good { background: var(--health-good); color: #fff; }
-.health-badge.fair { background: var(--health-fair); color: #1a1a2e; }
-.health-badge.poor { background: var(--health-poor); color: #fff; }
+.section-head .count {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
 
-/* Dashboard cards */
-.dashboard { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
-.card {
-  background: var(--bg-card); border-radius: 10px; padding: 20px;
-  text-align: center; border-top: 3px solid transparent;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: transform 0.15s, box-shadow 0.15s;
+/* Severity ledger */
+.ledger-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-raised);
 }
-.card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
-.card-critical { border-top-color: var(--severity-critical); }
-.card-high { border-top-color: var(--severity-high); }
-.card-medium { border-top-color: var(--severity-medium); }
-.card-low { border-top-color: var(--severity-low); }
-.card-info { border-top-color: var(--severity-info); }
-.card-count { font-size: 2rem; font-weight: 700; line-height: 1.2; }
-.card-critical .card-count { color: var(--severity-critical); }
-.card-high .card-count { color: var(--severity-high); }
-.card-medium .card-count { color: var(--severity-medium); }
-.card-low .card-count { color: var(--severity-low); }
-.card-info .card-count { color: var(--severity-info); }
-.card-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-secondary); margin-top: 4px; }
+.ledger-bar .seg { height: 100%; }
+.ledger-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 28px;
+  margin-top: 20px;
+}
+.legend-item { display: flex; align-items: baseline; gap: 8px; }
+.legend-chip {
+  width: 9px; height: 9px; border-radius: 2px;
+  flex-shrink: 0; transform: translateY(-1px);
+}
+.legend-count {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.legend-name { color: var(--text-dim); font-size: 0.85rem; }
 
-/* Summary row: donut + scan info */
-.summary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-.section {
-  background: var(--bg-card); border-radius: 10px; padding: 24px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+/* Facts */
+.facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 22px 40px;
 }
-.section h2 {
-  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.2px;
-  margin-bottom: 16px; padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-light); color: var(--text-secondary);
+.facts .fact { min-width: 0; }
+.facts dt {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 6px;
 }
-.donut-section { display: flex; flex-direction: column; align-items: center; }
-.donut-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 12px; }
-.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--text-primary); }
-.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-/* Scan info */
-.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.info-item { padding: 10px 12px; background: var(--bg-card-alt); border-radius: 8px; }
-.info-label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 4px; }
-.info-value { font-size: 0.9rem; color: var(--text-primary); }
-.info-modules { grid-column: 1 / -1; }
-.info-modules .module-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.facts dd { font-size: 0.92rem; word-break: break-word; }
+.facts dd.mono { font-family: var(--mono); font-size: 0.85rem; }
+.modules { display: flex; flex-wrap: wrap; gap: 6px; }
 .module-tag {
-  display: inline-block; padding: 2px 10px; border-radius: 4px;
-  background: var(--space-indigo); font-size: 0.78rem; color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--text-dim);
 }
 
 /* Findings */
-.findings-group { margin-bottom: 24px; }
-.findings-group details { background: var(--bg-card); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
-.findings-group summary {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 24px; cursor: pointer; list-style: none; user-select: none;
-  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-secondary);
-  transition: background 0.15s;
+.group { padding: 34px 0 8px; }
+.group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
 }
-.findings-group summary::-webkit-details-marker { display: none; }
-.findings-group summary:hover { background: var(--bg-card-hover); }
-.findings-group summary::after {
-  content: "\25B6"; font-size: 0.7rem; transition: transform 0.2s; color: var(--text-muted);
+.group-head .count { font-family: var(--mono); font-size: 0.78rem; color: var(--text-faint); }
+.finding { padding: 26px 0; border-top: 1px solid var(--line); }
+.finding:first-of-type { border-top: none; }
+.finding-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 14px;
 }
-.findings-group details[open] summary::after { transform: rotate(90deg); }
-.findings-group summary .severity-dots { display: flex; gap: 4px; align-items: center; }
-.findings-group summary .severity-dots .dot { width: 8px; height: 8px; border-radius: 50%; }
-.findings-group .findings-body { padding: 8px 24px 24px; }
-
-/* Finding card */
-.finding-card {
-  padding: 16px; margin-bottom: 12px; border-radius: 8px;
-  border-left: 4px solid transparent; background: var(--bg-card-alt);
-  transition: background 0.15s;
+.finding-index {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
-.finding-card:last-child { margin-bottom: 0; }
-.finding-card:hover { background: var(--bg-card-hover); }
-.finding-card .fc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.finding-card .fc-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
-.finding-card .fc-mod-step { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
-.finding-card .fc-desc { font-size: 0.88rem; color: var(--text-primary); margin-bottom: 8px; }
-.finding-card .fc-evidence {
-  background: #151a2e; border: 1px solid var(--border-color); border-radius: 6px;
-  padding: 12px; overflow-x: auto; font-size: 0.82rem; line-height: 1.4;
-  margin: 8px 0; white-space: pre-wrap; font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
-  color: #cdd6f4;
+.finding-title { font-size: 1.12rem; font-weight: 620; letter-spacing: -0.01em; }
+.sev-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
-.finding-card .fc-rec {
-  background: var(--space-indigo); border-radius: 6px; padding: 10px 12px;
-  font-size: 0.84rem; margin-top: 8px; color: #b8c0e0;
+.sev-tag::before {
+  content: ""; width: 7px; height: 7px; border-radius: 2px; background: currentColor;
 }
-.finding-card .fc-rec strong { color: var(--severity-medium); }
-
-/* Badge */
-.badge {
-  display: inline-block; padding: 3px 10px; border-radius: 4px;
-  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-  white-space: nowrap; flex-shrink: 0;
+.sev-critical { color: var(--sev-critical); }
+.sev-high { color: var(--sev-high); }
+.sev-medium { color: var(--sev-medium); }
+.sev-low { color: var(--sev-low); }
+.sev-info { color: var(--sev-info); }
+.finding-path {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  margin: 6px 0 0 0;
 }
-.badge-critical { background: #4a1525; color: var(--severity-critical); }
-.badge-high { background: #4a1e15; color: var(--severity-high); }
-.badge-medium { background: #4a3e15; color: var(--severity-medium); }
-.badge-low { background: #152a4a; color: var(--severity-low); }
-.badge-info { background: #2a2a2a; color: var(--severity-info); }
+.finding-desc { margin-top: 12px; max-width: 72ch; color: var(--text-dim); }
+.evidence {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #cdd3e0;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.recommendation { margin-top: 14px; max-width: 72ch; }
+.rec-label {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
 
 /* Errors */
-.errors-section { margin-bottom: 24px; }
-.errors-section .section { border-left: 3px solid var(--severity-critical); }
-.errors-section .section h2 { color: var(--severity-critical); border-bottom-color: #4a1525; }
-.errors-section ul { list-style: none; padding: 0; }
-.errors-section li {
-  padding: 8px 12px; margin-bottom: 4px; border-radius: 6px;
-  background: var(--bg-card-alt); color: var(--severity-critical); font-size: 0.88rem;
+.errors {
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--sev-critical);
+  border-radius: 4px;
+}
+.errors .rec-label { color: var(--sev-critical); }
+.errors ul { list-style: none; }
+.errors li { font-family: var(--mono); font-size: 0.82rem; color: var(--text-dim); }
+.errors li + li { margin-top: 6px; }
+
+.colophon {
+  padding: 34px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  font-family: var(--mono);
 }
 
-/* Footer */
-.footer { text-align: center; font-size: 0.8rem; color: var(--text-muted); padding: 24px 0 12px; }
-
-/* Responsive */
-@media (max-width: 768px) {
-  .dashboard { grid-template-columns: repeat(2, 1fr); }
-  .summary-row { grid-template-columns: 1fr; }
-  .info-grid { grid-template-columns: 1fr; }
-  .info-modules { grid-column: 1; }
-  body { padding: 12px; }
-}
-@media (max-width: 480px) {
-  .dashboard { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .card { padding: 14px; }
-  .card-count { font-size: 1.5rem; }
+@media (max-width: 640px) {
+  .masthead { flex-direction: column; gap: 24px; }
+  .health { text-align: left; }
+  .health-track { margin-left: 0; }
+  .finding-head { grid-template-columns: auto 1fr; }
+  .finding-head .sev-tag { grid-column: 2; justify-self: start; }
 }
 
-/* Print */
 @media print {
-  body { background: #fff !important; padding: 10px; color: #000; }
-  .header { background: #212f45 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
-  .badge, .health-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .legend-dot, .module-tag, .finding-card .fc-rec { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .section { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
-  .finding-card { break-inside: avoid; }
+  :root { color-scheme: light; }
+  body { background: #fff !important; color: #14131a !important; padding: 0; }
+  .wrap { max-width: none; }
+  .kicker { color: #0b6b76; }
+  h2 { color: #666; }
+  .section, .group, .finding { border-color: #ddd !important; }
+  .masthead { border-color: #ddd; }
+  .lede, .legend-name, .finding-desc, .finding-path, .errors li { color: #444 !important; }
+  .evidence {
+    background: #f5f5f8 !important; border-color: #ddd !important;
+    color: #222 !important;
+  }
+  .module-tag { border-color: #ccc; color: #444; }
+  .health-label { color: inherit; }
+  .finding { break-inside: avoid; }
+  .group { break-before: auto; }
+  .ledger-bar { background: #e5e5e5; }
+  .colophon { color: #777; }
 }
 """
 
@@ -470,9 +568,7 @@ body {
     @classmethod
     def _build_html(cls, report: Report) -> str:
         summary = report.get_summary()
-        duration = (report.completed_at - report.started_at).total_seconds()
-        score, score_label, score_color = cls._calculate_health_score(summary)
-
+        generated = report.completed_at.strftime("%Y-%m-%d %H:%M UTC")
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -482,211 +578,148 @@ body {
 <style>{cls._CSS}</style>
 </head>
 <body>
-<div class="container">
-
-{cls._render_header(report, score, score_label, score_color)}
-{cls._render_dashboard_cards(summary)}
-{cls._render_summary_row(report, summary, duration)}
+<div class="wrap">
+{cls._render_masthead(report, summary)}
+{cls._render_ledger(summary)}
+{cls._render_scope(report)}
 {cls._render_findings(report)}
 {cls._render_errors(report)}
-
-<div class="footer">Report generated by WordPress Reconnaissance Tool</div>
+<div class="colophon">Report generated by WordPress Reconnaissance Tool &middot; {generated}</div>
 </div>
 </body>
 </html>"""
 
     @classmethod
-    def _render_header(cls, report: Report, score: int, score_label: str, score_color: str) -> str:
-        duration = (report.completed_at - report.started_at).total_seconds()
-        return f"""<header class="header">
-  <div class="header-top">
-    <span class="header-label">Reconnaissance Report</span>
-    <span class="health-badge {score_label}" style="background:{score_color}">{score}/100 &middot; {score_label}</span>
+    def _render_masthead(cls, report: Report, summary: dict) -> str:
+        score, score_label, score_color = cls._calculate_health_score(summary)
+        total = summary.get("total", 0)
+        fword = "finding" if total == 1 else "findings"
+        mods = len(report.modules_run)
+        scanned_on = report.completed_at.strftime("%d %b %Y")
+        sc = score_color
+        return f"""<header class="masthead">
+  <div>
+    <span class="kicker">Reconnaissance Report</span>
+    <h1>{cls._esc(report.domain)}</h1>
+    <p class="lede"><b>{total}</b> {fword} across <b>{mods}</b> modules &middot; {scanned_on}</p>
   </div>
-  <h1>{cls._esc(report.domain)}</h1>
-  <div class="header-meta">
-    <span>Target: {cls._esc(report.target)}</span>
-    <span>Date: {report.completed_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</span>
-    <span>Duration: {duration:.1f}s</span>
+  <div class="health">
+    <div class="health-value" style="color:{sc}">{score}<span class="health-den">/100</span></div>
+    <span class="health-label" style="color:{sc}">{score_label}</span>
+    <div class="health-track"><span style="width:{score}%;background:{sc}"></span></div>
   </div>
 </header>"""
 
     @classmethod
-    def _render_dashboard_cards(cls, summary: dict) -> str:
-        cards = []
-        for sev in cls.SEVERITY_ORDER:
-            count = summary.get(sev, 0)
-            accent = cls._SEVERITY_ACCENT.get(sev, "#6c757d")
-            cards.append(f"""<div class="card card-{sev}">
-  <div class="card-count">{count}</div>
-  <div class="card-label">{sev.upper()}</div>
-</div>""")
-        return f'<div class="dashboard">{"".join(cards)}</div>'
-
-    @classmethod
-    def _render_summary_row(cls, report: Report, summary: dict, duration: float) -> str:
-        total = summary.get("total", 0)
-        donut = cls._render_donut_chart(summary)
-
-        modules_html = ""
-        if report.modules_run:
-            tags = "".join(
-                f'<span class="module-tag">{cls._esc(m)}</span>'
-                for m in report.modules_run
-            )
-            modules_html = f"""<div class="info-item info-modules">
-  <span class="info-label">Modules Run</span>
-  <div class="module-list">{tags}</div>
-</div>"""
-
-        return f"""<div class="summary-row">
-  <div class="section donut-section">
-    <h2>Severity Distribution</h2>
-    {donut}
-  </div>
-  <div class="section">
-    <h2>Scan Overview</h2>
-    <div class="info-grid">
-      {modules_html}
-      <div class="info-item">
-        <span class="info-label">Duration</span>
-        <span class="info-value">{duration:.1f}s</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Total Findings</span>
-        <span class="info-value">{total}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Errors</span>
-        <span class="info-value">{len(report.errors)}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Health Score</span>
-        <span class="info-value">{cls._calculate_health_score(summary)[0]}/100</span>
-      </div>
-    </div>
-  </div>
-</div>"""
-
-    @classmethod
-    def _render_donut_chart(cls, summary: dict) -> str:
+    def _render_ledger(cls, summary: dict) -> str:
         total = summary.get("total", 0)
         if total == 0:
-            return '<div style="color:var(--text-muted);font-size:0.9rem;padding:20px;">No findings to display</div>'
+            return """<section class="section">
+  <div class="section-head"><h2>Severity Ledger</h2><span class="count">0 findings</span></div>
+  <p class="finding-desc">No findings were recorded for this scan.</p>
+</section>"""
 
-        cx, cy = 80, 80
-        inner_r = 46
-        stroke_w = 18
-        circumference = 2 * math.pi * inner_r
-
-        circles = []
-        cumulative = 0.0
-        colors = cls._SEVERITY_ACCENT
-
+        segments = ""
+        legend = ""
         for sev in cls.SEVERITY_ORDER:
             count = summary.get(sev, 0)
             if count == 0:
                 continue
-            pct = count / total
-            seg_len = circumference * pct
-            offset = -cumulative * circumference
-            cumulative += pct
-            circles.append(
-                f'<circle cx="{cx}" cy="{cy}" r="{inner_r}" fill="none" '
-                f'stroke="{colors[sev]}" stroke-width="{stroke_w}" '
-                f'stroke-dasharray="{seg_len:.1f} {circumference:.1f}" '
-                f'stroke-dashoffset="{offset:.1f}" '
-                f'transform="rotate(-90 {cx} {cy})" stroke-linecap="butt"/>'
+            color = cls._SEVERITY_ACCENT[sev]
+            segments += (
+                f'<span class="seg" style="width:{count / total * 100:.3f}%;'
+                f'background:{color}"></span>'
             )
+            legend += f"""<div class="legend-item">
+  <span class="legend-chip" style="background:{color}"></span>
+  <span class="legend-count">{count}</span>
+  <span class="legend-name">{cls._SEVERITY_LABEL[sev]}</span>
+</div>"""
 
-        legend_items = ""
-        for sev in cls.SEVERITY_ORDER:
-            count = summary.get(sev, 0)
-            if count == 0:
-                continue
-            accent = colors[sev]
-            legend_items += (
-                f'<span class="legend-item">'
-                f'<span class="legend-dot" style="background:{accent}"></span>'
-                f'{sev} ({count})</span>'
-            )
+        return f"""<section class="section">
+  <div class="section-head"><h2>Severity Ledger</h2><span class="count">{total} total</span></div>
+  <div class="ledger-bar">{segments}</div>
+  <div class="ledger-legend">{legend}</div>
+</section>"""
 
-        return f"""<svg width="160" height="160" viewBox="0 0 160 160" style="display:block;">
-  <circle cx="{cx}" cy="{cy}" r="{inner_r}" fill="none" stroke="var(--border-color)" stroke-width="{stroke_w}" opacity="0.5"/>
-  {"".join(circles)}
-  <circle cx="{cx}" cy="{cy}" r="28" fill="var(--bg-card)"/>
-  <text x="{cx}" y="{cy - 4}" text-anchor="middle" fill="var(--text-primary)" font-size="26" font-weight="700" font-family="inherit">{total}</text>
-  <text x="{cx}" y="{cy + 16}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="inherit">findings</text>
-</svg>
-<div class="donut-legend">{legend_items}</div>"""
+    @classmethod
+    def _render_scope(cls, report: Report) -> str:
+        duration = (report.completed_at - report.started_at).total_seconds()
+        finished = report.completed_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        modules = "".join(
+            f'<span class="module-tag">{cls._esc(m)}</span>' for m in report.modules_run
+        )
+        if not modules:
+            modules = '<span class="module-tag">none</span>'
+        return f"""<section class="section">
+  <div class="section-head"><h2>Scope &amp; Execution</h2></div>
+  <dl class="facts">
+    <div class="fact"><dt>Target</dt><dd class="mono">{cls._esc(report.target)}</dd></div>
+    <div class="fact"><dt>Scan finished</dt><dd class="mono">{finished}</dd></div>
+    <div class="fact"><dt>Duration</dt><dd class="mono">{duration:.1f}s</dd></div>
+    <div class="fact"><dt>Modules run</dt><dd><div class="modules">{modules}</div></dd></div>
+  </dl>
+</section>"""
 
     @classmethod
     def _render_findings(cls, report: Report) -> str:
-        sections = []
         groups = [
-            ("critical", "high", "Critical &amp; High Findings", ["critical", "high"], True),
-            ("medium", "low", "Medium &amp; Low Findings", ["medium", "low"], False),
-            ("info", None, "Informational", ["info"], False),
+            ("Critical &amp; High", ["critical", "high"]),
+            ("Medium &amp; Low", ["medium", "low"]),
+            ("Informational", ["info"]),
         ]
-        for sev_a, sev_b, title, severities, default_open in groups:
-            findings = report.get_findings_by_severity(sev_a)
-            if sev_b:
-                findings += report.get_findings_by_severity(sev_b)
+        sections = []
+        index = 0
+        for title, severities in groups:
+            findings = []
+            for sev in severities:
+                findings.extend(report.get_findings_by_severity(sev))
             if not findings:
                 continue
-            items = "\n".join(cls._render_finding(f) for f in findings)
-
-            dots = "".join(
-                f'<span class="dot" style="background:{cls._SEVERITY_ACCENT[s]}"></span>'
-                for s in severities
-                if any(f.severity == s for f in findings)
-            )
-
-            sections.append(f"""<div class="findings-group">
-  <details{" open" if default_open else ""}>
-    <summary>
-      <span>{title}</span>
-      <span class="severity-dots">{dots}</span>
-    </summary>
-    <div class="findings-body">
-      {items}
-    </div>
-  </details>
-</div>""")
-        return "\n".join(sections)
+            items = []
+            for f in findings:
+                index += 1
+                items.append(cls._render_finding(f, index))
+            count = len(findings)
+            word = "finding" if count == 1 else "findings"
+            sections.append(f"""<section class="group">
+  <div class="group-head"><h2>{title}</h2><span class="count">{count} {word}</span></div>
+  {"".join(items)}
+</section>""")
+        return "".join(sections)
 
     @classmethod
-    def _render_finding(cls, f: Finding) -> str:
-        rec_html = ""
-        if f.recommendation:
-            rec_html = f'<div class="fc-rec"><strong>Recommendation:</strong> {cls._esc(f.recommendation)}</div>'
-        evidence_html = ""
+    def _render_finding(cls, f: Finding, index: int) -> str:
+        evidence = ""
         if f.evidence:
-            evidence_html = f'<div class="fc-evidence">{cls._esc(f.evidence)}</div>'
-        return f"""<div class="finding-card" style="border-left-color:{cls._SEVERITY_ACCENT.get(f.severity, '#6c757d')}">
-  <div class="fc-top">
-    <span class="fc-title">{cls._esc(f.title)}</span>
-    <span class="badge badge-{f.severity}">{f.severity.upper()}</span>
+            evidence = f'<pre class="evidence">{cls._esc(f.evidence)}</pre>'
+        recommendation = ""
+        if f.recommendation:
+            recommendation = (
+                f'<div class="recommendation"><span class="rec-label">Recommendation</span>'
+                f"{cls._esc(f.recommendation)}</div>"
+            )
+        return f"""<article class="finding">
+  <div class="finding-head">
+    <span class="finding-index">{index:02d}</span>
+    <span class="finding-title">{cls._esc(f.title)}</span>
+    <span class="sev-tag sev-{f.severity}">{cls._SEVERITY_LABEL.get(f.severity, f.severity)}</span>
   </div>
-  <div class="fc-mod-step">{cls._esc(f.module)} / {cls._esc(f.step)}</div>
-  <div class="fc-desc">{cls._esc(f.description)}</div>
-  {evidence_html}
-  {rec_html}
-</div>"""
+  <div class="finding-path">{cls._esc(f.module)} / {cls._esc(f.step)}</div>
+  <p class="finding-desc">{cls._esc(f.description)}</p>
+  {evidence}
+  {recommendation}
+</article>"""
 
     @classmethod
     def _render_errors(cls, report: Report) -> str:
         if not report.errors:
             return ""
-        items = "\n".join(
-            f"<li>{cls._esc(e)}</li>" for e in report.errors
-        )
-        return f"""<div class="errors-section">
-  <div class="section">
-    <h2>Errors</h2>
-    <ul>{items}</ul>
-  </div>
-</div>"""
+        items = "".join(f"<li>{cls._esc(e)}</li>" for e in report.errors)
+        return f"""<section class="section">
+  <div class="section-head"><h2>Errors</h2><span class="count">{len(report.errors)}</span></div>
+  <div class="errors"><span class="rec-label">Scan errors</span><ul>{items}</ul></div>
+</section>"""
 
     @staticmethod
     def _calculate_health_score(summary: dict) -> tuple[int, str, str]:
@@ -696,10 +729,10 @@ body {
         low = summary.get("low", 0)
         score = max(0, 100 - (critical * 25 + high * 10 + medium * 3 + low * 1))
         if score >= 80:
-            return score, "good", "#2d6a4f"
+            return score, "good", "#43b581"
         elif score >= 50:
-            return score, "fair", "#e9c46a"
-        return score, "poor", "#e63946"
+            return score, "fair", "#f2c14e"
+        return score, "poor", "#ff5c6c"
 
     @staticmethod
     def _esc(s: str) -> str:
@@ -707,25 +740,231 @@ body {
 
 
 class PdfFormatter:
-    """Format report as PDF via WeasyPrint."""
+    """Format report as PDF via xhtml2pdf (pure Python, cross-platform)."""
+
+    _SEVERITY_COLORS = {
+        "critical": "#b91c1c",
+        "high": "#ea580c",
+        "medium": "#ca8a04",
+        "low": "#1d4ed8",
+        "info": "#6b7280",
+    }
+
+    _CSS = """\
+@page {
+  size: a4 portrait;
+  @frame content_frame { left: 45pt; width: 505pt; top: 40pt; height: 710pt; }
+  @frame footer_frame {
+    -pdf-frame-content: footer_content;
+    left: 45pt; width: 505pt; top: 765pt; height: 30pt;
+  }
+}
+#footer_content { text-align: center; font-size: 8pt; color: #8a8a95; }
+body { font-family: Helvetica, sans-serif; font-size: 10pt; color: #1a1a24; }
+h1 { font-size: 22pt; margin: 0 0 3pt 0; color: #16202a; }
+h2 {
+  font-size: 9.5pt; margin: 20pt 0 9pt 0; color: #6a6a76;
+  border-bottom: 0.75pt solid #d9d9e0; padding-bottom: 4pt;
+  -pdf-keep-with-next: true; letter-spacing: 1.5pt; text-transform: uppercase;
+}
+p { margin: 0 0 6pt 0; }
+.kicker { font-size: 8pt; color: #0b6b76; letter-spacing: 2pt; text-transform: uppercase; }
+.header { margin-bottom: 4pt; }
+.header .lede { font-size: 9.5pt; color: #55555f; }
+.header .meta { font-size: 8.5pt; color: #55555f; margin-top: 5pt; }
+.score { font-size: 19pt; font-weight: bold; margin: 6pt 0 2pt 0; }
+.score small { font-size: 9pt; color: #8a8a95; font-weight: normal; }
+table.bar { width: 505pt; margin-bottom: 10pt; }
+table.bar td { height: 9pt; padding: 0; font-size: 1pt; }
+.legend { font-size: 9pt; color: #44444f; }
+.legend b { font-size: 10.5pt; }
+table.facts { width: 505pt; }
+table.facts td {
+  border: 0.5pt solid #e2e2e8; padding: 5pt 8pt; font-size: 9pt;
+  vertical-align: top;
+}
+table.facts td.label { background-color: #f4f4f7; width: 118pt; color: #44444f; }
+.finding { border-top: 0.75pt solid #e2e2e8; padding: 11pt 0 12pt 0; }
+.idx { font-family: Courier, monospace; font-size: 9pt; color: #8a8a95; }
+.title { font-size: 12pt; font-weight: bold; color: #16202a; }
+.sev { font-size: 7.5pt; font-weight: bold; letter-spacing: 1pt; text-transform: uppercase; }
+.path {
+  font-family: Courier, monospace; font-size: 8pt; color: #7a7a86;
+  margin: 3pt 0 6pt 0;
+}
+.desc { font-size: 9.5pt; color: #33333d; margin-bottom: 6pt; }
+.evidence {
+  background-color: #f4f4f7; border: 0.5pt solid #e2e2e8;
+  padding: 7pt 9pt; font-family: Courier, monospace; font-size: 8pt;
+  white-space: pre-wrap; color: #22222a; margin-bottom: 7pt;
+}
+.rec { font-size: 9pt; color: #33333d; }
+.rec .label {
+  font-size: 7.5pt; font-weight: bold; letter-spacing: 1pt;
+  text-transform: uppercase; color: #0b6b76;
+}
+.errors { border: 0.75pt solid #c1121f; background-color: #fdf2f3; padding: 8pt 10pt; }
+.errors li { font-size: 9pt; color: #8a1220; }
+"""
 
     @classmethod
     def format(cls, report: Report) -> bytes:
-        html = HtmlFormatter.format(report)
+        """Render the report to PDF bytes using xhtml2pdf."""
         try:
-            from weasyprint import HTML
+            from xhtml2pdf import pisa
         except ImportError:
             raise ImportError(
-                "WeasyPrint is required for PDF output. Install it with: "
-                "pip install weasyprint   # or: pip install 'wordpress-recon-tool[pdf]'"
+                "xhtml2pdf is required for PDF output. Install it with: "
+                "pip install xhtml2pdf   # or: pip install 'wordpress-recon-tool[pdf]'"
             ) from None
-        return HTML(string=html).write_pdf()
+
+        buffer = io.BytesIO()
+        result = pisa.CreatePDF(
+            src=cls._build_html(report), dest=buffer, encoding="utf-8"
+        )
+        if getattr(result, "err", 0):
+            raise RuntimeError("xhtml2pdf failed to render the PDF report")
+        return buffer.getvalue()
 
     @classmethod
     def save(cls, report: Report, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as f:
             f.write(cls.format(report))
+
+    @classmethod
+    def _build_html(cls, report: Report) -> str:
+        return (
+            f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reconnaissance Report: {HtmlFormatter._esc(report.domain)}</title>
+<style>{cls._CSS}</style>
+</head>
+<body>
+{cls._render_header(report)}
+{cls._render_summary(report)}
+{cls._render_findings(report)}
+{cls._render_errors(report)}
+<div id="footer_content">WordPress Reconnaissance Tool &middot; Page """
+            """<pdf:pagenumber example="00"/> of <pdf:pagecount/></div>
+</body>
+</html>"""
+        )
+
+    @classmethod
+    def _render_header(cls, report: Report) -> str:
+        summary = report.get_summary()
+        score, score_label, score_color = HtmlFormatter._calculate_health_score(summary)
+        duration = (report.completed_at - report.started_at).total_seconds()
+        return f"""<div class="header">
+  <div class="kicker">Reconnaissance Report</div>
+  <h1>{HtmlFormatter._esc(report.domain)}</h1>
+  <p class="lede"><b>{summary.get("total", 0)}</b> findings across
+    <b>{len(report.modules_run)}</b> modules</p>
+  <p class="score" style="color:{score_color}">{score}<small>/100 &middot; {score_label}</small></p>
+  <div class="meta">
+    Target: {HtmlFormatter._esc(report.target)}<br/>
+    Scan finished: {report.completed_at.strftime("%Y-%m-%d %H:%M:%S UTC")} &nbsp;|&nbsp;
+    Duration: {duration:.1f}s
+  </div>
+</div>"""
+
+    @classmethod
+    def _render_summary(cls, report: Report) -> str:
+        summary = report.get_summary()
+        total = summary.get("total", 0)
+
+        cells = []
+        legend = []
+        for sev in HtmlFormatter.SEVERITY_ORDER:
+            count = summary.get(sev, 0)
+            if count == 0:
+                continue
+            color = cls._SEVERITY_COLORS[sev]
+            cells.append(
+                f'<td width="{count / total * 100:.2f}%" '
+                f'style="background-color:{color}">&nbsp;</td>'
+            )
+            legend.append(
+                f'<b style="color:{color}">{count}</b> '
+                f'{HtmlFormatter._SEVERITY_LABEL[sev]}'
+            )
+
+        if not cells:
+            ledger = "<p class=\"lede\">No findings were recorded for this scan.</p>"
+        else:
+            spaced = " &nbsp;&nbsp; ".join(legend)
+            ledger = (
+                '<table class="bar" cellspacing="0" cellpadding="0">'
+                f'<tr>{"".join(cells)}</tr></table>'
+                f'<p class="legend">{spaced}</p>'
+            )
+
+        modules = ", ".join(HtmlFormatter._esc(m) for m in report.modules_run) or "none"
+        finished = report.completed_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        return f"""<h2>Severity Ledger</h2>
+{ledger}
+<h2>Scope &amp; Execution</h2>
+<table class="facts" cellspacing="0" cellpadding="0">
+  <tr><td class="label">Target</td><td>{HtmlFormatter._esc(report.target)}</td></tr>
+  <tr><td class="label">Scan finished</td><td>{finished}</td></tr>
+  <tr><td class="label">Total findings</td><td>{total}</td></tr>
+  <tr><td class="label">Modules run</td><td>{modules}</td></tr>
+  <tr><td class="label">Errors</td><td>{len(report.errors)}</td></tr>
+</table>"""
+
+    @classmethod
+    def _render_findings(cls, report: Report) -> str:
+        groups = [
+            ("Critical &amp; High", ["critical", "high"]),
+            ("Medium &amp; Low", ["medium", "low"]),
+            ("Informational", ["info"]),
+        ]
+        sections = []
+        index = 0
+        for title, severities in groups:
+            findings = []
+            for sev in severities:
+                findings.extend(report.get_findings_by_severity(sev))
+            if not findings:
+                continue
+            items = []
+            for f in findings:
+                index += 1
+                items.append(cls._render_finding(f, index))
+            sections.append(f"<h2>{title}</h2>{''.join(items)}")
+        return "".join(sections)
+
+    @classmethod
+    def _render_finding(cls, f: Finding, index: int) -> str:
+        color = cls._SEVERITY_COLORS.get(f.severity, "#6b7280")
+        label = HtmlFormatter._SEVERITY_LABEL.get(f.severity, f.severity)
+        evidence = ""
+        if f.evidence:
+            evidence = f'<div class="evidence">{HtmlFormatter._esc(f.evidence)}</div>'
+        recommendation = ""
+        if f.recommendation:
+            recommendation = (
+                '<div class="rec"><span class="label">Recommendation</span><br/>'
+                f"{HtmlFormatter._esc(f.recommendation)}</div>"
+            )
+        return f"""<div class="finding">
+  <div class="title"><span class="idx">{index:02d}</span> {HtmlFormatter._esc(f.title)}
+    <span class="sev" style="color:{color}">{label}</span></div>
+  <div class="path">{HtmlFormatter._esc(f.module)} / {HtmlFormatter._esc(f.step)}</div>
+  <div class="desc">{HtmlFormatter._esc(f.description)}</div>
+  {evidence}
+  {recommendation}
+</div>"""
+
+    @classmethod
+    def _render_errors(cls, report: Report) -> str:
+        if not report.errors:
+            return ""
+        items = "".join(f"<li>{HtmlFormatter._esc(e)}</li>" for e in report.errors)
+        return f'<h2>Errors</h2><div class="errors"><ul>{items}</ul></div>'
 
 
 def generate_report_filename(domain: str, timestamp: datetime) -> str:

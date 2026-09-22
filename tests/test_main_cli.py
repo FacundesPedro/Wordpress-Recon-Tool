@@ -142,7 +142,7 @@ class TestSaveReport:
 
     def test_pdf_import_error_does_not_crash(self, report, config, tmp_path):
         config.output_format = "pdf"
-        with patch("main.PdfFormatter.save", side_effect=ImportError("No module named weasyprint")):
+        with patch("main.PdfFormatter.save", side_effect=ImportError("No module named xhtml2pdf")):
             _save_report(report, config, None, tmp_path)
 
     def test_pdf_generic_error_does_not_crash(self, report, config, tmp_path):

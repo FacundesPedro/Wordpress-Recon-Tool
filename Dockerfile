@@ -20,17 +20,6 @@ ARG TARGETARCH
 ARG SECLISTS_PLUGINS_URL=https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-plugins.fuzz.txt
 ARG SECLISTS_THEMES_URL=https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-themes.fuzz.txt
 
-# Runtime libraries for WeasyPrint PDF output (Debian trixie package names)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpango-1.0-0 \
-    libpangoft2-1.0-0 \
-    libpangocairo-1.0-0 \
-    libharfbuzz-subset0 \
-    libcairo2 \
-    libgdk-pixbuf-2.0-0 \
-    libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN groupadd -r recon && useradd -r -m -g recon recon
 
 WORKDIR /app

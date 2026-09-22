@@ -1,8 +1,7 @@
 """Tests for Report dataclass, JsonFormatter, MarkdownFormatter, and PdfFormatter."""
 
-import sys
-from datetime import datetime, timedelta
-from pathlib import Path
+import types
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,9 +17,20 @@ from utils.report import (
 
 
 @pytest.fixture
-def mock_weasyprint():
-    mock_mod = MagicMock()
-    with patch.dict("sys.modules", {"weasyprint": mock_mod}):
+def mock_xhtml2pdf():
+    pisa = MagicMock()
+
+    def _create(src=None, dest=None, encoding=None):
+        if dest is not None:
+            dest.write(b"%PDF-1.4 mock")
+        result = MagicMock()
+        result.err = 0
+        return result
+
+    pisa.CreatePDF.side_effect = _create
+    mock_mod = types.ModuleType("xhtml2pdf")
+    mock_mod.__dict__["pisa"] = pisa
+    with patch.dict("sys.modules", {"xhtml2pdf": mock_mod}):
         yield mock_mod
 
 
@@ -182,40 +192,33 @@ class TestMarkdownFormatter:
 
 
 class TestPdfFormatter:
-    def test_format_raises_import_error_without_weasyprint(self):
+    def test_format_raises_import_error_without_xhtml2pdf(self):
         report = make_report()
-        with pytest.raises(ImportError, match="WeasyPrint"):
+        with patch.dict("sys.modules", {"xhtml2pdf": None}), pytest.raises(
+            ImportError, match="xhtml2pdf"
+        ):
             PdfFormatter.format(report)
 
-    def test_save_raises_import_error_without_weasyprint(self, tmp_path):
+    def test_save_raises_import_error_without_xhtml2pdf(self, tmp_path):
         report = make_report()
         out_path = tmp_path / "report.pdf"
-        with pytest.raises(ImportError, match="WeasyPrint"):
+        with patch.dict("sys.modules", {"xhtml2pdf": None}), pytest.raises(
+            ImportError, match="xhtml2pdf"
+        ):
             PdfFormatter.save(report, out_path)
 
-    def test_format_with_mocked_weasyprint(self, mock_weasyprint):
-        mock_html = MagicMock()
-        mock_html_instance = MagicMock()
-        mock_html.return_value = mock_html_instance
-        mock_html_instance.write_pdf.return_value = b"%PDF-1.4 mock"
-        mock_weasyprint.HTML = mock_html
-
+    def test_format_with_mocked_xhtml2pdf(self, mock_xhtml2pdf):
         report = make_report(findings=[make_sample_finding("info")])
+
         result = PdfFormatter.format(report)
 
         assert result == b"%PDF-1.4 mock"
-        mock_html.assert_called_once()
-        mock_html_instance.write_pdf.assert_called_once()
+        assert mock_xhtml2pdf.pisa.CreatePDF.call_count == 1
 
-    def test_save_with_mocked_weasyprint(self, mock_weasyprint, tmp_path):
-        mock_html = MagicMock()
-        mock_html_instance = MagicMock()
-        mock_html.return_value = mock_html_instance
-        mock_html_instance.write_pdf.return_value = b"%PDF-1.4 mock"
-        mock_weasyprint.HTML = mock_html
-
+    def test_save_with_mocked_xhtml2pdf(self, mock_xhtml2pdf, tmp_path):
         report = make_report()
         out_path = tmp_path / "report.pdf"
+
         PdfFormatter.save(report, out_path)
 
         assert out_path.exists()

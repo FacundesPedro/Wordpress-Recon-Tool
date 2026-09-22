@@ -499,8 +499,8 @@ def _save_report(
             console.print(f"[green]PDF report: {pdf_path}[/green]")
         except ImportError:
             console.print(
-                "[yellow]Warning: PDF report skipped — install weasyprint "
-                "(pip install weasyprint)[/yellow]"
+                "[yellow]Warning: PDF report skipped — install xhtml2pdf "
+                "(pip install xhtml2pdf)[/yellow]"
             )
         except Exception as exc:
             console.print(f"[yellow]Warning: PDF report failed ({exc})[/yellow]")

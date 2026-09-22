@@ -1,6 +1,4 @@
 """Tests for HtmlFormatter report output."""
-from pathlib import Path
-
 from core.finding import Finding
 from utils.report import HtmlFormatter, Report
 
@@ -51,17 +49,17 @@ class TestHtmlDocumentStructure:
 
     def test_contains_container_div(self):
         html = HtmlFormatter.format(make_report())
-        assert 'class="container"' in html
+        assert 'class="wrap"' in html
 
 
 class TestHtmlSummary:
-    """Tests for dashboard and severity distribution."""
+    """Tests for the severity ledger and distribution."""
 
-    def test_severity_distribution_section_present(self):
+    def test_severity_ledger_section_present(self):
         html = HtmlFormatter.format(make_report())
-        assert "Severity Distribution" in html
+        assert "Severity Ledger" in html
 
-    def test_shows_severity_counts_in_cards(self):
+    def test_shows_severity_labels_in_legend(self):
         findings = [
             make_finding("critical"),
             make_finding("high"),
@@ -70,31 +68,32 @@ class TestHtmlSummary:
             make_finding("info"),
         ]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "CRITICAL" in html
-        assert "HIGH" in html
-        assert "MEDIUM" in html
-        assert "LOW" in html
-        assert "INFO" in html
+        assert "Critical" in html
+        assert "High" in html
+        assert "Medium" in html
+        assert "Low" in html
+        assert "Info" in html
 
-    def test_total_count_in_donut_or_overview(self):
+    def test_total_count_in_ledger(self):
         findings = [make_finding("high"), make_finding("medium")]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "2" in html
-        assert "Total Findings" in html
+        assert "2 total" in html
+        assert "Severity Ledger" in html
 
 
 class TestHtmlModulesRun:
-    """Tests for modules run section."""
+    """Tests for the scope/modules section."""
 
     def test_modules_section_present_when_modules_exist(self):
         html = HtmlFormatter.format(make_report(modules=["access", "discovery"]))
-        assert "Modules Run" in html
+        assert "Modules run" in html
         assert "access" in html
         assert "discovery" in html
 
-    def test_modules_section_absent_when_no_modules(self):
+    def test_modules_section_shows_none_when_empty(self):
         html = HtmlFormatter.format(make_report())
-        assert "Modules Run" not in html
+        assert "Modules run" in html
+        assert '<span class="module-tag">none</span>' in html
 
 
 class TestHtmlFindings:
@@ -103,12 +102,12 @@ class TestHtmlFindings:
     def test_critical_and_high_findings_section(self):
         findings = [make_finding("critical"), make_finding("high")]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "Critical &amp; High Findings" in html
+        assert "Critical &amp; High" in html
 
     def test_medium_and_low_findings_section(self):
         findings = [make_finding("medium"), make_finding("low")]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "Medium &amp; Low Findings" in html
+        assert "Medium &amp; Low" in html
 
     def test_info_findings_section(self):
         findings = [make_finding("info")]
@@ -118,7 +117,8 @@ class TestHtmlFindings:
     def test_finding_shows_severity_badge(self):
         findings = [make_finding("high")]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "HIGH" in html
+        assert 'class="sev-tag sev-high"' in html
+        assert ">High<" in html
 
     def test_finding_shows_title(self):
         findings = [make_finding("medium")]
@@ -139,6 +139,7 @@ class TestHtmlFindings:
         f = make_finding("high", evidence="important evidence content")
         html = HtmlFormatter.format(make_report(findings=[f]))
         assert "important evidence content" in html
+        assert 'class="evidence"' in html
 
     def test_finding_shows_recommendation(self):
         f = make_finding("high", recommendation="recommended action")
@@ -149,7 +150,7 @@ class TestHtmlFindings:
     def test_finding_no_evidence_omits_evidence_block(self):
         f = make_finding("high", evidence="")
         html = HtmlFormatter.format(make_report(findings=[f]))
-        assert 'class="fc-evidence"' not in html
+        assert 'class="evidence"' not in html
 
     def test_finding_no_recommendation_omits_rec(self):
         f = make_finding("high", recommendation="")
@@ -159,7 +160,7 @@ class TestHtmlFindings:
     def test_multiple_findings_all_rendered(self):
         findings = [make_finding("high"), make_finding("high")]
         html = HtmlFormatter.format(make_report(findings=findings))
-        assert "Critical &amp; High Findings" in html
+        assert "Critical &amp; High" in html
         assert html.count("Test high finding") == 2
 
 
@@ -183,7 +184,7 @@ class TestHtmlErrors:
 
     def test_errors_section_absent_when_no_errors(self):
         html = HtmlFormatter.format(make_report())
-        assert 'class="errors-section"' not in html
+        assert 'class="errors"' not in html
 
 
 class TestHtmlEscape:
@@ -217,4 +218,4 @@ class TestHtmlSave:
         assert out_path.exists()
         content = out_path.read_text()
         assert "<!DOCTYPE html>" in content
-        assert "INFO" in content
+        assert "Info" in content
