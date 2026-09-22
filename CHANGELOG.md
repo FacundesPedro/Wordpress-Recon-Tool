@@ -1,10 +1,23 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-12
+## Last Updated: 2026-09-22
 
 ---
 
 ## Recent Changes
+
+### S19 - Cross-platform PDF (xhtml2pdf) + HTML/PDF report redesign (2026-09-22)
+| File | Change | Notes |
+|------|--------|-------|
+| `utils/report.py` | **REWRITTEN** | `PdfFormatter` now uses pure-Python **xhtml2pdf** (`pisa.CreatePDF` into `BytesIO`, `result.err` check, friendly `ImportError`) instead of WeasyPrint, whose native Pango/Cairo imports raise `OSError` on every OS unless system libraries are installed. Renders a dedicated print template (`@page` + static footer frame with `<pdf:pagenumber>`/`<pdf:pagecount>`, severity ledger bar, Scope & Execution facts table, numbered findings, no side-stripe borders). |
+| `utils/report.py` | **REDESIGNED** | `HtmlFormatter` report rebuilt: removed the five hero-metric cards, the decorative donut SVG, the SaaS gradient masthead, and the 4px colored side-stripe borders on findings. Replaced with a flat masthead + health gauge, a proportional **Severity Ledger** bar with legend, a Scope & Execution facts grid, and globally numbered findings with hairline separators and severity tags. |
+| `pyproject.toml`, `requirements.txt` | **CHANGED** | `weasyprint` → `xhtml2pdf>=0.2.17` (optional `[pdf]` extra and dev requirements). |
+| `Dockerfile` | **SIMPLIFIED** | Removed the WeasyPrint native-library `apt` block (`libpango*`, `libcairo2`, `libgdk-pixbuf-2.0-0`, `libffi-dev`); PDF is pure-Python in-image. |
+| `main.py` | **UPDATED** | PDF `ImportError` warning now names xhtml2pdf. |
+| `tests/test_pdf_formatter.py` | **REWRITTEN** | Missing-dependency `ImportError`, mocked `xhtml2pdf.pisa` returns PDF bytes, UTF-8 encoding pass-through, render-error `RuntimeError`, `save` writes bytes. |
+| `tests/test_report_utils.py` | **UPDATED** | `mock_weasyprint` fixture → `mock_xhtml2pdf`; PDF tests updated. |
+| `tests/test_html_formatter.py` | **UPDATED** | Assertions moved to the new markup contract (`wrap`, Severity Ledger, numbered findings, `.evidence`, `.errors`, title-case severities). |
+| Verification | — | Full suite **1727 passing** (the 4 pre-existing WeasyPrint/pango env failures are gone); ruff clean on changed files (two pre-existing `report.py` violations remain: `I001`, long `_esc` line). Generated real output: HTML before/after screenshots and a 4-page PDF (valid `%PDF` header, `Page 1 of 4` footer, no xhtml2pdf warnings). |
 
 ### S18 - Nmap output-format fix found by Docker end-to-end run (2026-09-12)
 | File | Change | Notes |

@@ -107,7 +107,7 @@ Research-driven expansion in 7 phases — all implemented and tested (96 steps, 
 | 43 | — | **Generic web security: `webapp` module + `web` profile + Nmap integration** — 10 new steps, 139 new tests (see "Generic Web App Security ✅" below) |
 | 44 | — | **Webapp module expansion: 5 new research steps + 6 refinements** — CSP audit, API surface, admin surface, open redirect, host header; 80 new tests, 1419 total (see "Webapp Research Expansion ✅" below) |
 
-**Current state:** 14 modules, 96 steps, 1605 tests passing (4 pre-existing weasyprint environment failures unrelated to code). Web pentest expansion + active module (`active` tier 5, 15 gated steps), `intrusive`/`web-intrusive` profiles for authorized client assessments — see AGENTS.md for config reference.
+**Current state:** 14 modules, 96 steps, 1727 tests passing (0 PDF env failures — pure-Python xhtml2pdf replaced WeasyPrint). Web pentest expansion + active module (`active` tier 5, 15 gated steps), `intrusive`/`web-intrusive` profiles for authorized client assessments — see AGENTS.md for config reference.
 
 ---
 
@@ -281,20 +281,18 @@ Key files: `steps/infrastructure/hosting_step.py`, registered in `Infrastructure
 
 Key files: `utils/report.py`, `config.py` (output_format extended).
 
-### 8b. HTML Dashboard Report ✅
+### 8b. HTML Report ✅
 
-**Status:** Enhanced. `HtmlFormatter` produces a self-contained HTML page with:
-  - Dark theme dashboard using deep-space color palette (`#212f45` → `#272640` → `#312244`)
-  - Health score badge (weighted: max(0, 100 - critical*25 - high*10 - medium*3 - low*1))
-  - Five dashboard metric cards (Critical, High, Medium, Low, Info) with severity-colored top borders
-  - SVG donut chart showing severity distribution with legend
-  - Scan Overview panel (modules, duration, total findings, health score)
-  - Collapsible findings sections: Critical+High expanded by default, Medium+Low and Informational collapsed
-  - Finding cards with left-border accent, severity badge, evidence, and recommendation
-  - Responsive grid layout, print styles, XSS-safe HTML escaping
-  - Wraps to PDF via `PdfFormatter` (WeasyPrint)
+**Status:** Redesigned (2026-09-22). `HtmlFormatter` produces a self-contained HTML page with:
+  - Dark, flat report theme (no gradient masthead, no hero-metric card grid, no donut)
+  - Health gauge (weighted: max(0, 100 - critical*25 - high*10 - medium*3 - low*1))
+  - Proportional **Severity Ledger** bar with count/label legend
+  - Scope & Execution facts grid (target, scan finished, duration, modules run)
+  - Globally numbered findings grouped by severity, with severity tags, hairline separators, evidence blocks, and recommendation labels
+  - Responsive layout, print stylesheet, XSS-safe HTML escaping
+  - Wraps to PDF via `PdfFormatter` (xhtml2pdf, pure Python)
 
-Key files: `utils/report.py` (HtmlFormatter).
+Key files: `utils/report.py` (HtmlFormatter, PdfFormatter).
 
 ### 9. Content Crawling / Spider ✅
 
@@ -306,7 +304,7 @@ Key files: `steps/discovery/spider_step.py`, `config.py` (spider_max_depth, spid
 
 ## Unreachable-Target Resilience ✅
 
-**Why:** Scanning an unreachable target (bad DNS, expired TLS cert, firewalled host) previously wasted 70s–10min on silently failing steps, produced noise findings, then crashed on PDF output when WeasyPrint was missing.
+**Why:** Scanning an unreachable target (bad DNS, expired TLS cert, firewalled host) previously wasted 70s–10min on silently failing steps, produced noise findings, then crashed on PDF output when the PDF engine was missing.
 
 **Status:** Implemented. Four features:
 
@@ -317,7 +315,7 @@ Key files: `steps/discovery/spider_step.py`, `config.py` (spider_max_depth, spid
 `HttpClient._execute()` counts consecutive transport-level failures. After `unreachable_threshold` (default 5) consecutive errors, the target is marked unreachable and `Runner` skips remaining steps and tiers. Configurable via `WP_UNREACHABLE_THRESHOLD`.
 
 ### 3. Graceful Report Degradation
-`_save_report` wraps every formatter in try/except. A missing WeasyPrint now prints a warning ("install weasyprint") instead of crashing the whole scan. `weasyprint>=60.0` added to `requirements.txt`.
+`_save_report` wraps every formatter in try/except. A missing xhtml2pdf now prints a warning ("install xhtml2pdf") instead of crashing the whole scan. `xhtml2pdf>=0.2.17` added to `requirements.txt`.
 
 ### 4. Report Noise Cleanup
 Config/tool/absence issues are now `logger.warning` only, not findings:
