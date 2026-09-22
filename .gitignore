@@ -102,3 +102,8 @@ reports/*
 # External / Production Wordlists
 # =========================
 wordlists/external/
+
+# =========================
+# Playwright MCP artifacts
+# =========================
+.playwright-mcp/
