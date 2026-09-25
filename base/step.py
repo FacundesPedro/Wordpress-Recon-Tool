@@ -7,6 +7,7 @@ All steps must implement the run() method which returns a list of Findings.
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, Optional
 
 from base.tool import (
@@ -20,6 +21,7 @@ from config import Config
 from core.finding import Finding
 from core.logger import Logger
 from core.target import Target
+from utils.raw_output import RawArtifactWriter
 from utils.tool_version_checker import (
     VersionChecker,
     VersionMismatchError,
@@ -134,6 +136,31 @@ class BaseToolStep(BaseStep):
         self._async_tool_runner: AsyncToolRunner = AsyncToolRunner(self._tool_binary)
         self._tool_runner: ToolRunner = ToolRunner(self._tool_binary)
         self._version_checker = VersionChecker()
+        self._raw_writer = RawArtifactWriter(config=self.config, logger=self.logger)
+
+    def _persist_raw(
+        self,
+        cmd: Optional[list[str]],
+        result: Optional[ToolResult],
+        started_at: Optional[datetime],
+        finished_at: Optional[datetime],
+        native_name: Optional[str] = None,
+        native_content: Optional[str] = None,
+    ) -> None:
+        """Best-effort persistence of raw tool output (never raises)."""
+        try:
+            self._raw_writer.persist(
+                step=self.name,
+                tool=self._tool_binary,
+                cmd=cmd,
+                result=result,
+                started_at=started_at,
+                finished_at=finished_at,
+                native_name=native_name or getattr(self, "raw_native_name", None),
+                native_content=native_content,
+            )
+        except Exception as exc:
+            self.logger.warning(f"Raw output persistence failed: {exc}")
 
     def get_version_requirement(self) -> Optional[VersionRequirement]:
         """Get version requirement from class attributes."""
@@ -289,8 +316,10 @@ class BaseToolStep(BaseStep):
         cmd = self.build_command()
         self.logger.debug(f"Command: {' '.join(cmd)}")
 
+        started_at = datetime.now(timezone.utc)
         try:
             result = await self._async_tool_runner.run(cmd)
+            self._persist_raw(cmd, result, started_at, datetime.now(timezone.utc))
 
             if result.success or result.stdout:
                 self.findings.extend(self.parse_output(result))
@@ -314,6 +343,17 @@ class BaseToolStep(BaseStep):
 
         except ToolTimeoutError:
             self.logger.error(f"{self._tool_binary} timed out")
+            self._persist_raw(
+                cmd,
+                ToolResult(
+                    stdout="",
+                    stderr=f"TIMEOUT after {getattr(self, 'timeout', 'n/a')}s",
+                    returncode=-1,
+                    success=False,
+                ),
+                started_at,
+                datetime.now(timezone.utc),
+            )
             self._add_finding(
                 module=getattr(self, "MODULE", "tools"),
                 severity="low",

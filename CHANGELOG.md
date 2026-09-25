@@ -1,10 +1,39 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-22
+## Last Updated: 2026-09-25
 
 ---
 
 ## Recent Changes
+
+### S20 - Field-report defect sweep: FFUF/TLS/formats/Nuclei + raw tool output (2026-09-25)
+
+Source: authorized engagement against an intranet WordPress/PHP target (see the
+now-removed `UPDATE.md`). Fixes span three phases; full suite **1762 passing**,
+ruff clean on changed code, verified with a rebuilt `INSTALL_TOOLS=true` image.
+
+| File | Change | Notes |
+|------|--------|-------|
+| `steps/tools/ffuf_base.py` | **NEW** | Shared `FfufBaseStep`: drops the non-existent `-ik` flag, adds `-ic`, separates `-t` (threads) from `-rate` (req/s) and the per-request `-timeout`, adds `min_version = "2.0.0"`, and **fails loudly** — non-zero exit or non-JSON output emits a `high` finding instead of "0 results". |
+| `steps/tools/ffuf_directory_step.py`, `ffuf_files_step.py`, `ffuf_wp_step.py` | **SIMPLIFIED** | Now thin subclasses of `FfufBaseStep` (wordlist URL suffix + finding wording only). |
+| `Dockerfile` | **FIXED** | Always installs/refreshes `ca-certificates openssl whois` + `update-ca-certificates`, upgrades `certifi`, and adds a build-time TLS smoke test against a known-good public chain. Creates a writable `/app/reports` owned by `recon`, sets `ENV HOME=/home/recon`, makes the nuclei template dir explicit (`-ud /home/recon/nuclei-templates`), and logs installed tool versions. |
+| `config.py`, `main.py` | **FIXED** | Report `output_format` accepts a **comma-separated list** (`-f json,markdown,html` / `all`); `_parse_formats` validates and fails fast on unknown names instead of silently writing nothing. Added `ffuf_threads`, `ffuf_http_timeout`, `nuclei_rate_limit`, and raw-output fields. |
+| `steps/tools/nuclei_step.py` | **FIXED** | Honors `WP_NUCLEI_THREADS` (previously shadowed by a `threads=100` default), adds `-rl`, polite defaults 25/150, and new `--nuclei-concurrency` / `--nuclei-rate-limit` flags. Removed the incorrect "--insecure unsupported" warning (nuclei skips cert validation by default; there is no such flag). |
+| `steps/infrastructure/ports_step.py` | **FIXED** | The SSRF blocklist no longer rejects the authorized target's own host (it blocked all 21 ports, scanning 0). Emits an `info` finding when the scan cannot run. |
+| `steps/webapp/header_quality_step.py` | **FIXED** | `parse_hsts` splits on both `,` and `;`, handles quoted values and duplicated headers, and takes the effective (max) `max-age` so `max-age=31536000` is no longer mis-parsed as 0. |
+| `steps/webapp/source_review_step.py`, `client_side_audit_step.py` | **HARDENED** | Minified/vendor bundles downgrade hardcoded-password matches to `low` confidence (recorded in `raw`); placeholder email deny-list; DOM-XSS co-occurrence downgraded to a `low` heuristic that additionally requires source/sink proximity and is skipped for minified code. |
+| `utils/raw_output.py` | **NEW** | `RawArtifactWriter` + `--save-raw/--no-save-raw`, `--raw-output`, `--raw-max-bytes`, `--raw-no-redact`. Persists `<step>.stdout/.stderr/.cmd/.meta.json` plus native formats (nmap XML, nuclei jsonl, ffuf/wpscan JSON, `opendoor/` reports dir). Redacted by default, size-capped, best-effort (never aborts a scan). |
+| `base/step.py`, `steps/tools/{nuclei,wpscan,opendoor}_step.py` | **WIRED** | `BaseToolStep._persist_raw()` is called from the base `run()` and every overriding `run()`; timeouts persist the exact command too. |
+| `utils/tool_version_checker.py` | **FIXED** | Version regexes updated for current output (`ffuf version:`, `Nuclei Engine Version: v`, `Current Version:`, `Opendoor scanner:`), `-V` fallback for ffuf, and an unparseable version no longer disables a step. |
+| `modules/__init__.py` | **ADDED** | `web-generic` profile alias (same modules as `web`). |
+| `main.py` | **ADDED** | Pre-flight logs the DNS-resolved IP and hints at `--add-host` for split-horizon DNS. |
+
+**Verification (rebuilt `wp-recon-tool:latest`, `INSTALL_TOOLS=true`)**: whois
+5.6.3, ffuf 2.3.0, nuclei 3.11.1, nmap 7.95 present; `urllib` TLS check passes
+without `--insecure`; end-to-end scan against a local HTTP target wrote
+`recon_*.json` + `recon_*.md` (`-f json,markdown`) and `raw/` artifacts
+(`ffuf_*.cmd` without `-ik`, `nmap-ports.xml`, `meta.json` with real tool
+versions); ports step logged `Scanned 21 ports, blocked 0`.
 
 ### S19 - Cross-platform PDF (xhtml2pdf) + HTML/PDF report redesign (2026-09-22)
 | File | Change | Notes |

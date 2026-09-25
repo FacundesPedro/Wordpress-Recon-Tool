@@ -11,8 +11,9 @@ Reference: https://github.com/stanislav-web/OpenDoor
 
 import json
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional, cast
 from urllib.parse import urlsplit
 
 from base.dependencies import config_float, config_int, config_str
@@ -108,7 +109,7 @@ class OpenDoorStep(BaseToolStep):
         OpenDoor validates ``--host`` strictly and rejects a host:port
         combination; non-standard ports must go through ``--port``.
         """
-        url = str(self.target.url)
+        url = str(self.target.url) if self.target else ""
         try:
             parsed = urlsplit(url)
             port = parsed.port
@@ -223,7 +224,10 @@ class OpenDoorStep(BaseToolStep):
                     Finding(
                         module=self.MODULE,
                         step=self.name,
-                        severity=severity,
+                        severity=cast(
+                            Literal["info", "low", "medium", "high", "critical"],
+                            severity,
+                        ),
                         title=f"{title_prefix}: {word}",
                         description=(
                             "Path discovered via OpenDoor directory scanning "
@@ -261,43 +265,80 @@ class OpenDoorStep(BaseToolStep):
             )
             return self.findings
 
-        self.logger.info(
-            f"Running OpenDoor directory discovery on {self.target.url}"
-        )
+        target_url = str(self.target.url) if self.target else ""
+        self.logger.info(f"Running OpenDoor directory discovery on {target_url}")
 
+        # Keep the reports directory when raw persistence is enabled instead of
+        # discarding the JSON report with the temporary directory.
+        tmpdir: Optional[tempfile.TemporaryDirectory] = None
+        reports_dir = ""
+        if self._raw_writer.enabled:
+            try:
+                candidate = self._raw_writer.directory() / "opendoor"
+                candidate.mkdir(parents=True, exist_ok=True)
+                reports_dir = str(candidate)
+            except Exception as e:
+                self.logger.warning(f"Could not create raw OpenDoor dir: {e}")
+                reports_dir = ""
+        if not reports_dir:
+            tmpdir = tempfile.TemporaryDirectory(prefix="opendoor-")
+            reports_dir = tmpdir.name
+
+        started_at = datetime.now(timezone.utc)
+        cmd: list[str] = []
         try:
-            with tempfile.TemporaryDirectory(prefix="opendoor-") as reports_dir:
-                self._reports_dir = reports_dir
-                cmd = self.build_command()
-                self.logger.debug(f"Command: {' '.join(cmd)}")
+            self._reports_dir = reports_dir
+            cmd = self.build_command()
+            self.logger.debug(f"Command: {' '.join(cmd)}")
 
-                result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
+            result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
 
-                report_file = self._find_report(reports_dir)
-                if report_file is None:
-                    if result.stderr:
-                        self.logger.debug(f"OpenDoor stderr: {result.stderr[:500]}")
-                    self.logger.info("OpenDoor completed without a JSON report")
-                    return self.findings
+            report_file = self._find_report(reports_dir)
+            if report_file is None:
+                if result.stderr:
+                    self.logger.debug(f"OpenDoor stderr: {result.stderr[:500]}")
+                self._persist_raw(cmd, result, started_at, datetime.now(timezone.utc))
+                self.logger.info("OpenDoor completed without a JSON report")
+                return self.findings
 
-                try:
-                    report_text = report_file.read_text(encoding="utf-8", errors="replace")
-                except OSError as e:
-                    self.logger.error(f"Failed to read OpenDoor report: {e}")
-                    return self.findings
+            try:
+                report_text = report_file.read_text(encoding="utf-8", errors="replace")
+            except OSError as e:
+                self.logger.error(f"Failed to read OpenDoor report: {e}")
+                self._persist_raw(cmd, result, started_at, datetime.now(timezone.utc))
+                return self.findings
 
-                report_result = ToolResult(
-                    stdout=report_text,
-                    stderr=result.stderr,
-                    returncode=result.returncode,
-                    success=result.success,
-                )
-                self.findings = self.parse_output(report_result)
-                self.logger.info(
-                    f"OpenDoor completed: {len(self.findings)} path(s) found"
-                )
+            report_result = ToolResult(
+                stdout=report_text,
+                stderr=result.stderr,
+                returncode=result.returncode,
+                success=result.success,
+            )
+            self._persist_raw(
+                cmd,
+                result,
+                started_at,
+                datetime.now(timezone.utc),
+                native_name="opendoor.json",
+                native_content=report_text,
+            )
+            self.findings = self.parse_output(report_result)
+            self.logger.info(
+                f"OpenDoor completed: {len(self.findings)} path(s) found"
+            )
         except ToolTimeoutError:
             self.logger.error(f"OpenDoor timed out after {self.timeout}s")
+            self._persist_raw(
+                cmd,
+                ToolResult(
+                    stdout="",
+                    stderr=f"TIMEOUT after {self.timeout}s",
+                    returncode=-1,
+                    success=False,
+                ),
+                started_at,
+                datetime.now(timezone.utc),
+            )
             self._add_finding(
                 module=self.MODULE,
                 severity="low",
@@ -316,5 +357,8 @@ class OpenDoorStep(BaseToolStep):
                 evidence=str(e),
                 recommendation="Check OpenDoor installation",
             )
+        finally:
+            if tmpdir is not None:
+                tmpdir.cleanup()
 
         return self.findings

@@ -199,6 +199,7 @@ class NmapPortScanStep(BaseToolStep):
     _tool_binary = "nmap"
     MODULE = "tools"
     min_version = "7.92"
+    raw_native_name = "nmap-ports.xml"
 
     def __init__(
         self,
@@ -326,6 +327,7 @@ class NmapScriptScanStep(BaseToolStep):
     _tool_binary = "nmap"
     MODULE = "tools"
     min_version = "7.92"
+    raw_native_name = "nmap-scripts.xml"
 
     def __init__(
         self,

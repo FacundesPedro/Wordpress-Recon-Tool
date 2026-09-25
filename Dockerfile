@@ -25,7 +25,23 @@ RUN groupadd -r recon && useradd -r -m -g recon recon
 WORKDIR /app
 COPY --from=builder /build/dist /tmp/dist
 RUN pip install --no-cache-dir --find-links /tmp/dist "wordpress-recon-tool[pdf]" \
+    && pip install --no-cache-dir --upgrade certifi \
     && rm -rf /tmp/dist
+
+# Base runtime dependencies (always installed)
+# - ca-certificates/openssl: kept current so TLS verification works against
+#   valid public chains without --insecure
+# - whois: required by the passive WHOIS step
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates openssl whois \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build-time TLS smoke test: fail the build if the CA store cannot verify a
+# known-good public chain. Prevents shipping an image where HTTPS scans abort
+# with "unable to get local issuer certificate".
+RUN python -c "import urllib.request; urllib.request.urlopen('https://pypi.org/simple/', timeout=30); print('TLS CA store OK')"
 
 # External tools (opt-in via --build-arg INSTALL_TOOLS=true)
 RUN if [ "$INSTALL_TOOLS" = "true" ]; then \
@@ -43,7 +59,7 @@ RUN if [ "$INSTALL_TOOLS" = "true" ]; then \
         esac; \
         apt-get update; \
         apt-get install -y --no-install-recommends \
-            nmap ruby ruby-dev build-essential libcurl4-openssl-dev curl ca-certificates; \
+            nmap ruby ruby-dev build-essential libcurl4-openssl-dev curl; \
         gem install --no-document wpscan -v "$WPSCAN_VERSION"; \
         apt-get purge -y ruby-dev build-essential; \
         apt-get autoremove -y; \
@@ -57,7 +73,13 @@ RUN if [ "$INSTALL_TOOLS" = "true" ]; then \
         pip install --no-cache-dir pipx; \
         pipx install --global opendoor=="$OPENDOOR_VERSION"; \
         HOME=/home/recon wpscan --update; \
-        HOME=/home/recon nuclei -update-templates; \
+        HOME=/home/recon nuclei -update-templates -ud /home/recon/nuclei-templates; \
+        echo "--- installed tool versions ---"; \
+        nmap --version | head -1; \
+        ffuf -V; \
+        HOME=/home/recon nuclei -version; \
+        HOME=/home/recon wpscan --version; \
+        opendoor --version || true; \
     fi
 
 # Built-in wordlists are always shipped
@@ -82,7 +104,10 @@ RUN if [ "$INSTALL_RECOMMENDED_WORDLISTS" = "true" ]; then \
             python -c "import urllib.request; urllib.request.urlretrieve('${SECLISTS_THEMES_URL}', 'wordlists/external/plugins/theme_fallback.txt')"; \
     fi
 
-RUN chown -R recon:recon /app/wordlists /home/recon
+# Writable default output dir + a stable HOME so external tools (ffuf, nuclei)
+# find their config under /home/recon even when started without a login shell.
+RUN mkdir -p /app/reports && chown -R recon:recon /app/wordlists /app/reports /home/recon
+ENV HOME=/home/recon
 USER recon
 
 ENTRYPOINT ["wp-recon"]

@@ -43,7 +43,8 @@ class TestInit:
         assert nuclei_step.name == "nuclei"
         assert nuclei_step._tool_binary == "nuclei"
         assert nuclei_step.severity_filter == "medium,high,critical"
-        assert nuclei_step.threads == 100
+        assert nuclei_step.threads == 25
+        assert nuclei_step.rate_limit == 150
         assert nuclei_step.timeout == 300
 
     def test_custom_params(self, nuclei_step_custom):
@@ -62,7 +63,9 @@ class TestBuildCommand:
         assert "medium,high,critical" in cmd
         assert "-jsonl" in cmd
         assert "-concurrency" in cmd
-        assert "100" in cmd
+        assert "25" in cmd
+        assert "-rl" in cmd
+        assert "150" in cmd
         assert "-silent" in cmd
         assert "-quiet" not in cmd
 

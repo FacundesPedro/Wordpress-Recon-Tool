@@ -40,6 +40,16 @@ class TestParseHsts:
         parsed = parse_hsts("max-age=abc")
         assert parsed["max_age"] == 0
 
+    def test_duplicate_headers_comma_joined(self):
+        # Duplicate HSTS headers arrive comma-joined; must not parse as 0.
+        parsed = parse_hsts("max-age=31536000, max-age=31536000")
+        assert parsed["max_age"] == 31536000
+
+    def test_quoted_max_age(self):
+        parsed = parse_hsts('max-age="31536000"; includeSubDomains')
+        assert parsed["max_age"] == 31536000
+        assert parsed["include_subdomains"] is True
+
 
 class TestHeaderQualityStep:
     async def test_weak_hsts(self, mock_http, mock_target, mock_config):
@@ -57,6 +67,22 @@ class TestHeaderQualityStep:
             return_value=response(
                 200,
                 {"strict-transport-security": "max-age=31536000; includeSubDomains"},
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not any("HSTS" in f.title for f in findings)
+
+    async def test_duplicate_hsts_not_flagged(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            return_value=response(
+                200,
+                {
+                    "strict-transport-security": (
+                        "max-age=31536000; includeSubDomains, "
+                        "max-age=31536000; includeSubDomains"
+                    )
+                },
             )
         )
         step = make_step(mock_http, mock_target, mock_config)

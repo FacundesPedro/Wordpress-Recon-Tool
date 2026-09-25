@@ -50,6 +50,22 @@ _ANCHOR_RE = re.compile(r"<a\b[^>]*>", re.I)
 
 MAX_FINDINGS = 10
 
+# Max character distance between a source and a sink for the DOM-XSS heuristic
+# to fire (mere co-occurrence in a large file is too weak a signal).
+_DOM_XSS_PROXIMITY = 300
+
+
+def _is_minified(content: str, source: str = "") -> bool:
+    """Heuristically detect minified/vendor bundles."""
+    lowered = (source or "").lower()
+    if any(marker in lowered for marker in (".min.", "/vendor/", "/dist/", ".bundle.")):
+        return True
+    if not content:
+        return False
+    lines = content.splitlines() or [content]
+    longest = max((len(line) for line in lines), default=0)
+    return longest > 1000
+
 
 def audit_html(html: str) -> list[dict]:
     """Audit raw HTML; return issue dicts."""
@@ -103,8 +119,13 @@ def audit_html(html: str) -> list[dict]:
     return issues
 
 
-def audit_js(content: str) -> list[dict]:
-    """Audit JS content; return issue dicts."""
+def audit_js(content: str, minified: bool = False) -> list[dict]:
+    """Audit JS content; return issue dicts.
+
+    DOM-XSS detection is a heuristic: it requires a location-derived source to
+    occur within ``_DOM_XSS_PROXIMITY`` characters of a DOM sink, and is skipped
+    for minified/vendor bundles where the pattern is dominated by noise.
+    """
     issues: list[dict] = []
 
     for match in _POSTMESSAGE_WILDCARD_RE.findall(content):
@@ -120,26 +141,45 @@ def audit_js(content: str) -> list[dict]:
             "raw": {},
         })
 
-    sinks = _SINK_RE.findall(content)
-    sources = _SOURCE_RE.findall(content)
-    if sinks and sources:
-        issues.append({
-            "severity": "medium",
-            "title": "DOM sink reachable from location-based source",
-            "description": (
-                "The same script contains DOM sinks (innerHTML/eval/"
-                "document.write) and location-derived sources (hash/search/"
-                "referrer). This is a DOM-XSS pattern - verify data flow "
-                "manually."
-            ),
-            "evidence": f"sinks: {sorted(set(sinks))[:3]}; "
-                        f"sources: {sorted(set(sources))[:3]}",
-            "recommendation": (
-                "Never assign location-derived data to DOM sinks without "
-                "sanitization; prefer textContent"
-            ),
-            "raw": {"sinks": sorted(set(sinks)), "sources": sorted(set(sources))},
-        })
+    sink_matches = list(_SINK_RE.finditer(content))
+    source_matches = list(_SOURCE_RE.finditer(content))
+    if not minified and sink_matches and source_matches:
+        # Only fire when a source is close to a sink; file-wide co-occurrence
+        # alone produces false positives in large scripts.
+        close_pairs = [
+            (src.group(0), snk.group(0))
+            for src in source_matches
+            for snk in sink_matches
+            if abs(src.start() - snk.start()) <= _DOM_XSS_PROXIMITY
+        ]
+        if close_pairs:
+            issues.append({
+                "severity": "low",
+                "title": "Potential DOM-XSS sink near location source (heuristic)",
+                "description": (
+                    "A location-derived source (hash/search/referrer) appears "
+                    "within close proximity of a DOM sink (innerHTML/eval/"
+                    "document.write). This is a heuristic that requires manual "
+                    "data-flow verification, not a confirmed vulnerability."
+                ),
+                "evidence": (
+                    "pairs: "
+                    + "; ".join(
+                        f"{src} -> {snk}" for src, snk in close_pairs[:3]
+                    )
+                ),
+                "recommendation": (
+                    "Never assign location-derived data to DOM sinks without "
+                    "sanitization; prefer textContent"
+                ),
+                "raw": {
+                    "confidence": "low",
+                    "heuristic": True,
+                    "pairs": [
+                        {"source": src, "sink": snk} for src, snk in close_pairs[:5]
+                    ],
+                },
+            })
 
     for match in _LOCALSTORAGE_RE.findall(content):
         if _SENSITIVE_KEY_RE.search(match):
@@ -189,7 +229,7 @@ class ClientSideAuditStep(BaseHttpStep):
             return self.findings
 
         html = response.text or ""
-        home_url = self.target.url
+        home_url = str(self.target.url) if self.target else ""
         issues = []
         for issue in audit_html(html):
             issue = dict(issue)
@@ -197,14 +237,14 @@ class ClientSideAuditStep(BaseHttpStep):
             issues.append(issue)
 
         try:
-            asset_urls = extract_asset_urls(html, self.target.url)
+            asset_urls = extract_asset_urls(html, home_url)
             assets = await fetch_assets(
-                self.http, self.target.url, asset_urls,
+                self.http, home_url, asset_urls,
                 max_files=int(getattr(self.config, "source_scan_max_js", 20)),
                 max_bytes=int(getattr(self.config, "source_scan_max_bytes", 1000000)),
             )
             for asset_url, content in assets:
-                for issue in audit_js(content):
+                for issue in audit_js(content, minified=_is_minified(content, asset_url)):
                     issue = dict(issue)
                     issue["source_url"] = asset_url
                     issues.append(issue)
@@ -212,7 +252,7 @@ class ClientSideAuditStep(BaseHttpStep):
             self.logger.debug(f"JS asset fetch failed: {e}")
 
         for issue in issues[:MAX_FINDINGS]:
-            source_url = issue.get("source_url", self.target.url)
+            source_url = issue.get("source_url", home_url)
             self._add_finding(
                 module=self.MODULE,
                 severity=issue["severity"],

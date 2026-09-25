@@ -76,8 +76,19 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
             pass
         return ports
 
+    def _is_own_target(self, host: str) -> bool:
+        """Return True when ``host`` is the authorized assessment target."""
+        domain = str((self.target.domain if self.target else "") or "")
+        return bool(domain) and str(host or "").lower() == domain.lower()
+
     async def run(self) -> list[Finding]:
         self.logger.info("Scanning internal ports via pingback.ping...")
+
+        target = self.target
+        if target is None:
+            return self.findings
+        domain = str(target.domain or "")
+        target_url = str(target.url)
 
         common_ports = self.resolve_wordlist_or_fallback(
             config_key="common_ports",
@@ -95,9 +106,10 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
         blocked_count = 0
 
         for port in common_ports:
-            target_host = f"{self.target.domain}:{port}"
-
-            if is_blocked_target(self.target.domain, port):
+            # The pingback targets the authorized assessment host itself, so
+            # the SSRF blocklist must not reject it. Arbitrary third-party
+            # hosts are never supplied here.
+            if not self._is_own_target(domain) and is_blocked_target(domain, port):
                 self.logger.debug(f"Skipping port {port} - target is in SSRF blocklist")
                 blocked_count += 1
                 continue
@@ -107,8 +119,8 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
 <methodCall>
 <methodName>pingback.ping</methodName>
 <params>
-<param><value><string>http://{self.target.domain}:{port}/</string></value></param>
-<param><value><string>{self.target.url}</string></value></param>
+<param><value><string>http://{domain}:{port}/</string></value></param>
+<param><value><string>{target_url}</string></value></param>
 </params>
 </methodCall>"""
 
@@ -143,6 +155,24 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
         self.logger.info(
             f"Scanned {scanned_count} ports, blocked {blocked_count} by SSRF protection"
         )
+
+        if scanned_count == 0:
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="Port scan could not run",
+                description=(
+                    "No pingback.ping requests completed. XML-RPC may be disabled, "
+                    "unreachable or blocking pingbacks."
+                ),
+                evidence=url,
+                recommendation="Verify XML-RPC is enabled if port discovery is required.",
+                raw={
+                    "url": url,
+                    "scanned_count": scanned_count,
+                    "blocked_count": blocked_count,
+                },
+            )
 
         if open_ports:
             self._add_finding(

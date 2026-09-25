@@ -47,8 +47,12 @@ class ScanConfig(BaseSettings):
     output_dir: Path = Field(
         default=Path("./reports"), description="Output directory for reports"
     )
-    output_format: Literal["json", "markdown", "sarif", "html", "pdf", "all"] = Field(
-        default="markdown", description="Report output format"
+    output_format: str = Field(
+        default="markdown",
+        description=(
+            "Report output format(s): a single value or comma-separated list of "
+            "json, markdown, sarif, html, pdf, or 'all'"
+        ),
     )
     quiet: bool = Field(default=False, description="Suppress console output")
 
@@ -71,7 +75,17 @@ class ScanConfig(BaseSettings):
         default="medium,high,critical",
         description="Nuclei severity filter (comma-separated)",
     )
-    nuclei_threads: int = Field(default=100, ge=1, description="Nuclei concurrency")
+    nuclei_threads: int = Field(
+        default=25,
+        ge=1,
+        le=500,
+        description="Nuclei template concurrency (-concurrency, env WP_NUCLEI_THREADS)",
+    )
+    nuclei_rate_limit: int = Field(
+        default=150,
+        ge=1,
+        description="Nuclei max requests per second (-rl)",
+    )
     nuclei_timeout: int = Field(
         default=300, ge=60, description="Nuclei timeout in seconds"
     )
@@ -112,10 +126,16 @@ class ScanConfig(BaseSettings):
         default="", description="FFUF wordlist path"
     )
     ffuf_timeout: int = Field(
-        default=300, ge=60, description="FFUF timeout in seconds"
+        default=300, ge=60, description="FFUF execution timeout in seconds"
+    )
+    ffuf_threads: int = Field(
+        default=40, ge=1, le=500, description="FFUF concurrent threads (-t)"
     )
     ffuf_rate_limit: int = Field(
-        default=0, ge=0, description="FFUF rate limit (0 = unlimited)"
+        default=0, ge=0, description="FFUF request rate per second (-rate; 0 = unlimited)"
+    )
+    ffuf_http_timeout: int = Field(
+        default=10, ge=1, description="FFUF per-request HTTP timeout in seconds"
     )
     ffuf_filter_status: str = Field(
         default="404", description="FFUF filter status codes"
@@ -239,6 +259,25 @@ class ScanConfig(BaseSettings):
     )
     nmap_timeout: int = Field(
         default=300, ge=60, description="Nmap timeout in seconds"
+    )
+
+    # Raw external-tool output persistence
+    save_raw: bool = Field(
+        default=True,
+        description="Persist raw stdout/stderr/argv of external tool steps",
+    )
+    raw_output_dir: str = Field(
+        default="",
+        description="Directory for raw tool output (default: <output>/raw)",
+    )
+    raw_max_bytes: int = Field(
+        default=5_000_000,
+        ge=0,
+        description="Max bytes written per raw artifact (0 = unlimited)",
+    )
+    raw_no_redact: bool = Field(
+        default=False,
+        description="Do not redact secrets from persisted raw output (debug only)",
     )
 
     # Webapp / source review settings

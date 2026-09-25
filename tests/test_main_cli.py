@@ -5,7 +5,42 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from main import _save_report, build_modules, get_module_names, resolve_domain
+from main import (
+    _parse_formats,
+    _save_report,
+    build_modules,
+    get_module_names,
+    resolve_domain,
+)
+
+
+# ---------------------------------------------------------------------------
+# _parse_formats
+# ---------------------------------------------------------------------------
+class TestParseFormats:
+    def test_single(self):
+        assert _parse_formats("json") == ["json"]
+
+    def test_comma_list(self):
+        assert _parse_formats("json,markdown") == ["json", "markdown"]
+
+    def test_comma_list_with_spaces(self):
+        assert _parse_formats("json, markdown , html") == ["html", "json", "markdown"]
+
+    def test_all_expands(self):
+        assert _parse_formats("all") == ["html", "json", "markdown", "pdf", "sarif"]
+
+    def test_unknown_raises(self):
+        import typer
+
+        with pytest.raises(typer.BadParameter):
+            _parse_formats("json,csv")
+
+    def test_empty_raises(self):
+        import typer
+
+        with pytest.raises(typer.BadParameter):
+            _parse_formats("")
 
 
 # ---------------------------------------------------------------------------

@@ -7,8 +7,10 @@ various security issues including WordPress-specific vulnerabilities.
 """
 
 import json
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Literal, Optional, cast
 
+from base.dependencies import config_int
 from base.step import BaseToolStep
 from base.tool import ToolResult
 from config import ScanConfig
@@ -45,8 +47,9 @@ class NucleiStep(BaseToolStep):
         config: ScanConfig,
         http=None,  # Accepted for BaseToolStep compatibility
         severity: Optional[str] = None,
-        threads: int = 100,
-        timeout: int = 300,
+        threads: Optional[int] = None,
+        timeout: Optional[int] = None,
+        rate_limit: Optional[int] = None,
     ):
         super().__init__(
             target=target,
@@ -57,27 +60,39 @@ class NucleiStep(BaseToolStep):
         self.severity_filter = severity or getattr(
             config, "nuclei_severity", "medium,high,critical"
         )
-        self.threads = threads or getattr(config, "nuclei_threads", 100)
-        self.timeout = timeout or getattr(config, "nuclei_timeout", 300)
+        self.threads = (
+            threads if threads is not None else config_int(config, "nuclei_threads", 25)
+        )
+        self.rate_limit = (
+            rate_limit
+            if rate_limit is not None
+            else config_int(config, "nuclei_rate_limit", 150)
+        )
+        self.timeout = (
+            timeout if timeout is not None else config_int(config, "nuclei_timeout", 300)
+        )
+
+    def _target_url(self) -> str:
+        return str(self.target.url) if self.target is not None else ""
 
     def build_command(self) -> list[str]:
         """Build Nuclei command with all options."""
         cmd = [
             self._tool_binary,
             "-u",
-            str(self.target.url),
+            self._target_url(),
             "-severity",
             self.severity_filter,
             "-jsonl",  # -json was deprecated, use -jsonl for JSON Lines output
             "-concurrency",
             str(self.threads),
+            "-rl",
+            str(self.rate_limit),
             "-silent",
         ]
 
-        if getattr(self.config, "insecure", False):
-            self.logger.warning(
-                "Nuclei does not support --insecure flag, TLS verification cannot be disabled"
-            )
+        # Nuclei disables TLS certificate validation by default, so there is
+        # no insecure flag to pass (and no --insecure warning to emit).
 
         if getattr(self.config, "quiet", False):
             cmd.append("-quiet")
@@ -132,7 +147,7 @@ class NucleiStep(BaseToolStep):
                     severity="info",
                     title="Nuclei Completed",
                     description="Nuclei scan completed without notable findings",
-                    evidence=f"Target: {self.target.url}",
+                    evidence=f"Target: {self._target_url()}",
                     recommendation="Manual review may reveal additional details",
                     raw={"scan_type": "nuclei", "parsed": parsed_count},
                 )
@@ -153,7 +168,10 @@ class NucleiStep(BaseToolStep):
             "low": "low",
             "info": "info",
         }
-        severity = severity_map.get(severity_str, "info")
+        severity = cast(
+            Literal["info", "low", "medium", "high", "critical"],
+            severity_map.get(severity_str, "info"),
+        )
 
         title = info.get("name", "Unknown vulnerability")
         description = info.get("description", "")
@@ -260,13 +278,21 @@ class NucleiStep(BaseToolStep):
             )
             return self.findings
 
-        self.logger.info(f"Running Nuclei on {self.target.url}")
+        self.logger.info(f"Running Nuclei on {self._target_url()}")
 
         cmd = self.build_command()
         self.logger.debug(f"Command: {' '.join(cmd)}")
 
+        started_at = datetime.now(timezone.utc)
         try:
             result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
+            self._persist_raw(
+                cmd,
+                result,
+                started_at,
+                datetime.now(timezone.utc),
+                native_name="nuclei.jsonl",
+            )
 
             detected, error_finding = self._detect_nuclei_error(
                 result.stderr or "", result.stdout or ""
@@ -298,6 +324,17 @@ class NucleiStep(BaseToolStep):
 
         except ToolTimeoutError:
             self.logger.error(f"Nuclei timed out after {self.timeout}s")
+            self._persist_raw(
+                cmd,
+                ToolResult(
+                    stdout="",
+                    stderr=f"TIMEOUT after {self.timeout}s",
+                    returncode=-1,
+                    success=False,
+                ),
+                started_at,
+                datetime.now(timezone.utc),
+            )
             self._add_finding(
                 module=self.MODULE,
                 severity="low",

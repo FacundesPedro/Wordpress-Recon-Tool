@@ -11,6 +11,8 @@ X-Frame-Options value, and CSP frame-ancestors.
 # HOW: Fetches homepage, parses header values for weak parameters
 # WHY: A present-but-weak header provides less protection than intended
 
+import re
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 
@@ -18,22 +20,32 @@ MIN_HSTS_MAX_AGE = 31536000  # 1 year
 
 
 def parse_hsts(value: str) -> dict:
-    """Parse a Strict-Transport-Security header value."""
-    parts = [p.strip() for p in value.split(";")]
+    """Parse a Strict-Transport-Security header value.
+
+    Handles directive separators (``;``), comma-joined duplicate headers
+    (RFC 7230), and quoted values. When ``max-age`` appears more than once
+    the effective (largest) value is used so a valid header is not reported
+    as weak.
+    """
     max_age = 0
     include_subdomains = False
     preload = False
-    for part in parts:
-        lower = part.lower()
+
+    for segment in re.split(r"[;,]", value or ""):
+        lower = segment.strip().lower()
+        if not lower:
+            continue
         if lower.startswith("max-age="):
+            raw = lower.split("=", 1)[1].strip().strip('"')
             try:
-                max_age = int(lower.split("=", 1)[1])
+                max_age = max(max_age, int(raw))
             except (ValueError, IndexError):
-                max_age = 0
+                continue
         elif lower == "includesubdomains":
             include_subdomains = True
         elif lower == "preload":
             preload = True
+
     return {"max_age": max_age, "include_subdomains": include_subdomains, "preload": preload}
 
 

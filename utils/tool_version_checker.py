@@ -24,7 +24,14 @@ class VersionRequirement:
     supported_versions: Optional[list[str]] = None
 
     def is_compatible(self, installed_version: str) -> bool:
-        """Check if installed version meets requirements."""
+        """Check if installed version meets requirements.
+
+        An unparseable/unknown version is treated as compatible: version
+        pinning is best-effort and an unknown version must never silently
+        disable a tool step.
+        """
+        if not installed_version or installed_version == "unknown":
+            return True
         try:
             installed = pkg_version.parse(installed_version)
 
@@ -84,16 +91,24 @@ class VersionChecker:
         Returns:
             Version string or "unknown"
         """
-        try:
-            result = subprocess.run(
-                [tool, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
+        # Tools differ in their version flag: most accept --version, but
+        # ffuf only defines -V.
+        for flag in ("--version", "-V"):
+            try:
+                result = subprocess.run(
+                    [tool, flag],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception:
+                continue
+            parsed = self._parse_version(
+                (result.stdout or "") + (result.stderr or ""), tool
             )
-            return self._parse_version(result.stdout, tool)
-        except Exception:
-            return "unknown"
+            if parsed != "unknown":
+                return parsed
+        return "unknown"
 
     def check_compatibility(
         self,
@@ -165,16 +180,20 @@ class VersionChecker:
             Parsed version string
         """
         version_patterns = {
-            "wpscan": r"WPScan\s+(\d+\.\d+\.\d+)",
-            "nuclei": r"nuclei version (\d+\.\d+\.\d+)",
-            "ffuf": r"FFUF:\s+(\d+\.\d+\.\d+)",
-            "opendoor": r"OpenDoor\s+(\d+\.\d+\.\d+)",
+            # "WPScan 3.8.23" (older) or "Current Version: 4.1.0" (current)
+            "wpscan": r"(?:Current Version:|WPScan)\s+(\d+\.\d+\.\d+)",
+            # "nuclei version 3.1.0" or "[INF] Nuclei Engine Version: v3.11.1"
+            "nuclei": r"(?:Nuclei Engine Version:|nuclei version)\s*v?(\d+\.\d+\.\d+)",
+            # "FFUF: 2.0.0-dev" or "ffuf version: 2.3.0"
+            "ffuf": r"(?:ffuf version:|FFUF:)\s*(\d+\.\d+\.\d+)",
+            # "OpenDoor 5.18.0" or "Opendoor scanner: 5.18.0"
+            "opendoor": r"(?:Opendoor scanner:|OpenDoor)\s+(\d+\.\d+\.\d+)",
             "nmap": r"Nmap version (\d+\.\d+(?:\.\d+)?)",
             "default": r"(\d+\.\d+\.\d+)",
         }
 
         pattern = version_patterns.get(tool, version_patterns["default"])
-        match = re.search(pattern, output)
+        match = re.search(pattern, output, re.IGNORECASE)
         return match.group(1) if match else "unknown"
 
     @staticmethod

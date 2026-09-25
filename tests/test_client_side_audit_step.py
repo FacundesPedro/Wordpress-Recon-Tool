@@ -36,10 +36,19 @@ class TestAuditJs:
     def test_dom_sink_with_source(self):
         js = "el.innerHTML = location.hash; eval(x);"
         issues = audit_js(js)
-        assert any("DOM sink" in i["title"] for i in issues)
+        dom = [i for i in issues if "DOM-XSS" in i["title"]]
+        assert dom and dom[0]["severity"] == "low"
+
+    def test_dom_sink_far_from_source_not_flagged(self):
+        js = "el.innerHTML = 'static';\n" + "x = 1;\n" * 200 + "var h = location.hash;"
+        assert not [i for i in audit_js(js) if "DOM-XSS" in i["title"]]
+
+    def test_dom_sink_skipped_when_minified(self):
+        js = "el.innerHTML = location.hash; eval(x);"
+        assert not [i for i in audit_js(js, minified=True) if "DOM-XSS" in i["title"]]
 
     def test_sink_without_source_not_flagged(self):
-        assert not [i for i in audit_js("el.innerHTML = 'static'") if "DOM sink" in i["title"]]
+        assert not [i for i in audit_js("el.innerHTML = 'static'") if "DOM-XSS" in i["title"]]
 
     def test_message_listener_no_origin(self):
         js = "window.addEventListener('message', function(e) { handle(e.data) });"

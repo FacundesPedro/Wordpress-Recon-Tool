@@ -308,6 +308,45 @@ _EMAIL_SKIP_TLDS = {
     "woff2", "ttf", "eot", "mp4", "webm", "json", "html", "xml", "txt", "map",
 }
 
+# Placeholder/example email domains and addresses commonly found in bundled
+# libraries and templates (not real leaks).
+_EMAIL_SKIP_DOMAINS = {
+    "user.com", "domain.com", "email.com", "yourdomain.com", "yourcompany.com",
+    "mycompany.com", "site.com", "website.com", "sample.com", "acme.invalid",
+    "localhost",
+}
+_EMAIL_SKIP_ADDRESSES = {
+    "joe@user.com", "jane@user.com", "john@user.com", "user@user.com",
+    "test@test.com", "name@domain.com", "email@email.com", "you@yourdomain.com",
+}
+
+
+def _is_minified_source(source: str, content: str) -> bool:
+    """Heuristically detect minified/vendor bundles.
+
+    Findings from minified code are lower confidence (redacted FPs seen in
+    vendored bundles), so the password rule is downgraded there.
+    """
+    lowered = source.lower()
+    if any(marker in lowered for marker in (".min.", "/vendor/", "/dist/", ".bundle.")):
+        return True
+    if not content:
+        return False
+    lines = content.splitlines() or [content]
+    longest = max((len(line) for line in lines), default=0)
+    if longest > 1000:
+        return True
+    return bool(lines) and (len(content) / max(len(lines), 1)) > 400
+
+
+def _is_skip_email(value: str) -> bool:
+    """Filter placeholder/example email addresses."""
+    lowered = value.lower()
+    if lowered in _EMAIL_SKIP_ADDRESSES:
+        return True
+    domain = lowered.rsplit("@", 1)[-1]
+    return domain in _EMAIL_SKIP_DOMAINS
+
 
 def _mask_secret(value: str) -> str:
     """Partially mask a secret for safe display in evidence."""
@@ -339,7 +378,12 @@ def _is_skip_value(value: str) -> bool:
     return False
 
 
-def scan_for_secrets(content: str, source: str, skip_page_rules: bool = False) -> list[dict]:
+def scan_for_secrets(
+    content: str,
+    source: str,
+    skip_page_rules: bool = False,
+    minified: bool = False,
+) -> list[dict]:
     """Scan content with all secret/info-leak rules.
 
     Args:
@@ -347,9 +391,11 @@ def scan_for_secrets(content: str, source: str, skip_page_rules: bool = False) -
         source: Human-readable source identifier (URL or path)
         skip_page_rules: When True, skip HTML-page-level rules (email, internal
             IP) that are owned by ContentLeakStep
+        minified: When True, the source looks like a minified/vendor bundle;
+            hardcoded-password matches are downgraded to low confidence
 
     Returns:
-        List of hit dicts: rule, value, masked, line
+        List of hit dicts: rule, value, masked, line, confidence, minified
     """
     if not content:
         return []
@@ -362,14 +408,17 @@ def scan_for_secrets(content: str, source: str, skip_page_rules: bool = False) -
         for match in rule["pattern"].finditer(content):
             if found >= MAX_HITS_PER_RULE:
                 break
+            confidence = "high"
             if rule["id"] == "hardcoded-password":
                 value = match.group(1)
                 if _is_skip_value(value):
                     continue
+                if minified:
+                    confidence = "low"
             elif rule["id"] == "email-address":
                 value = match.group(0)
                 tld = value.rsplit(".", 1)[-1].lower()
-                if tld in _EMAIL_SKIP_TLDS:
+                if tld in _EMAIL_SKIP_TLDS or _is_skip_email(value):
                     continue
             else:
                 value = match.group(0)
@@ -379,6 +428,8 @@ def scan_for_secrets(content: str, source: str, skip_page_rules: bool = False) -
                     "value": value,
                     "masked": _mask_secret(value),
                     "line": content.count("\n", 0, match.start()) + 1,
+                    "confidence": confidence,
+                    "minified": minified,
                 }
             )
             found += 1
@@ -396,7 +447,7 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
     async def run(self) -> list[Finding]:
         self.logger.info("Reviewing HTML/JS source for credentials and leaks...")
 
-        base_url = self.target.url
+        base_url = str(self.target.url) if self.target else ""
         try:
             response = await self.fetch("/")
         except Exception as e:
@@ -404,7 +455,7 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
             return self.findings
 
         html = getattr(response, "text", "") or ""
-        home_url = self.target.url
+        home_url = base_url
         sources: list[tuple[str, str]] = [(home_url, html)]
 
         asset_urls = extract_asset_urls(html, base_url)
@@ -437,12 +488,18 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
         for source_name, content in sources:
             # HTML pages are covered by ContentLeakStep for email/IP rules
             skip_page_rules = source_name == home_url
-            for hit in scan_for_secrets(content, source_name, skip_page_rules):
+            minified = _is_minified_source(source_name, content)
+            for hit in scan_for_secrets(
+                content, source_name, skip_page_rules, minified=minified
+            ):
                 if hits >= MAX_TOTAL_HITS:
                     break
+                severity = hit["rule"]["severity"]
+                if hit.get("confidence") == "low" and severity in ("medium", "high", "critical"):
+                    severity = "low"
                 self._add_finding(
                     module=self.MODULE,
-                    severity=hit["rule"]["severity"],
+                    severity=severity,
                     title=f"{hit['rule']['description']} in {source_name}",
                     description=(
                         f"{hit['rule']['description']} detected at line {hit['line']} "
@@ -456,6 +513,8 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
                         "line": hit["line"],
                         "masked": hit["masked"],
                         "redacted": True,
+                        "confidence": hit.get("confidence", "high"),
+                        "minified": hit.get("minified", False),
                     },
                 )
                 hits += 1

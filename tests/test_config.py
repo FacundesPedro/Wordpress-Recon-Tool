@@ -61,9 +61,11 @@ class TestScanConfig:
         with pytest.raises(ValueError):
             ScanConfig(log_level="INVALID")
 
-    def test_output_format_validation(self):
-        with pytest.raises(ValueError):
-            ScanConfig(output_format="csv")
+    def test_output_format_accepts_comma_list(self):
+        # Validation now happens in the CLI (_parse_formats); the config field
+        # stores the raw string so comma-separated lists survive.
+        config = ScanConfig(output_format="json,markdown")
+        assert config.output_format == "json,markdown"
 
     def test_wp_auth_method_validation(self):
         with pytest.raises(ValueError):

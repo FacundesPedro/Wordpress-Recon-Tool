@@ -154,10 +154,53 @@ class TestVersionChecker:
         output = "FFUF: 2.0.0-dev\n"
         assert checker._parse_version(output, "ffuf") == "2.0.0"
 
+    def test_parse_version_wpscan_current(self, checker):
+        output = "                         Version 4.1.0\nCurrent Version: 4.1.0\n"
+        assert checker._parse_version(output, "wpscan") == "4.1.0"
+
+    def test_parse_version_nuclei_engine(self, checker):
+        output = "[INF] Nuclei Engine Version: v3.11.1\n"
+        assert checker._parse_version(output, "nuclei") == "3.11.1"
+
+    def test_parse_version_ffuf_current(self, checker):
+        output = "ffuf version: 2.3.0\n"
+        assert checker._parse_version(output, "ffuf") == "2.3.0"
+
+    def test_parse_version_opendoor(self, checker):
+        output = "Opendoor scanner: 5.18.0\n"
+        assert checker._parse_version(output, "opendoor") == "5.18.0"
+
     def test_parse_version_unknown(self, checker):
         """Test parsing version with unknown tool."""
         output = "Some tool version 1.2.3\n"
         assert checker._parse_version(output, "unknown") == "1.2.3"
+
+    def test_get_installed_version_falls_back_to_dash_v(self, checker, monkeypatch):
+        """ffuf only supports -V; the checker must try it after --version."""
+        calls = []
+
+        class Result:
+            def __init__(self, out):
+                self.stdout = out
+                self.stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[1] == "--version":
+                return Result("")
+            return Result("ffuf version: 2.3.0\n")
+
+        monkeypatch.setattr(
+            "utils.tool_version_checker.subprocess.run", fake_run
+        )
+        assert checker.get_installed_version("ffuf") == "2.3.0"
+        assert any(c[1] == "-V" for c in calls)
+
+    def test_unknown_version_never_disables_tool(self):
+        """An unparseable version must not block a step."""
+        req = VersionRequirement(tool="ffuf", min_version="2.0.0")
+        assert req.is_compatible("unknown") is True
+        assert req.is_compatible("") is True
 
     def test_generate_compatible_message(self, checker):
         """Test generating compatible message."""
@@ -187,6 +230,7 @@ class TestVersionChecker:
             tool="test",
             required_version="99.99.99",
         )
+        checker.get_installed_version = lambda tool: "1.0.0"
         with pytest.raises(VersionMismatchError):
             checker.validate("test", req, strict=True)
 

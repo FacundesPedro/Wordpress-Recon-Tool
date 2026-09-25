@@ -53,8 +53,9 @@ python main.py main --target https://example.com --wpscan --nuclei
 # webapp module: source credential review, CORS, cookies, HTTP methods, headers, ...
 python main.py main --target https://client-site.com --modules webapp
 
-# web profile + Nmap port scan and NSE script scan
+# web / web-generic profile + Nmap port scan and NSE script scan
 python main.py main --target https://client-site.com --profile web --nmap --nmap-scripts
+python main.py main --target https://client-site.com --profile web-generic --ffuf -f json,markdown
 ```
 
 ### Authenticated Scan (requires WP >= 5.6 with Application Password)
@@ -92,7 +93,10 @@ python main.py list-modules
 - **Nuclei Integration** - Template-based vulnerability scanning
   - WordPress-specific templates
   - Configurable severity filtering (critical, high, medium)
-  - Fast concurrent scanning
+  - Concurrency/rate controls — `--nuclei-concurrency` (default 25), `--nuclei-rate-limit` (default 150); `WP_NUCLEI_THREADS` honored
+- **FFUF fuzzing** - Directory/file/WordPress path discovery
+  - Threads vs. request-rate are separate: `--ffuf-threads` (`-t`) and `--ffuf-rate-limit` (`-rate`)
+  - Non-zero exit or unparseable output raises a loud `high` finding (no silent "0 results")
 
 ### Generic Web App Security (`webapp` module)
 Non-WordPress, non-intrusive checks for internal client assessments (OWASP WSTG-based):
@@ -141,7 +145,32 @@ Non-WordPress, non-intrusive checks for internal client assessments (OWASP WSTG-
 - JSON format output
 - Markdown format output
 - SARIF 2.1.0 format output (CI/CD integration)
+- HTML and PDF output
 - Custom filename support
+- **Multiple formats per run** — comma-separated `-f json,markdown,html` (or `all`).
+  Unknown format names fail fast with a clear error instead of silently writing nothing.
+
+### Raw Tool Output
+
+Every external-tool step (`nmap`, `nuclei`, `ffuf`, `wpscan`, `opendoor`) also
+persists its raw output alongside the report, so tool failures are auditable:
+
+```
+<output>/raw/
+  <step>.stdout      raw stdout (redacted by default)
+  <step>.stderr      raw stderr
+  <step>.cmd         exact argv, one argument per line
+  <step>.meta.json   step, tool, version, returncode, duration, timestamps
+  nmap-ports.xml     native machine formats where applicable
+  nuclei.jsonl
+  ffuf-<step>.json
+  wpscan.json
+  opendoor/          OpenDoor JSON reports directory
+```
+
+Controlled by `--save-raw/--no-save-raw` (default on), `--raw-output DIR`,
+`--raw-max-bytes`, and `--raw-no-redact` (debug only). Raw persistence is
+best-effort: a failure logs a warning and never aborts the scan.
 
 ### Concurrency
 - **Risk Tier Parallel Execution**
@@ -188,7 +217,28 @@ Build args (also settable in `docker-compose.yml` / the environment when using
 | `INSTALL_RECOMMENDED_WORDLISTS` | `true` | Download the recommended SecLists plugin/theme wordlists |
 | `FFUF_VERSION` / `NUCLEI_VERSION` / `WPSCAN_VERSION` / `OPENDOOR_VERSION` | pinned | Tool versions |
 
-Reports are written to `./reports/` (mounted as a volume).
+Reports are written to `./reports/` (mounted as a volume). The image ships a
+current CA store (`ca-certificates` + `certifi`) and the `whois` binary, so
+HTTPS scans of correctly configured sites do not need `--insecure`.
+
+### Docker networking and output permissions
+
+- **Output permissions** — the container runs as the unprivileged `recon` user.
+  A named volume works out of the box. For a host bind mount, make the directory
+  writable (e.g. `docker run --user "$(id -u):$(id -g)" …` or `chmod 777`), or
+  the report/raw writers will log a warning and produce no artifacts.
+- **Split-horizon DNS** — inside Docker a hostname may resolve to a different
+  (e.g. public) IP than on the host. The pre-flight probe logs the resolved IP.
+  Pin the intended address with Docker's `--add-host`:
+
+  ```bash
+  docker run --rm --add-host target.example.com:172.25.0.124 \
+    -v "$PWD/reports:/app/reports" wp-recon-tool:latest main \
+    -t https://target.example.com -p web-intrusive --authorized -f all
+  ```
+
+- **Nuclei templates** are baked at `/home/recon/nuclei-templates` and `HOME` is
+  set to `/home/recon` so external tools find their config consistently.
 
 ### Wordlists in Docker
 

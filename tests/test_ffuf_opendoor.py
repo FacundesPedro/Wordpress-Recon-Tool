@@ -283,6 +283,63 @@ class TestOpenDoorStep:
         assert findings[0].title == "OpenDoor Path Found: wp-content"
 
 
+class TestFfufCommandAndFailure:
+    def test_rate_limit_uses_rate_not_threads(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        ffuf_directory_step.rate_limit = 20
+        ffuf_directory_step.threads = 40
+        cmd = ffuf_directory_step.build_command()
+        assert cmd[cmd.index("-rate") + 1] == "20"
+        assert cmd[cmd.index("-t") + 1] == "40"
+        assert "-ik" not in cmd
+        assert "-ic" in cmd
+
+    def test_no_rate_flag_when_zero(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        ffuf_directory_step.rate_limit = 0
+        assert "-rate" not in ffuf_directory_step.build_command()
+
+    def test_nonzero_exit_is_high_finding(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        result = ToolResult(
+            stdout="", stderr="flag provided but not defined: -ik", returncode=2, success=False
+        )
+        ffuf_directory_step._handle_result(result)
+        assert len(ffuf_directory_step.findings) == 1
+        assert ffuf_directory_step.findings[0].severity == "high"
+        assert ffuf_directory_step.findings[0].title == "FFUF Execution Failed"
+
+    def test_unparseable_output_is_high_finding(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        result = ToolResult(stdout="not json at all", stderr="", returncode=0, success=True)
+        ffuf_directory_step._handle_result(result)
+        assert len(ffuf_directory_step.findings) == 1
+        assert ffuf_directory_step.findings[0].severity == "high"
+        assert ffuf_directory_step.findings[0].title == "FFUF Output Unparseable"
+
+    def test_empty_output_is_legitimate_zero(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        ffuf_directory_step._handle_result(result)
+        assert ffuf_directory_step.findings == []
+
+    def test_run_persists_and_fails_loudly(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False, save_raw=False)
+        ffuf_directory_step.check_binary = lambda binary: (True, "")
+        ffuf_directory_step.check_version_compatibility = lambda: True
+
+        async def fake_run(cmd, timeout=None):
+            return ToolResult(
+                stdout="", stderr="flag provided but not defined: -ik", returncode=2, success=False
+            )
+
+        ffuf_directory_step._async_tool_runner.run = fake_run
+        import asyncio
+
+        findings = asyncio.run(ffuf_directory_step.run())
+        assert any(f.severity == "high" for f in findings)
+
+
 class TestAllSteps:
     def test_ffuf_directory_check_binary(self, ffuf_directory_step):
         """Test binary check."""

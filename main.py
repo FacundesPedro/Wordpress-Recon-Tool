@@ -29,6 +29,30 @@ console = Console()
 
 logger = Logger("Main")
 
+REPORT_FORMATS = frozenset({"json", "markdown", "sarif", "html", "pdf"})
+
+
+def _parse_formats(value: str) -> list[str]:
+    """Parse a comma-separated report format list.
+
+    Raises:
+        typer.BadParameter: If empty or containing unknown formats.
+    """
+    raw = [part.strip().lower() for part in (value or "").split(",") if part.strip()]
+    if not raw:
+        raise typer.BadParameter(
+            "No report format specified. Valid: json, markdown, sarif, html, pdf, all"
+        )
+    if "all" in raw:
+        return sorted(REPORT_FORMATS)
+    unknown = sorted({part for part in raw if part not in REPORT_FORMATS})
+    if unknown:
+        raise typer.BadParameter(
+            f"Unknown report format(s): {', '.join(unknown)}. "
+            f"Valid: json, markdown, sarif, html, pdf, all"
+        )
+    return sorted(set(raw))
+
 
 @app.command()
 def main(
@@ -111,6 +135,14 @@ def main(
         str,
         typer.Option("--nuclei.severity", help="Nuclei severity filter"),
     ] = "medium,high,critical",
+    nuclei_concurrency: Annotated[
+        int,
+        typer.Option("--nuclei-concurrency", help="Nuclei template concurrency"),
+    ] = 25,
+    nuclei_rate_limit: Annotated[
+        int,
+        typer.Option("--nuclei-rate-limit", help="Nuclei max requests per second"),
+    ] = 150,
     ffuf: Annotated[
         bool,
         typer.Option("--ffuf", help="Enable FFUF fuzzer"),
@@ -123,9 +155,15 @@ def main(
         int,
         typer.Option("--ffuf-timeout", help="FFUF timeout in seconds"),
     ] = 300,
+    ffuf_threads: Annotated[
+        int,
+        typer.Option("--ffuf-threads", help="FFUF concurrent threads (-t)"),
+    ] = 40,
     ffuf_rate_limit: Annotated[
         int,
-        typer.Option("--ffuf-rate-limit", help="FFUF rate limit (0 = unlimited)"),
+        typer.Option(
+            "--ffuf-rate-limit", help="FFUF request rate per second (-rate, 0 = unlimited)"
+        ),
     ] = 0,
     ffuf_filter_status: Annotated[
         str,
@@ -195,6 +233,28 @@ def main(
         str,
         typer.Option("--wp-auth-method", help="Auth method: app_password or cookie"),
     ] = "app_password",
+    save_raw: Annotated[
+        bool,
+        typer.Option(
+            "--save-raw/--no-save-raw",
+            help="Persist raw stdout/stderr/argv of external tool steps",
+        ),
+    ] = True,
+    raw_output: Annotated[
+        Optional[str],
+        typer.Option("--raw-output", help="Directory for raw tool output (default <output>/raw)"),
+    ] = None,
+    raw_max_bytes: Annotated[
+        int,
+        typer.Option("--raw-max-bytes", help="Max bytes per raw artifact (0 = unlimited)"),
+    ] = 5_000_000,
+    raw_no_redact: Annotated[
+        bool,
+        typer.Option(
+            "--raw-no-redact",
+            help="Do not redact secrets from persisted raw output (debug only)",
+        ),
+    ] = False,
     skip_reachability_check: Annotated[
         bool,
         typer.Option(
@@ -218,11 +278,17 @@ def main(
     ] = False,
 ):
     """Run WordPress reconnaissance scan."""
+    try:
+        parsed_formats = _parse_formats(format)
+    except typer.BadParameter as exc:
+        logger.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
     config = ScanConfig()
     config.threads = threads
     config.timeout = timeout
     config.output_dir = output
-    config.output_format = format  # type: ignore
+    config.output_format = ",".join(parsed_formats)
     config.insecure = insecure
     config.log_level = "DEBUG" if debug else "INFO"
     config.quiet = quiet
@@ -235,11 +301,14 @@ def main(
 
     config.enable_nuclei = nuclei
     config.nuclei_severity = nuclei_severity
+    config.nuclei_threads = nuclei_concurrency
+    config.nuclei_rate_limit = nuclei_rate_limit
 
     config.enable_ffuf = ffuf
     if ffuf_wordlist:
         config.ffuf_wordlist = ffuf_wordlist
     config.ffuf_timeout = ffuf_timeout
+    config.ffuf_threads = ffuf_threads
     config.ffuf_rate_limit = ffuf_rate_limit
     config.ffuf_filter_status = ffuf_filter_status
 
@@ -268,6 +337,11 @@ def main(
     config.require_version = require_version
     config.verbose_version_check = verbose_version_check
     config.skip_reachability_check = skip_reachability_check
+    config.save_raw = save_raw
+    if raw_output:
+        config.raw_output_dir = raw_output
+    config.raw_max_bytes = raw_max_bytes
+    config.raw_no_redact = raw_no_redact
 
     main_logger = Logger("Main", config.log_level)
 
@@ -314,6 +388,17 @@ def main(
         if not probe.reachable:
             main_logger.error(probe.error or "Target is unreachable")
             raise typer.Exit(code=1)
+        if not config.quiet:
+            main_logger.info(
+                f"Resolved {target_obj.domain} -> {probe.ip} "
+                f"(DNS {probe.dns_ms:.0f}ms, TCP {probe.tcp_ms:.0f}ms"
+                + (f", TLS {probe.tls_ms:.0f}ms" if probe.tls_ms else "")
+                + ")"
+            )
+            main_logger.debug(
+                "If this IP differs from the intended internal endpoint, run the "
+                "container with --add-host <host>:<ip> to pin the correct address."
+            )
 
     if not config.quiet:
         main_logger.info(f"Selected modules: {', '.join(module_names)}")
@@ -415,7 +500,7 @@ def build_modules(
     enable_opendoor: bool = False,
     enable_nmap: bool = False,
     enable_nmap_scripts: bool = False,
-    config: ScanConfig = None,
+    config: Optional[ScanConfig] = None,
 ):
     """Instantiate module classes."""
     modules = []
@@ -454,13 +539,25 @@ def _save_report(
     report_file: Optional[str],
     output: Path,
 ):
-    """Save report in configured format(s)."""
+    """Save report in the configured format(s).
+
+    Accepts a single format or a comma-separated list (also ``all``).
+    Formatter failures degrade gracefully with a warning; an empty/unknown
+    format selection raises ``typer.Exit`` so a requested artifact is never
+    silently dropped.
+    """
+    try:
+        formats = set(_parse_formats(config.output_format))
+    except typer.BadParameter as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
     timestamp = report.completed_at
     filename_base = report_file or generate_report_filename(
         report.domain, timestamp
     )
 
-    if config.output_format in ("json", "both", "all"):
+    if "json" in formats:
         try:
             json_path = output / f"{filename_base}.json"
             JsonFormatter.save(report, json_path)
@@ -468,7 +565,7 @@ def _save_report(
         except Exception as exc:
             console.print(f"[yellow]Warning: JSON report failed ({exc})[/yellow]")
 
-    if config.output_format in ("markdown", "both", "all"):
+    if "markdown" in formats:
         try:
             md_path = output / f"{filename_base}.md"
             MarkdownFormatter.save(report, md_path)
@@ -476,7 +573,7 @@ def _save_report(
         except Exception as exc:
             console.print(f"[yellow]Warning: Markdown report failed ({exc})[/yellow]")
 
-    if config.output_format in ("sarif", "all"):
+    if "sarif" in formats:
         try:
             sarif_path = output / f"{filename_base}.sarif"
             SarifFormatter.save(report, sarif_path)
@@ -484,7 +581,7 @@ def _save_report(
         except Exception as exc:
             console.print(f"[yellow]Warning: SARIF report failed ({exc})[/yellow]")
 
-    if config.output_format in ("html", "all"):
+    if "html" in formats:
         try:
             html_path = output / f"{filename_base}.html"
             HtmlFormatter.save(report, html_path)
@@ -492,7 +589,7 @@ def _save_report(
         except Exception as exc:
             console.print(f"[yellow]Warning: HTML report failed ({exc})[/yellow]")
 
-    if config.output_format in ("pdf", "all"):
+    if "pdf" in formats:
         try:
             pdf_path = output / f"{filename_base}.pdf"
             PdfFormatter.save(report, pdf_path)

@@ -6,9 +6,11 @@ WordPress reconnaissance tool. Python 3.11+, httpx, Typer, pydantic-settings, Ri
 
 Core architecture: `modules/` → `steps/` with risk tiers (1-5), config via environment variables (`WP_*`), wordlist resolution chain, findings emitted via `core/finding.py`.
 
-**Current state:** 14 modules, 96 steps, 1727 tests passing (0 PDF env failures — WeasyPrint replaced by pure-Python xhtml2pdf). Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
+**Current state:** 14 modules, 96 steps, 1762 tests passing (0 PDF env failures — WeasyPrint replaced by pure-Python xhtml2pdf). Wordlists set up with SecLists (13,370 plugins / 3,646 themes) at `~/.config/recon-wp/wordlists/`.
 
-**Latest fix (2026-09-22): cross-platform PDF via xhtml2pdf + HTML/PDF report redesign** — WeasyPrint imports native Pango/Cairo at import time and raises `OSError` (not `ImportError`) when absent, so PDF output was broken on every OS unless per-OS system libraries were installed (`brew install pango`, MSYS2 + `WEASYPRINT_DLL_DIRECTORIES` on Windows, `apt`/`apk` on Linux) and `PdfFormatter`/`main.py` didn't catch the failure. Replaced it with **xhtml2pdf** (pure Python, no system deps, `pip install` only) as the sole PDF engine. `utils/report.py`: `PdfFormatter.format()` now calls `pisa.CreatePDF(src=..., dest=BytesIO, encoding="utf-8")`, checks `result.err`, and raises a friendly `ImportError` when xhtml2pdf is missing; it renders a dedicated print-oriented template (`@page` + static footer frame with `<pdf:pagenumber>`/`<pdf:pagecount>`, severity ledger bar, numbered findings, no side-stripe borders). `pyproject.toml`/`requirements.txt`/Dockerfile switched from `weasyprint` to `xhtml2pdf>=0.2.17`; the Dockerfile's WeasyPrint native-lib `apt` block was removed (image is pure-Python again). Also redesigned the HTML report (`HtmlFormatter`): removed the five hero-metric cards, the decorative donut, the SaaS gradient masthead, and the 4px colored side-stripe borders; replaced with a flat masthead + health gauge, a proportional **Severity Ledger** bar with legend, a Scope & Execution facts grid, and globally numbered findings with hairline separators and severity tags. Tests: `tests/test_pdf_formatter.py` rewritten, `tests/test_report_utils.py` fixture swapped to `mock_xhtml2pdf`, `tests/test_html_formatter.py` updated to the new markup contract; suite 1727 passing (was 1722 with 4 env failures); ruff clean on changed code (two pre-existing `report.py` violations remain: `I001` import order, long `_esc` line). Verified real output: HTML dashboard (before/after screenshots) and a 4-page PDF (valid `%PDF` header, `Page 1 of 4` footer, no xhtml2pdf warnings). NOTE: xhtml2pdf ignores CSS variables/grid/SVG and unsupported properties (it logs them); the PDF uses its own literal-color, table-based template, and base-14 Helvetica cannot render the `■` glyph (use text labels, not symbols).
+**Latest fix (2026-09-25): field-report defect sweep (FFUF/TLS/formats/Nuclei) + raw tool-output persistence** — Driven by an authorized intranet engagement (source notes were `UPDATE.md`, now removed; see CHANGELOG S20). Highlights: (1) **FFUF** — the three steps shared copy-pasted code that passed a non-existent `-ik` flag and mapped `--ffuf-rate-limit` onto `-t` (threads), so every run silently returned "0 results". New `steps/tools/ffuf_base.py` (`FfufBaseStep`) uses `-ic`, separate `-t`/`-rate`, per-request `-timeout`, `min_version=2.0.0`, and fails loudly (non-zero exit or unparseable JSON → `high` finding). (2) **CA/TLS + whois** — `Dockerfile` always installs/refreshes `ca-certificates openssl whois` + `update-ca-certificates`, upgrades `certifi`, adds a build-time TLS smoke test, creates a writable `/app/reports`, and sets `ENV HOME=/home/recon`. (3) **Report formats** — `-f` accepts a comma-separated list (`json,markdown,…` / `all`); `_parse_formats` validates and fails fast instead of silently writing nothing. (4) **Nuclei** — honors `WP_NUCLEI_THREADS` (was shadowed by a `threads=100` default), adds `-rl`, polite defaults 25/150, `--nuclei-concurrency`/`--nuclei-rate-limit`; removed the incorrect "insecure unsupported" warning (nuclei has no `-insecure` and skips cert validation by default). (5) **ports step** — the SSRF blocklist no longer rejects the authorized target's own host (previously "Scanned 0, blocked 21"); emits an `info` finding when it cannot run. (6) **HSTS** — `parse_hsts` splits on `,` and `;`, handles quoted/duplicated headers, takes the effective max-age (fixes the `max-age=31536000` mis-parsed as 0 FP). (7) **Precision** — source_review downgrades hardcoded-password hits in minified/vendor bundles to `low` confidence (in `raw`), placeholder email deny-list; client_side_audit DOM-XSS is now a `low` proximity-gated heuristic skipped for minified code. (8) **Raw output** — new `utils/raw_output.py` + `--save-raw/--no-save-raw`, `--raw-output`, `--raw-max-bytes`, `--raw-no-redact`; `BaseToolStep._persist_raw()` writes `<step>.stdout/.stderr/.cmd/.meta.json` plus native formats (nmap XML, nuclei jsonl, ffuf/wpscan JSON, `opendoor/` dir), redacted and size-capped, never aborting a scan. Also: `utils/tool_version_checker.py` regexes updated to current output, `-V` ffuf fallback, and an unknown version no longer disables a step; `web-generic` profile alias; pre-flight logs the resolved IP with an `--add-host` hint. Suite 1762 passing; ruff clean on changed code; verified by rebuilding the `INSTALL_TOOLS=true` image and scanning a local HTTP target (reports + `raw/` artifacts written, ffuf command has no `-ik`, versions in `meta.json`).
+
+**Previous fix (2026-09-22): cross-platform PDF via xhtml2pdf + HTML/PDF report redesign** — WeasyPrint imports native Pango/Cairo at import time and raises `OSError` (not `ImportError`) when absent, so PDF output was broken on every OS unless per-OS system libraries were installed (`brew install pango`, MSYS2 + `WEASYPRINT_DLL_DIRECTORIES` on Windows, `apt`/`apk` on Linux) and `PdfFormatter`/`main.py` didn't catch the failure. Replaced it with **xhtml2pdf** (pure Python, no system deps, `pip install` only) as the sole PDF engine. `utils/report.py`: `PdfFormatter.format()` now calls `pisa.CreatePDF(src=..., dest=BytesIO, encoding="utf-8")`, checks `result.err`, and raises a friendly `ImportError` when xhtml2pdf is missing; it renders a dedicated print-oriented template (`@page` + static footer frame with `<pdf:pagenumber>`/`<pdf:pagecount>`, severity ledger bar, numbered findings, no side-stripe borders). `pyproject.toml`/`requirements.txt`/Dockerfile switched from `weasyprint` to `xhtml2pdf>=0.2.17`; the Dockerfile's WeasyPrint native-lib `apt` block was removed (image is pure-Python again). Also redesigned the HTML report (`HtmlFormatter`): removed the five hero-metric cards, the decorative donut, the SaaS gradient masthead, and the 4px colored side-stripe borders; replaced with a flat masthead + health gauge, a proportional **Severity Ledger** bar with legend, a Scope & Execution facts grid, and globally numbered findings with hairline separators and severity tags. Tests: `tests/test_pdf_formatter.py` rewritten, `tests/test_report_utils.py` fixture swapped to `mock_xhtml2pdf`, `tests/test_html_formatter.py` updated to the new markup contract; suite 1727 passing (was 1722 with 4 env failures); ruff clean on changed code (two pre-existing `report.py` violations remain: `I001` import order, long `_esc` line). Verified real output: HTML dashboard (before/after screenshots) and a 4-page PDF (valid `%PDF` header, `Page 1 of 4` footer, no xhtml2pdf warnings). NOTE: xhtml2pdf ignores CSS variables/grid/SVG and unsupported properties (it logs them); the PDF uses its own literal-color, table-based template, and base-14 Helvetica cannot render the `■` glyph (use text labels, not symbols).
 
 **Previous fix (2026-09-12): Nmap output-format bug found by Docker end-to-end run** — Running the tool in the `INSTALL_TOOLS=true` image against the local `wordpress:latest` and `bkimminich/juice-shop` containers (with the baked SecLists plugin/theme lists and `WP_FFUF_WORDLIST`/`WP_OPENDOOR_WORDLIST` overrides) exposed that both nmap steps used `nmap -oJ -`, which is not a real nmap flag — nmap treated it as normal output to a file named `J` (`Failed to open normal output file J`), so scans silently failed. `steps/tools/nmap_step.py` now uses `-oX -` (XML to stdout), with a new `parse_nmap_xml` replacing the fabricated `nmap-run` JSON parser (parses `<nmaprun>` ports/state/service attributes and nested NSE `<script>`/`<table>`/`<elem>` + `vulns` tables). `NmapScriptScanStep` also passes `-sV`, since `-sC` alone selects no service-specific scripts on non-standard ports. `tests/test_nmap_step.py` rewritten around real nmap 7.95 XML. Docker verification: port scan reports `3000/tcp ppp`, `8099/tcp http 2.4.68`; script scan emits `http-title`. Other tools confirmed working in-image: WPScan 4.1.0, ffuf 2.3.0, OpenDoor 5.18.0 (6 WP paths), nmap 7.95; production wordlist brute-force ran the full 13,370 plugins (828s) + 3,646 themes (183s). Juice Shop `-p web` run reproduced the known 8 TPs, no FPs.
 
@@ -133,7 +135,7 @@ This applies especially to: REST API endpoints, Python library APIs, CVE data so
 
 ### Priority 1 — Tests (complete)
 
-**Coverage:** 75/75 steps tested (100%), 1689 tests passing across all layers (4 PDF env failures excluded). All infrastructure, core, config, CLI, and edge cases covered at unit level.
+**Coverage:** 75/75 steps tested (100%), 1762 tests passing across all layers. All infrastructure, core, config, CLI, and edge cases covered at unit level.
 
 Test patterns: pytest + `conftest.py` fixtures (`mock_http`, `mock_target`, `mock_config`). For HTTP steps, mock `mock_http.request` (not `mock_http.get` — steps delegate through `BaseHttpStep.get()` → `self.http.request()`). For VulnDB-dependent steps, use `@patch("steps.vuln.*.VulnDB")`.
 
@@ -201,6 +203,40 @@ Key files: `steps/discovery/plugin_bruteforce_step.py`, `steps/discovery/theme_b
 
 CLI: `--nmap`, `--nmap-scripts`, `--nmap-top-ports`, `--nmap-ports`, `--nmap-timeout`. Key files: `steps/tools/nmap_step.py`, `modules/tools_module.py`. Direct host scan (connect scan, no root, no SSRF blocklist) — authorized targets only.
 
+### Config Reference — FFUF
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_FFUF_WORDLIST` | `""` | Wordlist override for all three ffuf steps |
+| `WP_FFUF_THREADS` | `40` | Concurrent threads (`-t`) |
+| `WP_FFUF_RATE_LIMIT` | `0` | Requests/second (`-rate`, 0 = unlimited) |
+| `WP_FFUF_HTTP_TIMEOUT` | `10` | Per-request HTTP timeout (`-timeout`) |
+| `WP_FFUF_FILTER_STATUS` | `404` | Status codes filtered out (`-fc`) |
+
+CLI: `--ffuf`, `--ffuf-wordlist`, `--ffuf-threads`, `--ffuf-rate-limit`, `--ffuf-timeout`, `--ffuf-filter-status`. Key files: `steps/tools/ffuf_base.py` (`FfufBaseStep`), `ffuf_directory_step.py`, `ffuf_files_step.py`, `ffuf_wp_step.py`. Uses `-ic` (not the never-existent `-ik`); non-zero exit / unparseable output → `high` finding.
+
+### Config Reference — Nuclei
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_NUCLEI_SEVERITY` | `medium,high,critical` | Severity filter |
+| `WP_NUCLEI_THREADS` | `25` | Template concurrency (`-concurrency`) |
+| `WP_NUCLEI_RATE_LIMIT` | `150` | Max requests/second (`-rl`) |
+| `WP_NUCLEI_TIMEOUT` | `300` | Execution timeout (seconds) |
+
+CLI: `--nuclei`, `--nuclei.severity`, `--nuclei-concurrency`, `--nuclei-rate-limit`. Nuclei skips TLS certificate validation by default and has no `-insecure` flag.
+
+### Config Reference — Raw Tool Output
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WP_SAVE_RAW` | `true` | Persist raw stdout/stderr/argv of external tool steps |
+| `WP_RAW_OUTPUT_DIR` | `""` | Raw dir (default `<output>/raw`) |
+| `WP_RAW_MAX_BYTES` | `5000000` | Per-artifact cap (0 = unlimited) |
+| `WP_RAW_NO_REDACT` | `false` | Debug only: do not redact secrets |
+
+CLI: `--save-raw/--no-save-raw`, `--raw-output`, `--raw-max-bytes`, `--raw-no-redact`. Key files: `utils/raw_output.py` (`RawArtifactWriter`), `base/step.py` (`_persist_raw`, called from the base `run()` and every overriding tool `run()`).
+
 ### Config Reference — Webapp / Source Scan
 
 | Variable | Default | Description |
@@ -244,7 +280,7 @@ CLI: `--active` (append active module + set master switch) requires `--authorize
 
 ### Scan Profiles
 
-`-p web` → `passive, infrastructure, webapp, secrets, tools` — generic (non-WP) web security profile. `tools` is a no-op unless a tool flag is passed. Usage: `python main.py -t https://site.com -p web --nmap --nmap-scripts -f all`.
+`-p web` → `passive, infrastructure, webapp, secrets, tools` — generic (non-WP) web security profile. `tools` is a no-op unless a tool flag is passed. Usage: `python main.py -t https://site.com -p web --nmap --nmap-scripts -f all`. `-p web-generic` is an alias for `web`.
 
 `-p intrusive` → `passive, infrastructure, discovery, fingerprint, vuln, users, api, xmlrpc, secrets, ssrf, webapp, active` — full recon + active testing. Requires `--authorized`. Usage: `python main.py -t https://client-site.com -p intrusive --authorized -f all`.
 

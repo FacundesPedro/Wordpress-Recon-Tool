@@ -13,6 +13,7 @@ updated vulnerability database.
 
 import json
 import shutil
+from datetime import datetime, timezone
 from typing import Optional
 
 from base.step import BaseToolStep
@@ -68,9 +69,12 @@ class WpscanStep(BaseToolStep):
         self.timeout = timeout
         self._binary_path = shutil.which(self._tool_binary) or self._tool_binary
 
+    def _target_url(self) -> str:
+        return str(self.target.url) if self.target is not None else ""
+
     def build_command(self) -> list[str]:
         """Build WPScan command with all options."""
-        cmd = [self._tool_binary, "--url", str(self.target.url)]
+        cmd = [self._tool_binary, "--url", self._target_url()]
 
         cmd.extend(["--format", "json"])
 
@@ -136,7 +140,7 @@ class WpscanStep(BaseToolStep):
                     severity="info",
                     title="WPScan Completed",
                     description="WPScan completed without notable findings",
-                    evidence=f"Target: {self.target.url}",
+                    evidence=f"Target: {self._target_url()}",
                     recommendation="Manual review of WPScan output may reveal additional details",
                     raw=data,
                 )
@@ -445,13 +449,21 @@ class WpscanStep(BaseToolStep):
             )
             return self.findings
 
-        self.logger.info(f"Running WPScan on {self.target.url}")
+        self.logger.info(f"Running WPScan on {self._target_url()}")
 
         cmd = self.build_command()
         self.logger.debug(f"Command: {' '.join(cmd)}")
 
+        started_at = datetime.now(timezone.utc)
         try:
             result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
+            self._persist_raw(
+                cmd,
+                result,
+                started_at,
+                datetime.now(timezone.utc),
+                native_name="wpscan.json",
+            )
 
             detected, error_finding = self._detect_wpscan_error(
                 result.stderr or "", result.stdout or ""
@@ -483,6 +495,17 @@ class WpscanStep(BaseToolStep):
 
         except ToolTimeoutError:
             self.logger.error(f"WPScan timed out after {self.timeout}s")
+            self._persist_raw(
+                cmd,
+                ToolResult(
+                    stdout="",
+                    stderr=f"TIMEOUT after {self.timeout}s",
+                    returncode=-1,
+                    success=False,
+                ),
+                started_at,
+                datetime.now(timezone.utc),
+            )
             self._add_finding(
                 module=self.MODULE,
                 severity="low",

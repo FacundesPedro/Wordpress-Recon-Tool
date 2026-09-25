@@ -49,6 +49,7 @@ PROFILES = {
         "ssrf",
     ],
     "web": ["passive", "infrastructure", "webapp", "secrets", "tools"],
+    "web-generic": ["passive", "infrastructure", "webapp", "secrets", "tools"],
     "intrusive": [
         "passive",
         "infrastructure",

@@ -265,7 +265,8 @@ class TestPortsStep:
         assert len(findings) == 1
         assert "Open ports detected" in findings[0].title
 
-    async def test_port_blocked_by_ssrf(self, mock_http, mock_target, mock_config):
+    async def test_own_target_not_blocked_by_ssrf(self, mock_http, mock_target, mock_config):
+        """The authorized target must not be rejected by its own SSRF blocklist."""
         mock_http.post = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
@@ -277,11 +278,14 @@ class TestPortsStep:
         )
 
         from steps.infrastructure.ports_step import PortsStep
-        with patch("steps.infrastructure.ports_step.is_blocked_target", return_value=True):
+        with patch("steps.infrastructure.ports_step.is_blocked_target", return_value=True) as blocked:
             step = PortsStep(target=mock_target, config=mock_config, http=mock_http)
             findings = await step.run()
 
+        # Own target is scanned regardless of the generic blocklist.
+        assert mock_http.post.await_count > 0
         assert findings == []
+        blocked.assert_not_called()
 
     async def test_no_open_ports(self, mock_http, mock_target, mock_config):
         mock_http.post = AsyncMock(
@@ -309,7 +313,9 @@ class TestPortsStep:
         findings = await step.run()
         assert findings == []
 
-    async def test_request_exception_returns_empty(self, mock_http, mock_target, mock_config):
+    async def test_request_exception_reports_scan_could_not_run(
+        self, mock_http, mock_target, mock_config
+    ):
         mock_http.post = AsyncMock(side_effect=Exception("Connection refused"))
 
         from steps.infrastructure.ports_step import PortsStep
@@ -317,7 +323,10 @@ class TestPortsStep:
             step = PortsStep(target=mock_target, config=mock_config, http=mock_http)
             findings = await step.run()
 
-        assert findings == []
+        # Failures are surfaced instead of silently returning nothing.
+        assert len(findings) == 1
+        assert findings[0].title == "Port scan could not run"
+        assert findings[0].severity == "info"
 
     async def test_extract_fault_code(self, mock_http, mock_target, mock_config):
         from steps.infrastructure.ports_step import PortsStep
