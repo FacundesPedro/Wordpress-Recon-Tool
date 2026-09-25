@@ -25,6 +25,21 @@ See [Installation](#installation) for external tool setup and [Production Wordli
 python main.py main --target https://example.com
 ```
 
+### Multiple Targets in One Run
+```bash
+# Repeat -t, pass a comma-separated list, and/or a targets file
+python main.py main -t https://a.example.com -t https://b.example.com -p full
+python main.py main -t https://a.example.com,https://b.example.com -f json
+python main.py main --targets-file targets.txt -p web --nmap
+
+# Each target's reports and raw tool output land in its own folder:
+#   reports/a.example.com/recon_a_example_com_<ts>.json
+#   reports/b.example.com/recon_b_example_com_<ts>.json
+```
+
+Targets are scanned sequentially; an unreachable/invalid target is logged and
+skipped without aborting the batch.
+
 ### Passive Reconnaissance Only
 ```bash
 python main.py main --target https://example.com --modules passive
@@ -217,9 +232,12 @@ Build args (also settable in `docker-compose.yml` / the environment when using
 | `INSTALL_RECOMMENDED_WORDLISTS` | `true` | Download the recommended SecLists plugin/theme wordlists |
 | `FFUF_VERSION` / `NUCLEI_VERSION` / `WPSCAN_VERSION` / `OPENDOOR_VERSION` | pinned | Tool versions |
 
-Reports are written to `./reports/` (mounted as a volume). The image ships a
-current CA store (`ca-certificates` + `certifi`) and the `whois` binary, so
-HTTPS scans of correctly configured sites do not need `--insecure`.
+Reports are written under `./reports/` (mounted as a volume), one subfolder per
+target named after the target host (`./reports/<host>/`), with that target's raw
+tool output in `./reports/<host>/raw/`. Pass `--flat-output` for the legacy flat
+layout. The image ships a current CA store (`ca-certificates` + `certifi`) and
+the `whois` binary, so HTTPS scans of correctly configured sites do not need
+`--insecure`.
 
 ### Docker networking and output permissions
 
@@ -303,10 +321,12 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 ## CLI Options
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--target` / `-t` | Target WordPress URL (required) | - |
+| `--target` / `-t` | Target URL; repeatable and/or comma-separated (required unless `--targets-file`) | - |
+| `--targets-file` | File with one target per line (blank lines / `#` comments ignored) | - |
 | `--profile` / `-p` | Scan profile (passive, light, standard, full, aggressive, web) | light |
 | `--modules` / `-m` | Specific modules to run | profile default |
-| `--output` / `-o` | Output directory | ./reports |
+| `--output` / `-o` | Base output directory (per-target subfolders created inside) | ./reports |
+| `--flat-output` | Write all reports directly into the output directory (no per-target folders) | false |
 | `--format` / `-f` | Output format (json, markdown, sarif, all) | markdown |
 | `--report-file` | Custom report filename | auto-generated |
 | `--quiet` / `-q` | Report output only | false |

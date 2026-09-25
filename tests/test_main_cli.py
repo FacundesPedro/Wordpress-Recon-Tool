@@ -7,10 +7,12 @@ import pytest
 
 from main import (
     _parse_formats,
+    _parse_targets,
     _save_report,
     build_modules,
     get_module_names,
     resolve_domain,
+    safe_target_dir,
 )
 
 
@@ -148,47 +150,47 @@ class TestSaveReport:
 
     def test_saves_json(self, report, config, tmp_path):
         with patch("main.JsonFormatter.save") as mock_save:
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
             mock_save.assert_called_once()
 
     def test_saves_markdown(self, report, config, tmp_path):
         config.output_format = "markdown"
         with patch("main.MarkdownFormatter.save") as mock_save:
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
             mock_save.assert_called_once()
 
     def test_saves_sarif(self, report, config, tmp_path):
         config.output_format = "sarif"
         with patch("main.SarifFormatter.save") as mock_save:
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
             mock_save.assert_called_once()
 
     def test_saves_html(self, report, config, tmp_path):
         config.output_format = "html"
         with patch("main.HtmlFormatter.save") as mock_save:
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
             mock_save.assert_called_once()
 
     def test_saves_pdf(self, report, config, tmp_path):
         config.output_format = "pdf"
         with patch("main.PdfFormatter.save") as mock_save:
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
             mock_save.assert_called_once()
 
     def test_pdf_import_error_does_not_crash(self, report, config, tmp_path):
         config.output_format = "pdf"
         with patch("main.PdfFormatter.save", side_effect=ImportError("No module named xhtml2pdf")):
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
 
     def test_pdf_generic_error_does_not_crash(self, report, config, tmp_path):
         config.output_format = "pdf"
         with patch("main.PdfFormatter.save", side_effect=RuntimeError("boom")):
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
 
     def test_json_error_does_not_crash(self, report, config, tmp_path):
         config.output_format = "json"
         with patch("main.JsonFormatter.save", side_effect=RuntimeError("boom")):
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
 
     def test_saves_all_formats(self, report, config, tmp_path):
         config.output_format = "all"
@@ -197,7 +199,7 @@ class TestSaveReport:
              patch("main.SarifFormatter.save") as sarif_save, \
              patch("main.HtmlFormatter.save") as html_save, \
              patch("main.PdfFormatter.save") as pdf_save:
-            _save_report(report, config, None, tmp_path)
+            _save_report(report, config, None)
             json_save.assert_called_once()
             md_save.assert_called_once()
             sarif_save.assert_called_once()
@@ -253,3 +255,171 @@ class TestReachabilityAbort:
             )
         mock_probe.assert_not_called()
         assert result.exit_code == 1  # no modules selected → exit 1
+
+
+# ---------------------------------------------------------------------------
+# _parse_targets
+# ---------------------------------------------------------------------------
+class TestParseTargets:
+    def test_single(self):
+        assert _parse_targets(["https://a.com"]) == ["https://a.com"]
+
+    def test_repeatable(self):
+        assert _parse_targets(["https://a.com", "https://b.com"]) == [
+            "https://a.com",
+            "https://b.com",
+        ]
+
+    def test_comma_separated(self):
+        assert _parse_targets(["https://a.com,https://b.com"]) == [
+            "https://a.com",
+            "https://b.com",
+        ]
+
+    def test_dedupes_preserving_order(self):
+        assert _parse_targets(["b.com", "a.com", "b.com"]) == ["b.com", "a.com"]
+
+    def test_targets_file(self, tmp_path):
+        f = tmp_path / "targets.txt"
+        f.write_text("# comment\n\nhttps://a.com\n  https://b.com  \n", encoding="utf-8")
+        assert _parse_targets(None, str(f)) == ["https://a.com", "https://b.com"]
+
+    def test_file_plus_cli_merged(self, tmp_path):
+        f = tmp_path / "targets.txt"
+        f.write_text("https://b.com\n", encoding="utf-8")
+        assert _parse_targets(["https://a.com"], str(f)) == [
+            "https://a.com",
+            "https://b.com",
+        ]
+
+    def test_empty_raises(self):
+        import typer
+
+        with pytest.raises(typer.BadParameter):
+            _parse_targets([])
+
+    def test_missing_file_raises(self, tmp_path):
+        import typer
+
+        with pytest.raises(typer.BadParameter):
+            _parse_targets(None, str(tmp_path / "nope.txt"))
+
+
+# ---------------------------------------------------------------------------
+# safe_target_dir
+# ---------------------------------------------------------------------------
+class TestSafeTargetDir:
+    def test_domain_unchanged(self):
+        from core.target import Target
+
+        assert safe_target_dir(Target("https://example.com")) == "example.com"
+
+    def test_subdomain_unchanged(self):
+        from core.target import Target
+
+        assert safe_target_dir(Target("https://www.example.com")) == "www.example.com"
+
+    def test_port_dropped(self):
+        from core.target import Target
+
+        assert safe_target_dir(Target("http://example.com:8080")) == "example.com"
+
+    def test_ipv4(self):
+        from core.target import Target
+
+        assert safe_target_dir(Target("http://1.2.3.4:8080")) == "1.2.3.4"
+
+    def test_ipv6_sanitized(self):
+        from core.target import Target
+
+        result = safe_target_dir(Target("http://[::1]:8080"))
+        assert ":" not in result
+        assert "[" not in result and "]" not in result
+
+
+# ---------------------------------------------------------------------------
+# Multi-target per-target folder layout
+# ---------------------------------------------------------------------------
+class TestMultiTargetFolders:
+    def test_creates_folder_per_target(self, tmp_path):
+        from typer.testing import CliRunner
+
+        from core.reachability import ReachabilityResult
+        from main import app
+
+        report = MagicMock()
+        report.get_summary.return_value = {
+            "total": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "high": 0,
+            "critical": 0,
+        }
+        probe = ReachabilityResult(
+            reachable=True, domain="x", ip="127.0.0.1", dns_ms=1.0, tcp_ms=1.0
+        )
+
+        runner = CliRunner()
+        with patch(
+            "core.reachability.check_reachability", new=AsyncMock(return_value=probe)
+        ), patch("main.build_modules", return_value=[object()]), patch(
+            "main.Runner"
+        ) as mock_runner_cls, patch("main._save_report") as mock_save:
+            mock_runner_cls.return_value.run_all = AsyncMock(return_value=report)
+            result = runner.invoke(
+                app,
+                [
+                    "main",
+                    "-t",
+                    "https://a.example.com,https://b.example.com",
+                    "-o",
+                    str(tmp_path),
+                    "-q",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "a.example.com").is_dir()
+        assert (tmp_path / "b.example.com").is_dir()
+        assert mock_save.call_count == 2
+
+    def test_flat_output_skips_subfolders(self, tmp_path):
+        from typer.testing import CliRunner
+
+        from core.reachability import ReachabilityResult
+        from main import app
+
+        report = MagicMock()
+        report.get_summary.return_value = {
+            "total": 0,
+            "info": 0,
+            "low": 0,
+            "medium": 0,
+            "high": 0,
+            "critical": 0,
+        }
+        probe = ReachabilityResult(reachable=True, domain="x", ip="127.0.0.1")
+
+        runner = CliRunner()
+        with patch(
+            "core.reachability.check_reachability", new=AsyncMock(return_value=probe)
+        ), patch("main.build_modules", return_value=[object()]), patch(
+            "main.Runner"
+        ) as mock_runner_cls, patch("main._save_report"):
+            mock_runner_cls.return_value.run_all = AsyncMock(return_value=report)
+            result = runner.invoke(
+                app,
+                [
+                    "main",
+                    "-t",
+                    "https://a.example.com",
+                    "-o",
+                    str(tmp_path),
+                    "--flat-output",
+                    "-q",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert not (tmp_path / "a.example.com").exists()

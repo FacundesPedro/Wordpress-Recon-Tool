@@ -54,6 +54,13 @@ class ScanConfig(BaseSettings):
             "json, markdown, sarif, html, pdf, or 'all'"
         ),
     )
+    organize_by_target: bool = Field(
+        default=True,
+        description=(
+            "Write each target's reports and raw tool output into a "
+            "<output>/<host>/ subfolder (set false for the legacy flat layout)"
+        ),
+    )
     quiet: bool = Field(default=False, description="Suppress console output")
 
     wpscan_api_token: str = Field(default="", description="WPScan API token")

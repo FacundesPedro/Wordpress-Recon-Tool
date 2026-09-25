@@ -6,6 +6,16 @@
 
 ## Recent Changes
 
+### S21 - Multi-target runs + per-target output folders (2026-09-25)
+
+| File | Change | Notes |
+|------|--------|-------|
+| `main.py` | **ADDED** | `-t/--target` is now repeatable and comma-separated; new `--targets-file` (one target per line, `#` comments ignored); `_parse_targets` de-dupes while preserving order and fails fast when no target is supplied. |
+| `main.py` | **ADDED** | Each target is scanned in its own `reports/<host>/` folder (host only, ports dropped) containing all report formats and that target's `raw/` tool output. `safe_target_dir` sanitizes the folder name. Target loop rebuilds modules per target, skips invalid/unreachable targets without aborting the batch, and prints a batch summary table (hidden with `-q`). Exit 1 only when no target succeeded. |
+| `main.py` | **CHANGED** | `_save_report(report, config, report_file)` now derives its destination from `config.output_dir` (the per-target folder) instead of a passed-in path. |
+| `config.py` | **ADDED** | `organize_by_target` (`WP_ORGANIZE_BY_TARGET`, default `true`); `--flat-output` sets it false for the legacy flat layout. `--raw-output`, when set, is treated as a base dir and gets the per-target subfolder appended. |
+| `tests/test_main_cli.py` | **ADDED** | `_parse_targets` / `safe_target_dir` unit tests + multi-target and `--flat-output` folder-layout integration tests. Full suite **1777 passing**, ruff clean on changed files; smoke-tested two local targets (`127.0.0.1`, `localhost`) → one folder each with a JSON report. |
+
 ### S20 - Field-report defect sweep: FFUF/TLS/formats/Nuclei + raw tool output (2026-09-25)
 
 Source: authorized engagement against an intranet WordPress/PHP target (see the
