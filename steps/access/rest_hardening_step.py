@@ -12,6 +12,7 @@ class RestHardeningStep(BaseHttpStep):
     description = "Audit REST API for CORS, auth bypass, and route leakage"
     severity = "medium"
     MODULE = "access"
+    requires = ("wordpress",)
 
     SUSPICIOUS_ORIGINS = [
         "https://evil.com",

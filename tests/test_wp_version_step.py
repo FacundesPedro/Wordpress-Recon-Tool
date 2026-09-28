@@ -9,7 +9,7 @@ pytestmark = pytest.mark.asyncio
 
 class TestWpVersionStep:
     async def test_detects_via_meta_generator(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text='<meta name="generator" content="WordPress 6.4.2" />',
@@ -27,7 +27,7 @@ class TestWpVersionStep:
         assert findings[0].module == "fingerprint"
 
     async def test_detects_via_theme_css(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text=(
@@ -47,7 +47,7 @@ class TestWpVersionStep:
         assert "theme CSS" in findings[0].raw["source"]
 
     async def test_detects_via_core_js(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text=(
@@ -66,7 +66,7 @@ class TestWpVersionStep:
         assert "core JS" in findings[0].raw["source"]
 
     async def test_detects_via_meta_generator_different_ordering(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text=(
@@ -87,7 +87,7 @@ class TestWpVersionStep:
         assert "meta generator" in findings[0].raw["source"]
 
     async def test_first_pattern_wins(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text=(
@@ -107,7 +107,7 @@ class TestWpVersionStep:
         assert "meta generator" in findings[0].raw["source"]
 
     async def test_no_version_found(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200, text="<html><body>No version here</body></html>"
             )
@@ -121,7 +121,7 @@ class TestWpVersionStep:
         assert len(findings) == 0
 
     async def test_handles_exception(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(side_effect=Exception("connection error"))
+        mock_http.request = AsyncMock(side_effect=Exception("connection error"))
 
         from steps.fingerprint.wp_version_step import WpVersionStep
 

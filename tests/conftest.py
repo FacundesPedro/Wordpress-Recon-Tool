@@ -116,6 +116,9 @@ def mock_http():
     http.get = AsyncMock(
         return_value=MagicMock(status_code=200, text="Mock response text")
     )
+    http.request = AsyncMock(
+        return_value=MagicMock(status_code=200, text="Mock response text")
+    )
     return http
 
 

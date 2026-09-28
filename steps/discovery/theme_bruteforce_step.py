@@ -18,6 +18,7 @@ class ThemeBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
     description = "Brute-force theme discovery via response-code oracle"
     severity = "info"
     MODULE = "discovery"
+    requires = ("wordpress",)
 
     CONCURRENCY_DEFAULT = 4
     PROGRESS_EVERY = 500

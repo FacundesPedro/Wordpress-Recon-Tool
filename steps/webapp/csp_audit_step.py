@@ -213,7 +213,7 @@ class CspAuditStep(BaseHttpStep):
         self.logger.info("Auditing Content-Security-Policy...")
 
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Failed to fetch homepage: {e}")
             return self.findings

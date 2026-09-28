@@ -23,6 +23,7 @@ class AppPasswordsStep(BaseHttpStep):
     description = "Check Application Passwords API endpoint"
     severity = "info"
     MODULE = "api"
+    requires = ("wordpress",)
 
     APP_PASSWORDS_ROUTES = [
         "wp-json/application-passwords/1.0/",

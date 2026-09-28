@@ -213,6 +213,62 @@ class TestRunAll:
 
 
 # ---------------------------------------------------------------------------
+# Parallel dependency-graph execution
+# ---------------------------------------------------------------------------
+class TestRunAllParallel:
+    def _config(self):
+        config = MagicMock()
+        config.threads = 5
+        config.timeout = 30
+        config.insecure = False
+        config.log_level = "INFO"
+        config.parallel_steps = True
+        config.step_concurrency = 4
+        return config
+
+    def test_parallel_disabled_for_magicmock_by_default(self, mock_config, mock_target):
+        r = Runner([], mock_config, mock_target)
+        assert r._parallel_enabled() is False
+
+    @pytest.mark.asyncio
+    async def test_parallel_runs_in_dependency_order(self, mock_target):
+        order = []
+
+        class Producer:
+            name = "producer"
+            provides = ("token",)
+
+            def __init__(self, **kwargs):
+                pass
+
+            async def run(self):
+                order.append("producer")
+                return []
+
+        class Consumer:
+            name = "consumer"
+            requires = ("token",)
+
+            def __init__(self, **kwargs):
+                pass
+
+            async def run(self):
+                order.append("consumer")
+                return []
+
+        mod = make_module("passive", [Producer, Consumer])
+        r = Runner([mod], self._config(), mock_target)
+        with patch("base.runner.HttpClient") as mock_http_cls:
+            mock_http_inst = AsyncMock()
+            mock_http_inst.unreachable = False
+            mock_http_cls.return_value.__aenter__.return_value = mock_http_inst
+            report = await r.run_all()
+        assert order == ["producer", "consumer"]
+        assert report is not None
+        assert "passive" in r.modules_run
+
+
+# ---------------------------------------------------------------------------
 # get_findings_by_severity
 # ---------------------------------------------------------------------------
 class TestGetFindingsBySeverity:

@@ -449,7 +449,7 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
 
         base_url = str(self.target.url) if self.target else ""
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Failed to fetch homepage: {e}")
             return self.findings

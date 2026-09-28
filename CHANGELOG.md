@@ -1,10 +1,31 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-25
+## Last Updated: 2026-09-28
 
 ---
 
 ## Recent Changes
+
+### S22 - Step relations: shared ScanContext + dependency-aware parallel execution (2026-09-28)
+
+Steps can now share data through a per-target context and run as a
+dependency-aware graph inside each risk tier. The headline result: on a local
+target the `webapp` profile's ~30 homepage readers collapse to **1 HTTP
+request, 10 duplicates avoided** (both sequential and parallel modes).
+Full suite **1804 passing**, ruff clean on new/changed core files.
+
+| File | Change | Notes |
+|------|--------|-------|
+| `core/scan_context.py` | **NEW** | `ScanContext` (per-target blackboard: `set/get/has/wait/mark_missing`, `stats`) + `WebArtifacts` (lazy, memoized, **single-flight** `homepage()` / `wp_json()` / `robots()` / `get()` / `wordpress()`). Only anonymous GET/HEAD is cached; `Authorization`/`Cookie` callers bypass it; `invalidate()` clears after a login. `LAZY_ARTIFACTS` lists self-resolving keys. |
+| `base/step.py` | **ADDED** | `requires` / `provides` / `depends_on` class attributes (default empty) and a `ctx` property: uses the Runner-injected shared context, else a `http.scan_context` attached by the Runner, else a lazily-created private context so standalone/test usage keeps working unchanged. |
+| `base/scheduler.py` | **NEW** | `build_graph(entries)` resolves `provides`→`requires` and explicit `depends_on` edges, warns on unknown/duplicate producers and missing keys, and breaks cycles (Kahn). `run_graph()` launches ready nodes concurrently and releases dependents only after a producer **completes**; failures are swallowed so the graph cannot deadlock. |
+| `base/runner.py` | **WIRED** | Creates one `ScanContext` per target (reused across tiers) and attaches it to the `HttpClient`. New `_run_tier_parallel()` builds a tier-wide DAG; `_run_step_node()` instantiates steps with the shared context and isolates errors. `SERIAL_MODULES = {"active"}` keeps active steps on a `Semaphore(1)`. `_parallel_enabled()` uses an identity check so MagicMock configs don't enable it. Logs "N request(s) made, M duplicate request(s) avoided" at scan end. `run_module()` (sequential path) is unchanged. |
+| `config.py`, `main.py` | **ADDED** | `parallel_steps` (`WP_PARALLEL_STEPS`, default `false`) and `step_concurrency` (`WP_STEP_CONCURRENCY`, `0` = use `--threads`); CLI `--parallel-steps/--no-parallel-steps` and `--step-concurrency`. |
+| `utils/wordpress_detect.py` | **WIRED** | `is_wordpress()` prefers `http.scan_context.web.wordpress()` (shared `/wp-json/` + homepage responses) via an `isinstance(ScanContext)` guard, falling back to the legacy per-process cache when no context is attached. |
+| 30 steps (infrastructure/fingerprint/webapp/discovery) | **MIGRATED** | Homepage reads now go through `ctx.web.homepage()`: `headers`, `hosting`, `waf`, `php_version`, `wp_version`, `plugin`, `theme`, `scripts`, `versioned_assets`, `plugin_version` (incl. `_fetch_version`), `tech_fingerprint`, `header_quality`, `cookie_flags`, `csp_audit`, `js_library`, `sourcemap`, `cache`, `client_side_audit`, `jwt_audit`, `websocket`, `form_security`, `source_review`, `woocommerce`. |
+| 12 WP-gated steps | **ANNOTATED** | `requires = ("wordpress",)` on `login_bruteforce`, `rest_hardening`, `rest_surface`, `app_passwords`, `xmlrpc_detect`, `wp_cron`, `sitemap`, `plugin_bruteforce`, `theme_bruteforce`, `woocommerce`, `oembed_proxy`, `author_id` (self-resolving lazy artifact). |
+| `tests/test_scan_context.py`, `tests/test_scheduler.py` | **NEW** | 25 tests: memoization, single-flight under concurrency, auth bypass, invalidate, WordPress detection, `wait`/`mark_missing`/timeout; graph wiring, lazy artifacts, warnings, cycle breaking, dependency ordering, concurrent independent nodes, skip, failure isolation. `tests/test_runner.py` gained a parallel-mode ordering test. |
+| `tests/conftest.py` | **CHANGED** | `mock_http` now also exposes an async `request`; tests for migrated steps were updated from `mock_http.get` to `mock_http.request`. Homepage canonical URL is `<target>/` so existing `"/"` responders keep matching. |
 
 ### S21 - Multi-target runs + per-target output folders (2026-09-25)
 

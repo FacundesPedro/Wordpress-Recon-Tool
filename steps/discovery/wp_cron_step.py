@@ -21,6 +21,7 @@ class WpCronStep(BaseHttpStep):
     description = "Check for wp-cron.php (potential DoS)"
     severity = "low"
     MODULE = "discovery"
+    requires = ("wordpress",)
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress

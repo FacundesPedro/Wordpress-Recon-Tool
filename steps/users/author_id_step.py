@@ -23,6 +23,7 @@ class AuthorIdStep(BaseHttpStep):
     description = "Enumerate user IDs via author pages"
     severity = "info"
     MODULE = "users"
+    requires = ("wordpress",)
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress

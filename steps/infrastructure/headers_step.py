@@ -45,7 +45,7 @@ class HeadersStep(BaseHttpStep, WordlistDependencyMixin):
             return self.findings
 
         try:
-            response = await self.http.get(self.target.url)
+            response = await self.ctx.web.homepage()
             headers = {k.lower(): v for k, v in response.headers.items()}
 
             missing_headers = []

@@ -13,7 +13,7 @@ WHY: WordPress-only steps (plugin brute-force, wp-json enumeration,
 import re
 from typing import Optional
 
-import httpx
+from core.scan_context import ScanContext
 
 _GENERATOR_RE = re.compile(
     r'name="generator"[^>]*content="WordPress ([\d.]+)"', re.I
@@ -35,6 +35,12 @@ async def is_wordpress(http, target_url: str, logger=None) -> bool:
     Results are cached per target URL. On network errors, returns
     False (fail-closed: WP-only steps skip rather than FPs).
     """
+    # Prefer the shared per-target context when the Runner attached one, so
+    # /wp-json/ and homepage responses are fetched once for the whole scan.
+    ctx = getattr(http, "scan_context", None)
+    if isinstance(ctx, ScanContext) and getattr(ctx, "web", None) is not None:
+        return await ctx.web.wordpress()
+
     key = target_url.rstrip("/")
     if key in _detected:
         return _detected[key]

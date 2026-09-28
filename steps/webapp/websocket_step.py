@@ -128,7 +128,7 @@ class WebSocketStep(BaseHttpStep):
         self.logger.info("Probing WebSocket endpoints (handshake only)...")
 
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")
             return self.findings

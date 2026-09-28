@@ -24,6 +24,7 @@ class OembedProxyStep(BaseHttpStep):
     description = "Check oEmbed proxy for SSRF"
     severity = "medium"
     MODULE = "ssrf"
+    requires = ("wordpress",)
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress

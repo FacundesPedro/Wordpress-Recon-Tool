@@ -18,6 +18,7 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
     description = "Brute-force plugin discovery via response-code oracle"
     severity = "info"
     MODULE = "discovery"
+    requires = ("wordpress",)
 
     CONCURRENCY_DEFAULT = 4
     PROGRESS_EVERY = 500

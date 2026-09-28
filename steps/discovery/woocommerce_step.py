@@ -51,6 +51,7 @@ class WooCommerceStep(BaseHttpStep):
     description = "Detect WooCommerce and enumerate Store API/cart surface"
     severity = "info"
     MODULE = "discovery"
+    requires = ("wordpress",)
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress
@@ -163,7 +164,7 @@ class WooCommerceStep(BaseHttpStep):
         except Exception as e:
             self.logger.debug(f"Store API probe failed: {e}")
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
             if "woocommerce" in (response.text or "").lower():
                 return "woocommerce marker in homepage HTML"
         except Exception:

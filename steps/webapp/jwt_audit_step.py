@@ -189,7 +189,7 @@ class JwtAuditStep(BaseHttpStep):
 
         # 1. Homepage body + cookies
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")
             return self.findings

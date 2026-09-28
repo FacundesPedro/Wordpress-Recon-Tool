@@ -34,7 +34,7 @@ class ThemeStep(BaseHttpStep):
         themes = set()
 
         try:
-            response = await self.http.get(self.target.url)
+            response = await self.ctx.web.homepage()
             if response.status_code == 200:
                 content = response.text
 

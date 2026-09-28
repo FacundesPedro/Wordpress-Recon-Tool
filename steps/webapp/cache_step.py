@@ -67,7 +67,7 @@ class CacheAnalysisStep(BaseHttpStep):
         self.logger.info("Analyzing cache behavior...")
 
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")
             return self.findings

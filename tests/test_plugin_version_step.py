@@ -19,12 +19,12 @@ class TestDetectPlugins:
                 <link href="/wp-content/plugins/contact-form-7/style.css">
             </html>
         """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         plugins = await plugin_step._detect_plugins()
 
         assert plugins == ["contact-form-7"]
-        mock_http.get.assert_called_once()
+        mock_http.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_detect_multiple_plugins(self, plugin_step, mock_http):
@@ -38,7 +38,7 @@ class TestDetectPlugins:
                 <img src="/wp-content/plugins/contact-form-7/includes/css/styles.css">
             </html>
         """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         plugins = await plugin_step._detect_plugins()
 
@@ -53,7 +53,7 @@ class TestDetectPlugins:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = "<html><body>No plugins here</body></html>"
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         plugins = await plugin_step._detect_plugins()
 
@@ -71,7 +71,7 @@ class TestDetectPlugins:
                 <img src="/wp-content/plugins/akismet/image.png">
             </html>
         """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         plugins = await plugin_step._detect_plugins()
 
@@ -82,7 +82,7 @@ class TestDetectPlugins:
         """Test handling HTTP errors when fetching homepage."""
         mock_response = MagicMock()
         mock_response.status_code = 500
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         plugins = await plugin_step._detect_plugins()
 
@@ -104,7 +104,7 @@ class TestFetchVersion:
             
             == Description ==
         """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version("wp-content/plugins/cf7/readme.txt")
 
@@ -122,7 +122,7 @@ class TestFetchVersion:
             
             A contact form plugin.
         """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version("wp-content/plugins/cf7/readme.md")
 
@@ -141,7 +141,7 @@ class TestFetchVersion:
              * Author: Developer
              */
             """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version(
             "wp-content/plugins/my-plugin/my-plugin.php"
@@ -158,7 +158,7 @@ class TestFetchVersion:
             Plugin Name: Test Plugin
             Description: A test plugin with no version info.
         """
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version("wp-content/plugins/test/readme.txt")
 
@@ -169,7 +169,7 @@ class TestFetchVersion:
         """Test when file returns 404."""
         mock_response = MagicMock()
         mock_response.status_code = 404
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version(
             "wp-content/plugins/nonexistent/readme.txt"
@@ -182,7 +182,7 @@ class TestFetchVersion:
         """Test handling HTTP 500 error."""
         mock_response = MagicMock()
         mock_response.status_code = 500
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version("wp-content/plugins/test/readme.txt")
 
@@ -194,7 +194,7 @@ class TestFetchVersion:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = "Stable tag: 1.2"
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version("wp-content/plugins/test/readme.txt")
 
@@ -206,7 +206,7 @@ class TestFetchVersion:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = "Stable tag: 5.8.2"
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         version = await plugin_step._fetch_version("wp-content/plugins/test/readme.txt")
 
@@ -225,13 +225,13 @@ class TestGetPluginVersion:
                 status_code=200, text="Stable tag: 1.5.0"
             ),  # readme.md has version
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         result = await plugin_step._get_plugin_version("test-plugin")
 
         assert result["version"] == "1.5.0"
         assert result["source"] == "readme.md"
-        assert mock_http.get.call_count == 2
+        assert mock_http.request.call_count == 2
 
     @pytest.mark.asyncio
     async def test_version_from_php_fallback(self, plugin_step, mock_http):
@@ -241,7 +241,7 @@ class TestGetPluginVersion:
             MagicMock(status_code=404),  # readme.md not found
             MagicMock(status_code=200, text="Version: 3.0.1"),  # PHP has version
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         result = await plugin_step._get_plugin_version("test-plugin")
 
@@ -256,7 +256,7 @@ class TestGetPluginVersion:
             MagicMock(status_code=404),
             MagicMock(status_code=404),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         result = await plugin_step._get_plugin_version("test-plugin")
 
@@ -279,7 +279,7 @@ class TestRun:
             MagicMock(status_code=404),
             MagicMock(status_code=200, text="Version: 5.8.2"),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -303,7 +303,7 @@ class TestRun:
             MagicMock(status_code=404),
             MagicMock(status_code=404),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -316,7 +316,7 @@ class TestRun:
     @pytest.mark.asyncio
     async def test_run_with_mixed_versions(self, plugin_step, mock_http):
         """Test run with mix of known and unknown versions."""
-        mock_http.get.reset_mock()
+        mock_http.request.reset_mock()
         responses = [
             MagicMock(
                 status_code=200,
@@ -329,7 +329,7 @@ class TestRun:
             MagicMock(status_code=404),  # akismet readme.md
             MagicMock(status_code=404),  # akismet php
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -348,7 +348,7 @@ class TestRun:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = "<html><body>No plugins here</body></html>"
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         findings = await plugin_step.run()
 
@@ -359,7 +359,7 @@ class TestRun:
         """Test run when homepage returns error."""
         mock_response = MagicMock()
         mock_response.status_code = 500
-        mock_http.get.return_value = mock_response
+        mock_http.request.return_value = mock_response
 
         findings = await plugin_step.run()
 
@@ -381,7 +381,7 @@ class TestFindingStructure:
             MagicMock(status_code=404),
             MagicMock(status_code=200, text="Version: 1.0.0"),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -399,7 +399,7 @@ class TestFindingStructure:
             MagicMock(status_code=404),
             MagicMock(status_code=200, text="Version: 1.0.0"),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -417,7 +417,7 @@ class TestFindingStructure:
             MagicMock(status_code=404),
             MagicMock(status_code=200, text="Version: 1.0.0"),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -435,7 +435,7 @@ class TestFindingStructure:
             MagicMock(status_code=404),
             MagicMock(status_code=200, text="Version: 1.0.0"),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -447,7 +447,7 @@ class TestFindingStructure:
     @pytest.mark.asyncio
     async def test_finding_raw_summary_counts(self, plugin_step, mock_http):
         """Test that summary counts are accurate."""
-        mock_http.get.reset_mock()
+        mock_http.request.reset_mock()
         responses = [
             MagicMock(
                 status_code=200,
@@ -460,7 +460,7 @@ class TestFindingStructure:
             MagicMock(status_code=404),  # akismet readme.md
             MagicMock(status_code=404),  # akismet php
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 
@@ -481,7 +481,7 @@ class TestFindingStructure:
             MagicMock(status_code=404),
             MagicMock(status_code=200, text="Version: 1.0.0"),
         ]
-        mock_http.get.side_effect = responses
+        mock_http.request.side_effect = responses
 
         findings = await plugin_step.run()
 

@@ -54,7 +54,7 @@ class HostingStep(BaseHttpStep):
         if self.target is None:
             return self.findings
         try:
-            resp = await self.http.get(self.target.url)
+            resp = await self.ctx.web.homepage()
             headers = {k.lower(): v for k, v in resp.headers.items()}
             body = resp.text
         except Exception as e:

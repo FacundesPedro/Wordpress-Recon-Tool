@@ -107,7 +107,7 @@ class JsLibraryStep(BaseHttpStep):
         self.logger.info("Auditing JS libraries (versions + SRI)...")
 
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")
             return self.findings

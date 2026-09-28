@@ -72,7 +72,7 @@ class FormSecurityStep(BaseHttpStep):
 
         pages: list[tuple[str, str, object]] = []
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
             pages.append((self.target.url, response.text or "", response.headers))
         except Exception as e:
             self.logger.debug(f"Homepage fetch failed: {e}")

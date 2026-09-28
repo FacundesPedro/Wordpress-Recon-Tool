@@ -37,6 +37,23 @@ class ScanConfig(BaseSettings):
     threads: int = Field(
         default=2, ge=1, le=20, description="Number of concurrent threads"
     )
+    parallel_steps: bool = Field(
+        default=False,
+        description=(
+            "Run the steps within a risk tier as a dependency-aware parallel "
+            "graph, sharing data through a per-target ScanContext "
+            "(env WP_PARALLEL_STEPS)"
+        ),
+    )
+    step_concurrency: int = Field(
+        default=0,
+        ge=0,
+        le=200,
+        description=(
+            "Max concurrently running steps in parallel mode "
+            "(0 = use the threads value)"
+        ),
+    )
     timeout: int = Field(default=10, ge=1, description="Request timeout in seconds")
     insecure: bool = Field(
         default=False, description="Skip TLS certificate verification"

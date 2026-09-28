@@ -144,7 +144,7 @@ class TestRun:
             headers={"X-WP-Engine": "nginx"},
             text="WordPress powered site",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         findings = await step.run()
 
@@ -164,7 +164,7 @@ class TestRun:
             headers={"server": "nginx"},
             text="WordPress site",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         findings = await step.run()
 
@@ -181,7 +181,7 @@ class TestRun:
             headers={"server": "nginx"},
             text="web/app/themes/twentythree/style.css",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         findings = await step.run()
 
@@ -193,7 +193,7 @@ class TestRun:
         from steps.infrastructure.hosting_step import HostingStep
         step = HostingStep(target=mock_target, config=mock_config, http=mock_http)
 
-        mock_http.get.side_effect = Exception("Connection error")
+        mock_http.request.side_effect = Exception("Connection error")
 
         findings = await step.run()
 
@@ -208,7 +208,7 @@ class TestRun:
             headers={"X-WP-Engine": "nginx", "x-sg-origin": "sg"},
             text="WordPress site",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         findings = await step.run()
 

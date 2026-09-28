@@ -23,6 +23,7 @@ class SitemapStep(BaseHttpStep):
     description = "Check for WordPress sitemap"
     severity = "info"
     MODULE = "discovery"
+    requires = ("wordpress",)
 
     SITEMAP_PATHS = [
         "wp-sitemap.xml",

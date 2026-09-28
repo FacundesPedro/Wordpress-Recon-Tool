@@ -179,6 +179,23 @@ def main(
         int,
         typer.Option("--threads", help="Number of threads"),
     ] = 2,
+    parallel_steps: Annotated[
+        bool,
+        typer.Option(
+            "--parallel-steps/--no-parallel-steps",
+            help=(
+                "Run steps within a tier as a dependency-aware parallel graph "
+                "sharing fetched data"
+            ),
+        ),
+    ] = False,
+    step_concurrency: Annotated[
+        int,
+        typer.Option(
+            "--step-concurrency",
+            help="Max concurrent steps in parallel mode (0 = use --threads)",
+        ),
+    ] = 0,
     timeout: Annotated[
         int,
         typer.Option("--timeout", help="Request timeout in seconds"),
@@ -372,6 +389,8 @@ def main(
 
     config = ScanConfig()
     config.threads = threads
+    config.parallel_steps = parallel_steps
+    config.step_concurrency = step_concurrency
     config.timeout = timeout
     config.output_dir = output
     config.organize_by_target = not flat_output

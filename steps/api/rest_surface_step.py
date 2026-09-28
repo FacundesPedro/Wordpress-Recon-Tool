@@ -22,6 +22,7 @@ class RestSurfaceStep(BaseHttpStep):
     description = "Discover REST API endpoints"
     severity = "info"
     MODULE = "api"
+    requires = ("wordpress",)
 
     # Common REST API routes to probe
     REST_ROUTES = [

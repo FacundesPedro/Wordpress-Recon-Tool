@@ -108,7 +108,7 @@ class PluginVersionStep(BaseHttpStep):
     async def _detect_plugins(self) -> list[str]:
         """Detect plugin names from homepage HTML."""
         try:
-            response = await self.http.get(self.target.url)
+            response = await self.ctx.web.homepage()
             if response.status_code != 200:
                 return []
 
@@ -142,8 +142,7 @@ class PluginVersionStep(BaseHttpStep):
     async def _fetch_version(self, path: str) -> Optional[str]:
         """Fetch a file and extract version from it."""
         try:
-            url = self.urljoin(path)
-            response = await self.http.get(url)
+            response = await self.ctx.web.get(path)
 
             if response.status_code != 200:
                 return None

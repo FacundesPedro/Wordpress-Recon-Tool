@@ -19,7 +19,7 @@ class TestHeadersStep:
             },
             text="",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         from steps.infrastructure.headers_step import HeadersStep
         step = HeadersStep(target=mock_target, config=mock_config, http=mock_http)
@@ -47,7 +47,7 @@ class TestHeadersStep:
             },
             text="",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         from steps.infrastructure.headers_step import HeadersStep
         step = HeadersStep(target=mock_target, config=mock_config, http=mock_http)
@@ -64,7 +64,7 @@ class TestHeadersStep:
         assert findings == []
 
     async def test_http_exception_returns_empty(self, mock_http, mock_target, mock_config):
-        mock_http.get.side_effect = Exception("Connection error")
+        mock_http.request.side_effect = Exception("Connection error")
 
         from steps.infrastructure.headers_step import HeadersStep
         step = HeadersStep(target=mock_target, config=mock_config, http=mock_http)
@@ -155,7 +155,7 @@ class TestWafStep:
             headers={"server": "cloudflare-nginx"},
             text="",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         from steps.infrastructure.waf_step import WafStep
         step = WafStep(target=mock_target, config=mock_config, http=mock_http)
@@ -177,7 +177,7 @@ class TestWafStep:
             headers={"set-cookie": "__cfduid=abc123"},
             text="",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         from steps.infrastructure.waf_step import WafStep
         step = WafStep(target=mock_target, config=mock_config, http=mock_http)
@@ -195,7 +195,7 @@ class TestWafStep:
             headers={"server": "nginx"},
             text="Protected by mod_security",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         from steps.infrastructure.waf_step import WafStep
         step = WafStep(target=mock_target, config=mock_config, http=mock_http)
@@ -213,7 +213,7 @@ class TestWafStep:
             headers={"server": "nginx", "content-type": "text/html"},
             text="Welcome to my WordPress site",
         )
-        mock_http.get.return_value = mock_resp
+        mock_http.request.return_value = mock_resp
 
         from steps.infrastructure.waf_step import WafStep
         step = WafStep(target=mock_target, config=mock_config, http=mock_http)
@@ -233,7 +233,7 @@ class TestWafStep:
         assert findings == []
 
     async def test_http_exception_returns_empty(self, mock_http, mock_target, mock_config):
-        mock_http.get.side_effect = Exception("Connection error")
+        mock_http.request.side_effect = Exception("Connection error")
 
         from steps.infrastructure.waf_step import WafStep
         step = WafStep(target=mock_target, config=mock_config, http=mock_http)

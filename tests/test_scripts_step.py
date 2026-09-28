@@ -9,7 +9,7 @@ pytestmark = pytest.mark.asyncio
 
 class TestScriptsStep:
     async def test_found_scripts(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text=(
@@ -31,7 +31,7 @@ class TestScriptsStep:
         assert findings[0].module == "fingerprint"
 
     async def test_no_scripts_found(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(
+        mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200, text="<html><body>No scripts here</body></html>"
             )
@@ -45,7 +45,7 @@ class TestScriptsStep:
         assert len(findings) == 0
 
     async def test_not_found(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(return_value=MagicMock(status_code=404))
+        mock_http.request = AsyncMock(return_value=MagicMock(status_code=404))
 
         from steps.fingerprint.scripts_step import ScriptsStep
 
@@ -55,7 +55,7 @@ class TestScriptsStep:
         assert len(findings) == 0
 
     async def test_handles_exception(self, mock_http, mock_target, mock_config):
-        mock_http.get = AsyncMock(side_effect=Exception("connection error"))
+        mock_http.request = AsyncMock(side_effect=Exception("connection error"))
 
         from steps.fingerprint.scripts_step import ScriptsStep
 

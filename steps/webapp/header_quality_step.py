@@ -61,7 +61,7 @@ class HeaderQualityStep(BaseHttpStep):
         self.logger.info("Checking security header quality...")
 
         try:
-            response = await self.fetch("/")
+            response = await self.ctx.web.homepage()
         except Exception as e:
             self.logger.debug(f"Failed to fetch homepage: {e}")
             return self.findings

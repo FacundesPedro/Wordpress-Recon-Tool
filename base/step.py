@@ -20,6 +20,7 @@ from base.tool import (
 from config import Config
 from core.finding import Finding
 from core.logger import Logger
+from core.scan_context import ScanContext
 from core.target import Target
 from utils.raw_output import RawArtifactWriter
 from utils.tool_version_checker import (
@@ -37,6 +38,13 @@ class BaseStep(ABC):
     description: str = "Base step - override in subclasses"
     severity: Literal["info", "low", "medium", "high", "critical"] = "info"
 
+    # ── Step relations / shared data ────────────────────────────────
+    # Declared as class attributes so the scheduler can build a dependency
+    # graph without instantiating steps. See base/scheduler.py.
+    requires: tuple[str, ...] = ()      # artifact keys this step needs
+    provides: tuple[str, ...] = ()      # artifact keys this step publishes
+    depends_on: tuple[str, ...] = ()    # explicit step class names that must run first
+
     def __init__(
         self,
         target: Optional[Target] = None,
@@ -49,9 +57,33 @@ class BaseStep(ABC):
         self.description = description or getattr(self, "description", "")
         self.config = config or Config()
         self.http = None
+        self._ctx = None
         self.findings: list[Finding] = []
         log_level = getattr(self.config, "log_level", "INFO") if self.config else "INFO"
         self.logger = Logger(self.name, log_level)
+
+    @property
+    def ctx(self):
+        """Shared ScanContext for this scan.
+
+        The Runner injects the shared context (``step._ctx``). Standalone/tests
+        fall back to a private context so ``ctx.web.*`` still works, building
+        one lazily from the step's HTTP client when available.
+        """
+        if self._ctx is not None:
+            return self._ctx
+        scan_context = getattr(self.http, "scan_context", None) if self.http is not None else None
+        if isinstance(scan_context, ScanContext):
+            return scan_context
+        if self.http is not None:
+            self._ctx = ScanContext(
+                http=self.http,
+                target_url=getattr(self.target, "url", "") or "",
+                config=self.config,
+                logger=self.logger,
+            )
+            return self._ctx
+        return None
 
     @abstractmethod
     async def run(self) -> list[Finding]:

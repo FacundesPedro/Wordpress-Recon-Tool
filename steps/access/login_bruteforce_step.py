@@ -20,6 +20,7 @@ class LoginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
     description = "Brute-force wp-login.php with credential pairs"
     severity = "high"
     MODULE = "access"
+    requires = ("wordpress",)
 
     SLEEP_BETWEEN_ATTEMPTS = 1.5
 

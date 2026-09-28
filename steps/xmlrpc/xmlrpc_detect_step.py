@@ -26,6 +26,7 @@ class XmlrpcDetectStep(BaseHttpStep):
     description = "Detect if XML-RPC is enabled"
     severity = "info"
     MODULE = "xmlrpc"
+    requires = ("wordpress",)
 
     XMLRPC_REQUEST = """<?xml version="1.0"?>
 <methodCall>
