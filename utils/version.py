@@ -7,19 +7,25 @@ vulnerability fixed in a later release.
 import re
 from typing import Optional
 
-_VERSION_RE = re.compile(r"\d+")
+_COMPONENT_SPLIT_RE = re.compile(r"[.\-_+]")
 
 
 def version_tuple(version: str) -> tuple[int, ...]:
     """Convert a version string into a comparable integer tuple.
 
-    Missing components are zero-padded implicitly by Python's tuple
-    comparison (``(1, 2) < (1, 2, 1)``), and non-numeric suffixes such as
-    ``-beta1`` are ignored.
+    Only the leading numeric dotted components are used; a suffix such as
+    ``-beta1`` or ``-1build1`` stops parsing. Missing components are handled
+    by Python's tuple comparison (``(1, 2) < (1, 2, 1)``).
     """
     if not version:
         return ()
-    return tuple(int(n) for n in _VERSION_RE.findall(str(version)))
+    parts: list[int] = []
+    for piece in _COMPONENT_SPLIT_RE.split(str(version)):
+        if piece.isdigit():
+            parts.append(int(piece))
+        else:
+            break
+    return tuple(parts)
 
 
 def is_version_less(candidate: str, other: str) -> bool:
