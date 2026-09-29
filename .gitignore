@@ -107,3 +107,8 @@ wordlists/external/
 # Playwright MCP artifacts
 # =========================
 .playwright-mcp/
+
+# =========================
+# opencode + agents
+# =========================
+.opencode/
