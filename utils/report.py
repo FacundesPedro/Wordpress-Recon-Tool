@@ -147,7 +147,10 @@ class MarkdownFormatter:
         }.get(f.severity, "")
 
         lines = [f"\n### {f.title} {badge}\n"]
-        lines.append(f"**Module:** {f.module} | **Step:** {f.step}\n")
+        lines.append(
+            f"**Module:** {f.module} | **Step:** {f.step} | "
+            f"**Confidence:** {f.confidence}\n"
+        )
         lines.append(f"\n{f.description}\n")
         if f.evidence:
             lines.append(f"\n**Evidence:**\n```\n{f.evidence}\n```\n")
@@ -195,7 +198,10 @@ class SarifFormatter:
                     "shortDescription": {"text": finding.title},
                     "fullDescription": {"text": finding.description},
                     "defaultConfiguration": {"level": cls._sarif_level(finding.severity)},
-                    "properties": {"severity": finding.severity},
+                    "properties": {
+                        "severity": finding.severity,
+                        "confidence": finding.confidence,
+                    },
                 }
 
             results.append(finding.to_sarif())
@@ -705,7 +711,7 @@ h2 {
     <span class="finding-title">{cls._esc(f.title)}</span>
     <span class="sev-tag sev-{f.severity}">{cls._SEVERITY_LABEL.get(f.severity, f.severity)}</span>
   </div>
-  <div class="finding-path">{cls._esc(f.module)} / {cls._esc(f.step)}</div>
+  <div class="finding-path">{cls._esc(f.module)} / {cls._esc(f.step)} &middot; confidence: {cls._esc(f.confidence)}</div>
   <p class="finding-desc">{cls._esc(f.description)}</p>
   {evidence}
   {recommendation}
@@ -953,7 +959,7 @@ table.facts td.label { background-color: #f4f4f7; width: 118pt; color: #44444f; 
         return f"""<div class="finding">
   <div class="title"><span class="idx">{index:02d}</span> {HtmlFormatter._esc(f.title)}
     <span class="sev" style="color:{color}">{label}</span></div>
-  <div class="path">{HtmlFormatter._esc(f.module)} / {HtmlFormatter._esc(f.step)}</div>
+  <div class="path">{HtmlFormatter._esc(f.module)} / {HtmlFormatter._esc(f.step)} &middot; confidence: {HtmlFormatter._esc(f.confidence)}</div>
   <div class="desc">{HtmlFormatter._esc(f.description)}</div>
   {evidence}
   {recommendation}

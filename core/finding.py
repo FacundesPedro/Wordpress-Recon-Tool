@@ -13,6 +13,10 @@ SARIF_LEVEL_MAP: dict[str, str] = {
     "info": "none",
 }
 
+# Confidence expresses certainty of the detection, not impact. A confirmed
+# exploitation should be `high`; a syntactic/heuristic match should be `low`.
+Confidence = Literal["low", "medium", "high"]
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -27,9 +31,12 @@ class Finding:
     description: str
     evidence: str
     recommendation: str
+    confidence: Confidence = "high"
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw: dict[str, Any] = field(default_factory=dict)
 
+    # `confidence` is intentionally excluded: two otherwise-identical findings
+    # should dedupe regardless of how certain each detection was.
     _DEDUP_FIELDS = (
         "module", "step", "severity", "title", "description", "evidence", "recommendation",
     )
@@ -50,6 +57,7 @@ class Finding:
             "module": self.module,
             "step": self.step,
             "severity": self.severity,
+            "confidence": self.confidence,
             "title": self.title,
             "description": self.description,
             "evidence": self.evidence,
@@ -78,6 +86,7 @@ class Finding:
                 "module": self.module,
                 "step": self.step,
                 "severity": self.severity,
+                "confidence": self.confidence,
                 "recommendation": self.recommendation,
                 "raw": self.raw,
             },

@@ -370,3 +370,43 @@ _SEVERITY_MAP: dict[str, FindingSeverity] = {
 def to_finding_severity(severity: str) -> FindingSeverity:
     """Map an API severity string to a Finding severity literal."""
     return _SEVERITY_MAP.get(severity, "info")
+
+
+# Ascending order, used to cap severities.
+_SEVERITY_ORDER = ("info", "low", "medium", "high", "critical")
+
+
+def _cap_severity(severity: str, cap: str) -> str:
+    return severity if _SEVERITY_ORDER.index(severity) <= _SEVERITY_ORDER.index(cap) else cap
+
+
+def cve_finding_severity(
+    severity: str,
+    installed: Optional[str] = None,
+    fixed_in: Optional[str] = None,
+) -> tuple[Optional[str], str]:
+    """Resolve a CVE to ``(severity, confidence)`` for the installed version.
+
+    - Returns ``(None, ...)`` when the CVE is already patched (installed
+      version is at or above ``fixed_in``), so the caller can skip it.
+    - A real CVE is never reported below ``medium`` even when the upstream
+      record carries no CVSS score (which would otherwise map to ``info``).
+    - When applicability cannot be determined (unknown installed version or
+      no published fix), the severity is capped at ``medium`` and confidence
+      is reported as ``low`` — the finding is a lead, not a confirmed issue.
+    """
+    from utils.version import cve_applies
+
+    applies = cve_applies(installed, fixed_in)
+    if applies is False:
+        return None, "high"
+
+    resolved = to_finding_severity(severity)
+    # A real CVE is never `info`: a missing/low-confidence upstream score maps
+    # to `info`, which would wrongly bury it. Genuine `low` scores stay `low`.
+    if resolved == "info":
+        resolved = "medium"
+
+    if applies is None:
+        return _cap_severity(resolved, "medium"), "low"
+    return resolved, "high"
