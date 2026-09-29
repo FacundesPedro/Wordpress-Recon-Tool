@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from base.tool import ToolResult
 from config import ScanConfig
-from utils.raw_output import RawArtifactWriter
+from utils.raw_output import RawArtifactWriter, format_command
 
 
 def make_writer(tmp_path, **overrides):
@@ -38,6 +38,39 @@ class TestEnabled:
         assert make_writer(tmp_path).enabled is True
 
 
+class TestFormatCommand:
+    def test_empty(self):
+        assert format_command([]) == ""
+        assert format_command(None) == ""
+
+    def test_short_is_single_line(self):
+        assert format_command(["nuclei", "-u", "https://example.com"]) == (
+            "nuclei -u https://example.com\n"
+        )
+
+    def test_wraps_without_overflow(self):
+        cmd = ["opendoor"] + [f"--flag{i:02d}" for i in range(20)] + ["target"]
+        rendered = format_command(cmd, width=40)
+        lines = rendered.splitlines()
+        assert len(lines) > 1
+        for line in lines[:-1]:
+            assert line.endswith("\\")
+            assert len(line) <= 41  # content + trailing backslash
+        # Last line has no continuation.
+        assert not lines[-1].endswith("\\")
+        # Rejoining removes continuations and matches shlex.join.
+        import shlex
+
+        rejoined = " ".join(
+            ln.rstrip("\\").strip() for ln in rendered.splitlines()
+        )
+        assert rejoined == shlex.join(cmd)
+
+    def test_wrap_keeps_quoting(self):
+        rendered = format_command(["tool", "-m", "has space", "x" * 90])
+        assert "'has space'" in rendered
+
+
 class TestPersist:
     def test_writes_all_artifacts(self, tmp_path):
         writer = make_writer(tmp_path)
@@ -59,7 +92,7 @@ class TestPersist:
         assert base == tmp_path / "raw"
         assert (base / "nuclei.stdout").read_text() == '{"a":1}\n'
         assert (base / "nuclei.stderr").read_text() == "warn"
-        assert (base / "nuclei.cmd").read_text() == "nuclei\n-u\nhttps://example.com"
+        assert (base / "nuclei.cmd").read_text() == "nuclei -u https://example.com\n"
         assert (base / "nuclei.jsonl").read_text() == '{"a":1}\n'
         m = json.loads((base / "nuclei.meta.json").read_text())
         assert m["step"] == "nuclei"
@@ -67,6 +100,21 @@ class TestPersist:
         assert m["returncode"] == 0
         assert m["duration_ms"] == 1000.0
         assert m["started_at"].startswith("2024-01-01T12:00:00")
+
+    def test_cmd_is_single_shell_quoted_line(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        base = writer.persist(
+            step="tool",
+            tool="tool",
+            cmd=["tool", "--msg", "hello world", "-p", "a'b"],
+            result=result,
+        )
+        assert base is not None
+        # One line, shlex-quoted, ends with a newline.
+        content = (base / "tool.cmd").read_text()
+        assert content.endswith("\n") and content.count("\n") == 1
+        assert content == "tool --msg 'hello world' -p 'a'\"'\"'b'\n"
 
     def test_redacts_secrets_by_default(self, tmp_path):
         writer = make_writer(tmp_path)

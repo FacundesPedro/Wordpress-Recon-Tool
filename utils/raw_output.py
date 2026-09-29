@@ -8,7 +8,8 @@ Layout (under ``<output>/raw`` by default)::
 
     <step>.stdout
     <step>.stderr
-    <step>.cmd          one argv entry per line
+    <step>.cmd          shell command wrapped at CMD_WIDTH columns (line
+                        continuations) so it does not overflow horizontally
     <step>.meta.json    {step, tool, version, returncode, duration_ms, ...}
     <native file>       optional best-effort machine-format copy
 
@@ -18,6 +19,7 @@ Writing is best-effort: failures are logged and never abort a scan.
 from __future__ import annotations
 
 import json
+import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,32 @@ from typing import Any
 from base.tool import ToolResult, _redact_sensitive_from_output
 
 DEFAULT_MAX_BYTES = 5_000_000
+
+# Wrap the persisted command at this width with `\` continuations so the file
+# is readable and copy-pasteable without horizontal overflow.
+CMD_WIDTH = 100
+
+
+def format_command(cmd: list[str] | None, width: int = CMD_WIDTH) -> str:
+    """Render argv as a shell command wrapped to ``width`` columns.
+
+    Arguments are quoted with :func:`shlex.quote` and joined with spaces,
+    inserting a trailing ``\\`` + newline when the next argument would exceed
+    the width. The result is a single, pasteable shell command.
+    """
+    tokens = [shlex.quote(str(a)) for a in (cmd or [])]
+    if not tokens:
+        return ""
+    lines: list[str] = []
+    current = tokens[0]
+    for token in tokens[1:]:
+        if len(current) + 1 + len(token) > width:
+            lines.append(current + " \\")
+            current = "  " + token
+        else:
+            current += " " + token
+    lines.append(current)
+    return "\n".join(lines) + "\n"
 
 
 def _iso(value: datetime | None) -> str:
@@ -104,7 +132,9 @@ class RawArtifactWriter:
             stderr = result.stderr or ""
             self._write(base, f"{step}.stdout", self._redact(stdout))
             self._write(base, f"{step}.stderr", self._redact(stderr))
-            self._write(base, f"{step}.cmd", "\n".join(str(a) for a in (cmd or [])))
+            # Wrapped shell command: readable, no horizontal overflow, and
+            # still pasteable as a single command (trailing `\` continuations).
+            self._write(base, f"{step}.cmd", format_command(cmd))
 
             native = native_content if native_content is not None else stdout
             if native_name and native:
