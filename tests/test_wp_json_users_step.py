@@ -57,7 +57,7 @@ class TestRunSkip:
         assert len(findings) == 1
         f = findings[0]
         assert f.module == "access"
-        assert f.severity == "low"
+        assert f.severity == "info"
         assert "unavailable" in f.title.lower()
 
 
@@ -94,9 +94,11 @@ class TestSuccessfulResponse:
 
         findings = await step.run()
 
-        email_findings = [f for f in findings if f.severity == "medium"]
+        email_findings = [f for f in findings if "Email" in f.title]
         assert len(email_findings) == 1
-        assert "Email" in email_findings[0].title
+        # The operator fetched these with their own credentials; not an
+        # external exposure.
+        assert email_findings[0].severity == "info"
         assert "admin@example.com" in email_findings[0].evidence
 
     async def test_empty_user_list_returns_no_extra_finding(self, mock_http, mock_target):

@@ -44,7 +44,7 @@ class WpJsonPluginsStep(BaseHttpStep):
             self.logger.error(f"Error querying plugins endpoint: {e}")
             self._add_finding(
                 module=self.MODULE,
-                severity="low",
+                severity="info",
                 title="Plugin inventory unavailable",
                 description=f"Could not query /wp-json/wp/v2/plugins: {e}",
                 evidence=str(e),
@@ -97,7 +97,7 @@ class WpJsonPluginsStep(BaseHttpStep):
             if inactive:
                 self._add_finding(
                     module=self.MODULE,
-                    severity="medium",
+                    severity="low",
                     title="Inactive Plugins Detected",
                     description=(
                         f"Found {len(inactive)} inactive plugin(s) that "

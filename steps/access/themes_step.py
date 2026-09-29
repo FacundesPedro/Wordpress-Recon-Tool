@@ -44,7 +44,7 @@ class WpJsonThemesStep(BaseHttpStep):
             self.logger.error(f"Error querying themes endpoint: {e}")
             self._add_finding(
                 module=self.MODULE,
-                severity="low",
+                severity="info",
                 title="Theme inventory unavailable",
                 description=f"Could not query /wp-json/wp/v2/themes: {e}",
                 evidence=str(e),
@@ -97,7 +97,7 @@ class WpJsonThemesStep(BaseHttpStep):
             if inactive:
                 self._add_finding(
                     module=self.MODULE,
-                    severity="medium",
+                    severity="low",
                     title="Inactive Themes Detected",
                     description=(
                         f"Found {len(inactive)} inactive theme(s) that "

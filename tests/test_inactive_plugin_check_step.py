@@ -47,7 +47,7 @@ class TestRunSkip:
 class TestInactivePluginResults:
     """Tests for run() with various accessibility outcomes."""
 
-    async def test_accessible_plugins_creates_medium_finding(self, mock_http, mock_target):
+    async def test_accessible_plugins_creates_low_finding(self, mock_http, mock_target):
         mock_config = MagicMock()
         mock_config.wp_user = "admin"
         mock_config.wp_application_password = "secret"
@@ -61,7 +61,7 @@ class TestInactivePluginResults:
 
         assert len(findings) == 1
         f = findings[0]
-        assert f.severity == "medium"
+        assert f.severity == "low"
         assert f.module == "access"
         assert "accessible" in f.title.lower()
         assert "hello" in f.evidence

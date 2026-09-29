@@ -21,7 +21,7 @@ class AuthorIdStep(BaseHttpStep):
 
     name = "author_id"
     description = "Enumerate user IDs via author pages"
-    severity = "info"
+    severity = "medium"
     MODULE = "users"
     requires = ("wordpress",)
 

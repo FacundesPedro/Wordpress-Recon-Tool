@@ -40,7 +40,7 @@ class WpJsonUsersStep(BaseHttpStep):
             self.logger.error(f"Error querying users endpoint: {e}")
             self._add_finding(
                 module=self.MODULE,
-                severity="low",
+                severity="info",
                 title="Authenticated user enumeration unavailable",
                 description=f"Could not query /wp-json/wp/v2/users: {e}",
                 evidence=str(e),
@@ -93,7 +93,7 @@ class WpJsonUsersStep(BaseHttpStep):
                 if admin_users:
                     self._add_finding(
                         module=self.MODULE,
-                        severity="medium",
+                        severity="info",
                         title="Administrator Email Addresses Exposed",
                         description=(
                             f"Email addresses of {len(admin_users)} "

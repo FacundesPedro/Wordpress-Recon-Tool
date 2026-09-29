@@ -26,7 +26,7 @@ class TestAuthorIdStep:
         assert len(findings) == 1
         f = findings[0]
         assert f.module == "users"
-        assert f.severity == "info"
+        assert f.severity == "medium"
         assert "Author IDs enumerated" in f.title
         assert "4" in f.evidence
 
@@ -102,11 +102,11 @@ class TestAuthorIdStep:
 
 
 class TestLoginVerbosityStep:
-    """Tests for LoginVerbosityStep — single GET to wp-login.php."""
+    """Tests for LoginVerbosityStep — POST to wp-login.php with a bogus user."""
 
-    async def test_verbose_incorrect_username(self, mock_http, mock_target, mock_config):
-        mock_http.get.return_value = MagicMock(
-            status_code=200, text="ERROR: Incorrect username or password"
+    async def test_verbose_username_error(self, mock_http, mock_target, mock_config):
+        mock_http.post.return_value = MagicMock(
+            status_code=200, text="ERROR: Unknown username. Check again"
         )
 
         from steps.users.login_verbosity_step import LoginVerbosityStep
@@ -116,12 +116,12 @@ class TestLoginVerbosityStep:
         assert len(findings) == 1
         f = findings[0]
         assert f.module == "users"
-        assert f.severity == "info"
+        assert f.severity == "medium"
         assert "Login page reveals username validity" in f.title
 
     async def test_verbose_invalid_username(self, mock_http, mock_target, mock_config):
-        mock_http.get.return_value = MagicMock(
-            status_code=200, text="ERROR: Invalid username"
+        mock_http.post.return_value = MagicMock(
+            status_code=200, text="ERROR: The username is not registered on this site"
         )
 
         from steps.users.login_verbosity_step import LoginVerbosityStep
@@ -131,18 +131,19 @@ class TestLoginVerbosityStep:
         assert len(findings) == 1
 
     async def test_generic_error_message(self, mock_http, mock_target, mock_config):
-        mock_http.get.return_value = MagicMock(
-            status_code=200, text="ERROR: Login failed"
+        mock_http.post.return_value = MagicMock(
+            status_code=200, text="ERROR: Invalid username or password"
         )
 
         from steps.users.login_verbosity_step import LoginVerbosityStep
         step = LoginVerbosityStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
 
+        # Generic message contains "username" but not the oracle markers.
         assert findings == []
 
     async def test_non_200_status(self, mock_http, mock_target, mock_config):
-        mock_http.get.return_value = MagicMock(status_code=404, text="")
+        mock_http.post.return_value = MagicMock(status_code=404, text="")
 
         from steps.users.login_verbosity_step import LoginVerbosityStep
         step = LoginVerbosityStep(target=mock_target, config=mock_config, http=mock_http)
@@ -151,7 +152,7 @@ class TestLoginVerbosityStep:
         assert findings == []
 
     async def test_exception_returns_empty(self, mock_http, mock_target, mock_config):
-        mock_http.get.side_effect = Exception("Connection error")
+        mock_http.post.side_effect = Exception("Connection error")
 
         from steps.users.login_verbosity_step import LoginVerbosityStep
         step = LoginVerbosityStep(target=mock_target, config=mock_config, http=mock_http)
@@ -259,7 +260,7 @@ class TestRestApiUsersStep:
         assert len(findings) == 1
         f = findings[0]
         assert f.module == "users"
-        assert f.severity == "info"
+        assert f.severity == "medium"
         assert "Users enumerated via REST API" in f.title
         assert "admin (admin)" in f.evidence
 

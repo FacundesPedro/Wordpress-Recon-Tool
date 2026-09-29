@@ -55,7 +55,7 @@ class TestRunSkip:
         assert len(findings) == 1
         f = findings[0]
         assert f.module == "access"
-        assert f.severity == "low"
+        assert f.severity == "info"
         assert "unavailable" in f.title.lower()
 
 
@@ -94,7 +94,7 @@ class TestSuccessfulResponse:
 
         findings = await step.run()
 
-        inactive = [f for f in findings if f.severity == "medium"]
+        inactive = [f for f in findings if f.severity == "low"]
         assert len(inactive) == 1
         assert "Inactive" in inactive[0].title
         assert "Hello Dolly" in inactive[0].evidence

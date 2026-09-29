@@ -27,7 +27,7 @@ class TestCheckCors:
 
         assert len(step.findings) == 1
         f = step.findings[0]
-        assert f.severity == "high"
+        assert f.severity == "low"
         assert f.module == "access"
         assert "CORS" in f.title
         assert "*" in f.evidence
@@ -291,7 +291,7 @@ class TestCheckPluginEndpoints:
 
         assert len(step.findings) == 1
         f = step.findings[0]
-        assert f.severity == "medium"
+        assert f.severity == "low"
         assert "Plugin REST API" in f.title
         assert len(f.raw["accessible_endpoints"]) == 2
 

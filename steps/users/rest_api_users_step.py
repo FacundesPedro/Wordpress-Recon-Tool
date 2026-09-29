@@ -20,7 +20,7 @@ class RestApiUsersStep(BaseHttpStep):
 
     name = "rest_api_users"
     description = "Enumerate users via REST API"
-    severity = "info"
+    severity = "medium"
     MODULE = "users"
 
     async def run(self) -> list[Finding]:

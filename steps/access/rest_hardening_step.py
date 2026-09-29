@@ -60,7 +60,7 @@ class RestHardeningStep(BaseHttpStep):
                 if acao == "*" and is_json_body(resp):
                     self._add_finding(
                         module=self.MODULE,
-                        severity="high",
+                        severity="low",
                         title="REST API CORS allows any origin",
                         description=(
                             "The REST API responds with "
@@ -217,7 +217,7 @@ class RestHardeningStep(BaseHttpStep):
             urls = [url for _, url in accessible]
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="low",
                 title="Plugin REST API endpoints accessible without auth",
                 description=(
                     f"Found {len(accessible)} plugin REST API endpoint(s) "

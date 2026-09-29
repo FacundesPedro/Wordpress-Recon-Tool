@@ -23,7 +23,7 @@ class PagesIpLeakStep(BaseHttpStep):
 
     name = "pages_ip_leak"
     description = "Detect IP address leakage via REST API"
-    severity = "medium"
+    severity = "low"
     MODULE = "api"
 
     # Regex pattern to match IPv4 addresses
@@ -96,9 +96,12 @@ class PagesIpLeakStep(BaseHttpStep):
             private_ips = list(set(private_ips))
 
             if private_ips:
+                # The regex scans the whole payload (including published post
+                # content), so a mention of an internal IP is a weak lead.
                 self._add_finding(
                     module=self.MODULE,
-                    severity=self.severity,
+                    severity="low",
+                    confidence="low",
                     title="Internal IP addresses leaked via REST API",
                     description=(
                         f"Found {len(private_ips)} internal IP address(es) in the "

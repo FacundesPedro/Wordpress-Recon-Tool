@@ -13,32 +13,59 @@ from base.http_step import BaseHttpStep
 from core.finding import Finding
 
 
+# WordPress default error text for a username that does not exist. The generic
+# login page returned by a GET never contains these; they appear only after a
+# login POST, so the check must submit a bogus username.
+_USERNAME_ORACLE_MARKERS = (
+    "unknown username",
+    "is not registered",
+    "username is incorrect",
+)
+
+
 class LoginVerbosityStep(BaseHttpStep):
     """
-    Check if WordPress login page reveals valid usernames via error messages.
+    Check if WordPress login reveals valid usernames via error messages.
     """
 
     name = "login_verbosity"
     description = "Check login page for username disclosure"
-    severity = "info"
+    severity = "medium"
     MODULE = "users"
 
     async def run(self) -> list[Finding]:
         self.logger.info("Checking login page for username disclosure...")
 
+        bogus_user = "wprecon_nouser_zzq4"
         try:
-            response = await self.http.get(self.urljoin("wp-login.php"))
-            if response.status_code == 200:
-                content = response.text.lower()
-
-                if "incorrect username" in content or "invalid username" in content:
+            response = await self.http.post(
+                self.urljoin("wp-login.php"),
+                data={
+                    "log": bogus_user,
+                    "pwd": "not-a-real-password",
+                    "wp-submit": "Log In",
+                    "testcookie": "1",
+                },
+            )
+            if getattr(response, "status_code", None) in (200, 403):
+                content = (getattr(response, "text", "") or "").lower()
+                if any(marker in content for marker in _USERNAME_ORACLE_MARKERS):
                     self._add_finding(
                         module=self.MODULE,
                         severity=self.severity,
                         title="Login page reveals username validity",
-                        description="The login page error messages reveal whether a username exists",
-                        evidence="Error messages differ for valid vs invalid usernames",
-                        recommendation="Use a generic error message like 'Invalid username or password'",
+                        description=(
+                            "Submitting a non-existent username produces a "
+                            "distinct error message, revealing which usernames exist"
+                        ),
+                        evidence=(
+                            f"POST wp-login.php with log={bogus_user} returned a "
+                            "username-validity error"
+                        ),
+                        recommendation=(
+                            "Return a generic 'Invalid username or password' "
+                            "message for all failures"
+                        ),
                         raw={"url": self.urljoin("wp-login.php")},
                     )
                     self.logger.info("Login page has verbose error messages")

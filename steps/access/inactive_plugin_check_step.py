@@ -11,7 +11,7 @@ from utils.http_validation import is_plugin_readme
 class InactivePluginCheckStep(BaseHttpStep):
     name = "inactive_plugin_check"
     description = "Check if inactive plugin files are accessible on disk"
-    severity = "medium"
+    severity = "low"
     MODULE = "access"
 
     async def run(self) -> list[Finding]:
