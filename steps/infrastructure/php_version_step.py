@@ -56,7 +56,7 @@ class PhpVersionStep(BaseHttpStep):
 
     name = "php_version"
     description = "Detect PHP version disclosure and end-of-life status"
-    severity = "medium"
+    severity = "high"
     MODULE = "infrastructure"
 
     async def run(self) -> list[Finding]:

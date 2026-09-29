@@ -143,9 +143,11 @@ class SpiderStep(BaseHttpStep):
             )
 
         if discovered_uploads:
+            # This is a string match inside crawled HTML - the path is never
+            # fetched, so it is discovery, not a confirmed writable/listed dir.
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="info",
                 title="Upload directories discovered via crawling",
                 description=f"Found {len(discovered_uploads)} upload/storage path reference(s)",
                 evidence="\n".join(f"  - {u}" for u in discovered_uploads),

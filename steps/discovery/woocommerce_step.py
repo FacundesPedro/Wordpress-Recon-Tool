@@ -49,7 +49,7 @@ class WooCommerceStep(BaseHttpStep):
 
     name = "woocommerce"
     description = "Detect WooCommerce and enumerate Store API/cart surface"
-    severity = "info"
+    severity = "low"
     MODULE = "discovery"
     requires = ("wordpress",)
 

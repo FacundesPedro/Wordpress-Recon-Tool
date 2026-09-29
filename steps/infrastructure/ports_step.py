@@ -28,8 +28,14 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
 
     name = "ports"
     description = "Scan internal ports via pingback"
-    severity = "info"
+    severity = "medium"
     MODULE = "infrastructure"
+
+    # Services that are risky to expose internally and warrant a higher band.
+    RISKY_PORTS = {
+        21, 22, 23, 25, 135, 139, 445, 1433, 1521, 2375, 3306, 3389, 5432,
+        5900, 6379, 9200, 11211, 27017,
+    }
 
     DEFAULT_COMMON_PORTS = [
         21,
@@ -175,9 +181,10 @@ class PortsStep(BaseHttpStep, WordlistDependencyMixin):
             )
 
         if open_ports:
+            risky = sorted(p for p in open_ports if p in self.RISKY_PORTS)
             self._add_finding(
                 module=self.MODULE,
-                severity=self.severity,
+                severity="medium" if risky else "info",
                 title="Open ports detected via SSRF",
                 description=f"Found {len(open_ports)} open port(s) via pingback.ping SSRF. "
                 f"Scanned {scanned_count} ports, {blocked_count} blocked by SSRF protection.",
