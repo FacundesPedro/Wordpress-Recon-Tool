@@ -11,11 +11,9 @@ rate-limiting or lockout signal (429, lockout message) is observed.
 # HOW: Sends a capped burst of failed logins; looks for 429/lockout signals
 # WHY: Absent rate limiting enables credential stuffing and brute force
 
-from base.http_step import BaseHttpStep
 from core.finding import Finding
-from utils.soft404 import Soft404Detector
-
 from steps.active.base_active import ActiveHttpStep
+from utils.soft404 import Soft404Detector
 
 LOGIN_PATHS = [
     "/wp-login.php",
@@ -50,6 +48,32 @@ class RateLimitStep(ActiveHttpStep):
     severity = "medium"
     MODULE = "active"
 
+    @staticmethod
+    def _looks_like_login(response) -> bool:
+        """True when a response plausibly processes credentials.
+
+        Guards against concluding "no rate limiting" from a static HTML page or
+        an unauthenticated catch-all: require an auth challenge (401/403), a
+        JSON error, or a password input field.
+        """
+        status = getattr(response, "status_code", 0)
+        if status in (401, 403):
+            return True
+        try:
+            content_type = (response.headers.get("content-type") or "").lower()
+        except Exception:
+            content_type = ""
+        body = (getattr(response, "text", "") or "").lower()
+        if "json" in content_type:
+            return any(
+                token in body
+                for token in ("error", "invalid", "unauthor", "credential", "password")
+            )
+        return any(
+            token in body
+            for token in ('type="password"', "type='password'", "invalid", "incorrect")
+        )
+
     async def run(self) -> list[Finding]:
         if not self.gate():
             return self.findings
@@ -63,8 +87,16 @@ class RateLimitStep(ActiveHttpStep):
             if not self.budget_left() or len(self.findings) >= MAX_FINDINGS:
                 break
             # baseline: does the login endpoint exist and process POSTs?
-            baseline = await self.probe(path)
+            # Do NOT follow redirects: a 301/302 means this is not a login
+            # endpoint (the SPA catch-all would otherwise return 200 HTML).
+            baseline = await self.probe(path, follow_redirects=False)
             if baseline is None or baseline.status_code >= 400:
+                continue
+            if baseline.status_code in (301, 302, 303, 307, 308):
+                self.logger.debug(
+                    f"Rate limit probe {path}: redirect "
+                    f"({baseline.status_code}) - not a credential endpoint"
+                )
                 continue
             if detector.is_soft404(baseline):
                 # catch-all shell: this login endpoint does not exist
@@ -73,14 +105,25 @@ class RateLimitStep(ActiveHttpStep):
                 )
                 continue
 
+            if not self._looks_like_login(baseline):
+                self.logger.debug(
+                    f"Rate limit probe {path}: no credential-processing signals - skipped"
+                )
+                continue
+
             saw_limit = False
+            redirected = False
             statuses: list[int] = []
+            last_url = ""
+            last_ct = ""
+            snippet = ""
             for i in range(BURST):
                 if not self.budget_left():
                     break
                 response = await self.probe(
                     path,
                     method="POST",
+                    follow_redirects=False,
                     data={"username": "recon-canary-x9",
                           "password": f"wrong-pass-{i}",
                           "log": "recon-canary-x9",
@@ -89,6 +132,16 @@ class RateLimitStep(ActiveHttpStep):
                 if response is None:
                     continue
                 statuses.append(response.status_code)
+                last_url = str(getattr(response, "url", "") or self.urljoin(path))
+                last_ct = (
+                    (response.headers.get("content-type") or "")
+                    if getattr(response, "headers", None)
+                    else ""
+                )
+                snippet = (response.text or "")[:200]
+                if response.status_code in (301, 302, 303, 307, 308):
+                    redirected = True
+                    break
                 if response.status_code == 429:
                     saw_limit = True
                     break
@@ -97,6 +150,11 @@ class RateLimitStep(ActiveHttpStep):
                     saw_limit = True
                     break
 
+            if redirected:
+                self.logger.debug(
+                    f"Rate limit probe {path}: burst redirected - skipped"
+                )
+                continue
             if saw_limit:
                 self.logger.info(f"Rate limit probe: {path} shows limiting signals")
                 continue
@@ -113,6 +171,8 @@ class RateLimitStep(ActiveHttpStep):
                 "Rate-limit per identity (not spoofable IP), add exponential "
                 "backoff/lockout and monitor failed-login anomalies",
                 raw={"path": path, "url": self.urljoin(path),
+                     "final_url": last_url, "content_type": last_ct,
+                     "snippet": snippet,
                      "attempts": len(statuses), "statuses": statuses},
             )
 

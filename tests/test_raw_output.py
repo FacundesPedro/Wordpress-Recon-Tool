@@ -182,6 +182,131 @@ class TestPersist:
         assert not (tmp_path / "raw").exists()
 
 
+class TestCombinedOutput:
+    def test_output_always_written(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        writer.persist(step="ffuf_directory", tool="ffuf", cmd=["ffuf"], result=result)
+        output = (writer.directory() / "ffuf_directory.output").read_text()
+        assert "########## command ##########" in output
+        assert "ffuf" in output
+        assert "########## stdout ##########" in output
+        assert "(empty)" in output
+        assert "# returncode: 0" in output
+        assert "# step: ffuf_directory" in output
+
+    def test_output_separates_streams(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout='{"a":1}', stderr="banner line", returncode=0, success=True)
+        writer.persist(step="t", tool="t", cmd=["t"], result=result)
+        output = (writer.directory() / "t.output").read_text()
+        out_idx = output.index("########## stdout ##########")
+        err_idx = output.index("########## stderr ##########")
+        assert out_idx < err_idx
+        assert '{"a":1}' in output[out_idx:err_idx]
+        assert "banner line" in output[err_idx:]
+
+    def test_native_written_when_empty(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        writer.persist(
+            step="nuclei",
+            tool="nuclei",
+            cmd=["nuclei"],
+            result=result,
+            native_name="nuclei.jsonl",
+        )
+        assert (writer.directory() / "nuclei.jsonl").exists()
+        assert (writer.directory() / "nuclei.jsonl").read_text() == ""
+
+    def test_native_section_only_when_distinct(self, tmp_path):
+        writer = make_writer(tmp_path)
+        # Native content == stdout -> no duplicate native section.
+        result = ToolResult(stdout="SAME", stderr="", returncode=0, success=True)
+        writer.persist(
+            step="a", tool="a", cmd=["a"], result=result, native_name="a.json"
+        )
+        output = (writer.directory() / "a.output").read_text()
+        assert "########## native:" not in output
+
+        # Native content differs -> section present.
+        writer2 = make_writer(tmp_path / "second")
+        writer2.persist(
+            step="b",
+            tool="b",
+            cmd=["b"],
+            result=ToolResult(stdout="STDOUT", stderr="", returncode=0, success=True),
+            native_name="b.json",
+            native_content="NATIVE",
+        )
+        output2 = (writer2.directory() / "b.output").read_text()
+        assert "########## native: b.json ##########" in output2
+        assert "NATIVE" in output2
+
+    def test_meta_has_sizes_native_and_run_id(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout="abcd", stderr="xy", returncode=0, success=True)
+        writer.persist(
+            step="t", tool="t", cmd=["t"], result=result, native_name="t.json"
+        )
+        m = meta(writer, "t")
+        assert m["stdout_bytes"] == 4
+        assert m["stderr_bytes"] == 2
+        assert m["native"] == "t.json"
+        assert m["run_id"]
+
+    def test_extra_metadata_merged(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        writer.persist(
+            step="ffuf_wp",
+            tool="ffuf",
+            cmd=["ffuf"],
+            result=result,
+            extra={"wordlist": "wp_paths.txt", "wordlist_lines": 122},
+        )
+        m = meta(writer, "ffuf_wp")
+        assert m["wordlist"] == "wp_paths.txt"
+        assert m["wordlist_lines"] == 122
+
+    def test_history_archives_previous_run(self, tmp_path):
+        writer = make_writer(tmp_path)
+        run1 = ToolResult(stdout="first", stderr="", returncode=0, success=True)
+        writer.persist(step="t", tool="t", cmd=["t"], result=run1)
+        run_id = writer.run_id()
+
+        # A second writer (new run) writing the same step archives the first.
+        config = ScanConfig(
+            output_dir=tmp_path, save_raw=True, raw_max_bytes=5_000_000
+        )
+        writer2 = RawArtifactWriter(config=config)
+        run2 = ToolResult(stdout="second", stderr="", returncode=0, success=True)
+        writer2.persist(step="t", tool="t", cmd=["t"], result=run2)
+
+        assert (writer.directory() / "t.stdout").read_text() == "second"
+        archived = writer.directory() / "history" / run_id / "t.stdout"
+        assert archived.read_text() == "first"
+
+    def test_history_disabled(self, tmp_path):
+        config = ScanConfig(
+            output_dir=tmp_path, save_raw=True, raw_history=False
+        )
+        writer = RawArtifactWriter(config=config)
+        writer.persist(
+            step="t",
+            tool="t",
+            cmd=["t"],
+            result=ToolResult(stdout="first", stderr="", returncode=0, success=True),
+        )
+        writer.persist(
+            step="t",
+            tool="t",
+            cmd=["t"],
+            result=ToolResult(stdout="second", stderr="", returncode=0, success=True),
+        )
+        assert not (tmp_path / "raw" / "history").exists()
+
+
 class TestStepIntegration:
     def test_nuclei_run_writes_raw_artifacts(self, tmp_path):
         import asyncio
@@ -214,3 +339,41 @@ class TestStepIntegration:
         assert (raw / "nuclei.jsonl").exists()
         assert (raw / f"{step_name}.meta.json").exists()
 
+
+
+class TestEvidencePersistence:
+    def test_writes_jsonl_and_meta(self, tmp_path):
+        writer = make_writer(tmp_path)
+        records = [
+            {"method": "GET", "url": "https://x/a", "status": 200},
+            {"method": "POST", "url": "https://x/a", "status": 500},
+        ]
+        base = writer.persist_evidence(
+            step="sql_injection", records=records, extra={"requests_sent": 2}
+        )
+        assert base == tmp_path / "raw"
+        jsonl = (base / "sql_injection.requests.jsonl").read_text().strip().split("\n")
+        assert len(jsonl) == 2
+        assert json.loads(jsonl[1])["status"] == 500
+        m = json.loads((base / "sql_injection.meta.json").read_text())
+        assert m["type"] == "http-evidence"
+        assert m["records"] == 2
+        assert m["requests_sent"] == 2
+
+    def test_evidence_secrets_are_redacted(self, tmp_path):
+        writer = make_writer(tmp_path)
+        writer.persist_evidence(
+            step="s",
+            records=[{"payload": "password=supersecretvalue"}],
+        )
+        content = (writer.directory() / "s.requests.jsonl").read_text()
+        assert "supersecretvalue" not in content
+        assert "REDACTED" in content
+
+    def test_disabled_returns_none(self, tmp_path):
+        config = ScanConfig(output_dir=tmp_path, save_raw=False)
+        writer = RawArtifactWriter(config=config)
+        assert writer.persist_evidence(step="s", records=[{"a": 1}]) is None
+
+    def test_empty_records_is_noop(self, tmp_path):
+        assert make_writer(tmp_path).persist_evidence(step="s", records=[]) is None

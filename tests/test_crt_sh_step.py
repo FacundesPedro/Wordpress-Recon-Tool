@@ -171,7 +171,9 @@ class TestQueryAndParse:
 
         findings = await step.run()
 
-        assert len(findings) == 0
+        assert len(findings) == 1
+        assert findings[0].title == "Certificate Transparency lookup unavailable"
+        assert findings[0].raw.get("operational") is True
 
     async def test_timeout_all_attempts_records_errors(self):
         mock_target = MagicMock()
@@ -185,7 +187,9 @@ class TestQueryAndParse:
 
         findings = await step.run()
 
-        assert len(findings) == 0
+        assert len(findings) == 1
+        assert findings[0].title == "Certificate Transparency lookup unavailable"
+        assert findings[0].raw.get("operational") is True
 
 
 class TestCreateFindings:
@@ -336,3 +340,34 @@ class TestParseHtml:
         assert "sub.example.com" in step._domains
         assert "www.example.com" in step._domains
         assert len(step._domains) == 2
+
+
+class TestOsintGatingAndCaps:
+    async def test_skips_when_passive_osint_disabled(self):
+        from config import ScanConfig
+        from steps.passive.crt_sh_step import CrtShStep
+
+        mock_target = MagicMock()
+        mock_target.domain = "example.com"
+        mock_http = MagicMock()
+        mock_http.request = AsyncMock()
+
+        step = CrtShStep(
+            target=mock_target, http=mock_http, config=ScanConfig(passive_osint=False)
+        )
+        findings = await step.run()
+        assert findings == []
+        mock_http.request.assert_not_called()
+
+    async def test_stops_after_failure_cap(self):
+        from steps.passive.crt_sh_step import CrtShStep
+
+        mock_target = MagicMock()
+        mock_target.domain = "example.com"
+        mock_http = MagicMock()
+        mock_http.request = AsyncMock(side_effect=TimeoutError("timed out"))
+
+        step = CrtShStep(target=mock_target, http=mock_http)
+        await step.run()
+        # Never exhausts all patterns once the failure cap is reached.
+        assert len(step._errors) <= step.MAX_FAILURES

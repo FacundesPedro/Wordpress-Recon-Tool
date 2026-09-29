@@ -554,3 +554,19 @@ class TestFriendlyNetworkError:
         msg = friendly_network_error(exc)
         assert "Network error" in msg
         assert "ValueError" in msg
+
+
+class TestCircuitBreakerReset:
+    def test_reset_clears_unreachable_and_errors(self):
+        client = HttpClient()
+        client.unreachable = True
+        client._consecutive_errors = 5
+        client.reset_unreachable()
+        assert client.unreachable is False
+        assert client._consecutive_errors == 0
+
+    def test_reset_is_safe_when_closed(self):
+        client = HttpClient()
+        client.reset_unreachable()
+        assert client.unreachable is False
+        assert client._consecutive_errors == 0

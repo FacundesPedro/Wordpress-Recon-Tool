@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -203,6 +203,17 @@ class TestOpenDoorStep:
         assert "/tmp/opendoor-reports" in cmd
         assert "--port" not in cmd
 
+    def test_host_keeps_full_url_scheme(self, opendoor_step):
+        """OpenDoor parses the scheme from --host; --scheme is for --raw-request only.
+
+        Regression guard for UPDATE.md A5: passing a bare hostname + --scheme
+        would make OpenDoor default to http:// and silently scan the wrong scheme.
+        """
+        opendoor_step.config = MagicMock(quiet=False, insecure=False)
+        opendoor_step._reports_dir = "/tmp/opendoor-reports"
+        cmd = opendoor_step.build_command()
+        assert cmd[cmd.index("--host") + 1] == "https://example.com"
+
     def test_build_command_splits_explicit_port(self):
         """OpenDoor rejects host:port, so explicit ports use --port."""
         target = Target(url="http://127.0.0.1:8123", domain="127.0.0.1")
@@ -365,6 +376,114 @@ class TestFfufCommandAndFailure:
 
         findings = asyncio.run(ffuf_directory_step.run())
         assert any(f.severity == "low" for f in findings)
+
+
+class TestWpGatingAndPinning:
+    async def test_ffuf_wp_skips_non_wordpress(self, ffuf_wp_step):
+        ffuf_wp_step.config = MagicMock(quiet=False, insecure=False, save_raw=False)
+        ffuf_wp_step.check_binary = lambda binary: (True, "")
+        ffuf_wp_step.check_version_compatibility = lambda: True
+        ffuf_wp_step.http = object()
+        ran = {"value": False}
+
+        async def fake_run(cmd, timeout=None):
+            ran["value"] = True
+            return ToolResult(stdout="", stderr="", returncode=0, success=True)
+
+        ffuf_wp_step._async_tool_runner.run = fake_run
+        with patch(
+            "utils.wordpress_detect.is_wordpress", new=AsyncMock(return_value=False)
+        ):
+            findings = await ffuf_wp_step.run()
+        assert findings == []
+        assert ran["value"] is False
+
+    async def test_ffuf_wp_runs_on_wordpress(self, ffuf_wp_step):
+        ffuf_wp_step.config = MagicMock(quiet=False, insecure=False, save_raw=False)
+        ffuf_wp_step.check_binary = lambda binary: (True, "")
+        ffuf_wp_step.check_version_compatibility = lambda: True
+        ffuf_wp_step.http = object()
+        ran = {"value": False}
+
+        async def fake_run(cmd, timeout=None):
+            ran["value"] = True
+            return ToolResult(stdout="", stderr="", returncode=0, success=True)
+
+        ffuf_wp_step._async_tool_runner.run = fake_run
+        with patch(
+            "utils.wordpress_detect.is_wordpress", new=AsyncMock(return_value=True)
+        ):
+            await ffuf_wp_step.run()
+        assert ran["value"] is True
+
+    async def test_ffuf_directory_not_gated(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False, save_raw=False)
+        ffuf_directory_step.check_binary = lambda binary: (True, "")
+        ffuf_directory_step.check_version_compatibility = lambda: True
+        ffuf_directory_step.http = object()
+        ran = {"value": False}
+
+        async def fake_run(cmd, timeout=None):
+            ran["value"] = True
+            return ToolResult(stdout="", stderr="", returncode=0, success=True)
+
+        ffuf_directory_step._async_tool_runner.run = fake_run
+        with patch(
+            "utils.wordpress_detect.is_wordpress", new=AsyncMock(return_value=False)
+        ):
+            await ffuf_directory_step.run()
+        assert ran["value"] is True
+
+    async def test_opendoor_wp_paths_skips_non_wordpress(self, opendoor_step):
+        opendoor_step.mode = "wp_paths"
+        opendoor_step.check_binary = lambda binary: (True, "")
+        opendoor_step.http = object()
+        ran = {"value": False}
+
+        async def fake_run(cmd, timeout=None):
+            ran["value"] = True
+            return ToolResult(stdout="", stderr="", returncode=0, success=True)
+
+        opendoor_step._async_tool_runner.run = fake_run
+        with patch(
+            "utils.wordpress_detect.is_wordpress", new=AsyncMock(return_value=False)
+        ):
+            findings = await opendoor_step.run()
+        assert findings == []
+        assert ran["value"] is False
+
+    def test_ffuf_host_header_when_pinned(self):
+        target = Target(
+            url="https://app.example.com",
+            domain="app.example.com",
+            connect_ip="10.0.0.5",
+        )
+        step = FfufDirectoryStep(target=target, config=MagicMock(spec=ScanConfig))
+        step.config = MagicMock(quiet=False, insecure=False)
+        cmd = step.build_command()
+        assert "https://10.0.0.5/FUZZ/" in cmd
+        assert "-H" in cmd
+        assert cmd[cmd.index("-H") + 1] == "Host: app.example.com"
+
+    def test_ffuf_no_host_header_when_unpinned(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        assert "-H" not in ffuf_directory_step.build_command()
+
+    def test_ffuf_wordlist_details_in_raw(self, ffuf_directory_step):
+        ffuf_directory_step.wordlist = str(
+            Path(__file__).parent / ".." / "wordlists" / "ffuf" / "directories.txt"
+        )
+        result = ToolResult(
+            stdout=json.dumps(
+                {"url": "https://example.com/admin", "status": 200, "length": 1, "word": "admin"}
+            ),
+            stderr="",
+            returncode=0,
+            success=True,
+        )
+        findings = ffuf_directory_step.parse_output(result)
+        assert findings[0].raw["wordlist"] == "directories.txt"
+        assert findings[0].raw["wordlist_lines"] > 0
 
 
 class TestAllSteps:

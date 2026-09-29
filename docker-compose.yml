@@ -15,8 +15,11 @@ services:
     container_name: wp-recon
     volumes:
       - ./reports:/app/reports
+    # Optional: `docker compose up` works without a .env file. Copy
+    # .env.example to .env or export WP_* variables to customize.
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - WP_TARGET=${WP_TARGET:-https://example.com}
       - WP_OUTPUT_FORMAT=${WP_OUTPUT_FORMAT:-markdown}

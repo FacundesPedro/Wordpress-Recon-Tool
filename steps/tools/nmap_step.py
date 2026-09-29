@@ -190,6 +190,44 @@ def _format_port(port: dict) -> str:
     return f"{portid}/{protocol} {service}{suffix}"
 
 
+def _service_records(host: str, ports: list[dict], source: str) -> list[dict]:
+    """Normalize nmap port dicts into the shared service-inventory schema."""
+    records: list[dict] = []
+    for port in ports:
+        if not isinstance(port, dict):
+            continue
+        service = port.get("service") or {}
+        records.append(
+            {
+                "host": host,
+                "port": port.get("portid"),
+                "protocol": port.get("protocol", "tcp"),
+                "service": service.get("name") or "unknown",
+                "product": service.get("product") or "",
+                "version": service.get("version") or "",
+                "extra_info": service.get("extrainfo") or "",
+                "state": port.get("state", ""),
+                "source": source,
+            }
+        )
+    return records
+
+
+def _publish_services(step, host: str, ports: list[dict], source: str) -> None:
+    """Merge normalized service records into the shared ScanContext."""
+    ctx = getattr(step, "ctx", None)
+    if ctx is None:
+        return
+    try:
+        existing = ctx.get("services") or []
+        if not isinstance(existing, list):
+            existing = []
+        existing.extend(_service_records(host, ports, source))
+        ctx.set("services", existing)
+    except Exception:  # never fail a scan on inventory publishing
+        step.logger.debug("Could not publish service inventory", exc_info=True)
+
+
 def _unparseable_finding(step_name: str, stdout: str) -> Finding:
     """Operational finding for nmap output that could not be parsed.
 
@@ -220,6 +258,7 @@ class NmapPortScanStep(BaseToolStep):
     MODULE = "tools"
     min_version = "7.92"
     raw_native_name = "nmap-ports.xml"
+    provides = ("services",)
 
     def __init__(
         self,
@@ -258,12 +297,14 @@ class NmapPortScanStep(BaseToolStep):
         return cmd
 
     def _scan_host(self) -> str:
-        host = self.target.domain or ""
-        if not host:
-            from urllib.parse import urlparse
+        from utils.target_net import scan_host
 
-            host = urlparse(self.target.url).netloc
-        return host
+        host = scan_host(self.target)
+        if host:
+            return host
+        from urllib.parse import urlparse
+
+        return urlparse(self.target.url).netloc
 
     def parse_output(self, result: ToolResult) -> list[Finding]:
         findings: list[Finding] = []
@@ -307,6 +348,7 @@ class NmapPortScanStep(BaseToolStep):
             return findings
 
         port_summaries = [_format_port(p) for p in open_ports]
+        _publish_services(self, host, open_ports, "nmap_ports")
         severity = "medium" if risky_found else "info"
         description = (
             f"nmap found {len(open_ports)} open port(s) on {host}: "
@@ -350,6 +392,7 @@ class NmapScriptScanStep(BaseToolStep):
     MODULE = "tools"
     min_version = "7.92"
     raw_native_name = "nmap-scripts.xml"
+    provides = ("services",)
 
     def __init__(
         self,
@@ -385,7 +428,9 @@ class NmapScriptScanStep(BaseToolStep):
             cmd.extend(["-p", self.custom_ports])
         else:
             cmd.extend(["--top-ports", str(self.top_ports)])
-        host = self.target.domain or ""
+        from utils.target_net import scan_host
+
+        host = scan_host(self.target)
         if not host:
             from urllib.parse import urlparse
 
@@ -408,6 +453,14 @@ class NmapScriptScanStep(BaseToolStep):
             from urllib.parse import urlparse
 
             host = urlparse(self.target.url).netloc
+
+        all_ports = [
+            port
+            for host_data in iter_hosts(run)
+            for port in (host_data.get("ports", []) or [])
+            if isinstance(port, dict)
+        ]
+        _publish_services(self, host, all_ports, "nmap_scripts")
 
         total_scripts = 0
         vuln_findings = 0

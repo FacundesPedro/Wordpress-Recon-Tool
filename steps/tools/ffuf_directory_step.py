@@ -13,6 +13,7 @@ class FfufDirectoryStep(FfufBaseStep):
 
     name = "ffuf_directory"
     description = "FFUF directory discovery"
+    config_wordlist_key = "ffuf_directory_wordlist"
     wordlist_file = "ffuf/directories.txt"
     url_suffix = "/FUZZ/"
     finding_title = "Directory Found"

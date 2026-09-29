@@ -185,6 +185,7 @@ class BaseToolStep(BaseStep):
         finished_at: Optional[datetime],
         native_name: Optional[str] = None,
         native_content: Optional[str] = None,
+        extra: Optional[dict] = None,
     ) -> None:
         """Best-effort persistence of raw tool output (never raises)."""
         try:
@@ -197,6 +198,7 @@ class BaseToolStep(BaseStep):
                 finished_at=finished_at,
                 native_name=native_name or getattr(self, "raw_native_name", None),
                 native_content=native_content,
+                extra=extra,
             )
         except Exception as exc:
             self.logger.warning(f"Raw output persistence failed: {exc}")

@@ -24,6 +24,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from core.logger import Logger
+from utils.soft404 import Soft404Detector
 
 _GENERATOR_RE = re.compile(
     r'name="generator"[^>]*content="WordPress ([\d.]+)"', re.I
@@ -192,6 +193,9 @@ class ScanContext:
         self._artifacts: dict[str, Any] = {}
         self._missing: set[str] = set()
         self._events: dict[str, asyncio.Event] = {}
+        self._soft404: dict[str, Soft404Detector] = {}
+        # Set once a 200 catch-all shell is detected on any probed base URL.
+        self.enumeration_unreliable: bool = False
         self.web: WebArtifacts | None = None
         if http is not None:
             self.web = WebArtifacts(
@@ -250,3 +254,38 @@ class ScanContext:
             "requests_made": self.web.requests_made,
             "requests_saved": self.web.requests_saved,
         }
+
+    # ── soft-404 / catch-all capability ─────────────────────────────
+    async def soft404_detector(
+        self, base_url: str | None = None
+    ) -> Soft404Detector:
+        """Return a calibrated soft-404 detector for ``base_url``.
+
+        The detector is memoized per base URL and calibrated once, so multiple
+        discovery steps share the canary probes. When a 200 catch-all shell is
+        found, ``enumeration_unreliable`` is set so callers can annotate the
+        report (path enumeration by status code is meaningless there).
+        """
+        key = (base_url or self.target_url or "").rstrip("/")
+        detector = self._soft404.get(key)
+        if detector is not None:
+            return detector
+
+        detector = Soft404Detector(self.http, key, self._logger)
+        try:
+            await detector.calibrate()
+        except Exception as exc:  # never fail a step on calibration
+            self._logger.debug(f"Soft-404 calibration failed for {key}: {exc}")
+        self._soft404[key] = detector
+        if detector.calibrated:
+            self.enumeration_unreliable = True
+            self._logger.info(
+                f"Catch-all/soft-404 detected for {key}; content comparison "
+                "required for path enumeration"
+            )
+        return detector
+
+    @property
+    def enumeration_is_unreliable(self) -> bool:
+        """True once any calibrated base URL served a 200 catch-all shell."""
+        return self.enumeration_unreliable

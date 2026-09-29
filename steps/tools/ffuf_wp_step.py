@@ -13,6 +13,9 @@ class FfufWpStep(FfufBaseStep):
 
     name = "ffuf_wp"
     description = "FFUF WordPress-specific path discovery"
+    requires = ("wordpress",)
+    wp_only = True
+    config_wordlist_key = "ffuf_wp_wordlist"
     wordlist_file = "ffuf/wp_paths.txt"
     url_suffix = "/FUZZ"
     finding_title = "WordPress Path Found"

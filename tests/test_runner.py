@@ -144,21 +144,31 @@ class TestRunModule:
         mod.validate.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_skips_steps_when_unreachable(self, mock_config, mock_target):
-        step_cls = MagicMock()
-        step_cls.__name__ = "SkippedStep"
-        step_instance = MagicMock()
-        step_instance.name = "skipped_step"
-        step_instance.run = AsyncMock(return_value=[])
-        step_cls.return_value = step_instance
-        mod = make_module("passive", [step_cls])
+    async def test_resumes_once_then_skips_when_unreachable(
+        self, mock_config, mock_target
+    ):
+        """A transient blip retries one step, then the module is INCOMPLETE."""
+        first = MagicMock()
+        first.__name__ = "FirstStep"
+        first.return_value.run = AsyncMock(return_value=[])
+        first.return_value.name = "first_step"
+        second = MagicMock()
+        second.__name__ = "SecondStep"
+        second.return_value.run = AsyncMock(return_value=[])
+        second.return_value.name = "second_step"
+
+        mod = make_module("passive", [first, second])
         r = Runner([mod], mock_config, mock_target)
         r._http = MagicMock()
         r._http.unreachable = True
         sem = MagicMock()
-        findings = await r.run_module(mod, sem)
-        assert findings == []
-        step_cls.assert_not_called()
+        await r.run_module(mod, sem)
+
+        # First step is retried after the breaker reset; second is skipped.
+        first.assert_called_once()
+        second.assert_not_called()
+        assert "SecondStep" in r.skipped_steps
+        assert any("INCOMPLETE" in e for e in r.errors)
 
 
 # ---------------------------------------------------------------------------

@@ -70,6 +70,13 @@ class WaymachineStep(BaseStep):
         from utils.domain_utils import is_non_public_domain
 
         domain = self.target.domain
+        if getattr(self.config, "passive_osint", True) is not True:
+            self.logger.info(
+                "Wayback enumeration skipped: public OSINT disabled "
+                "(WP_PASSIVE_OSINT=false)"
+            )
+            return self.findings
+
         if is_non_public_domain(domain):
             self.logger.info(
                 f"Wayback enumeration skipped: {domain} is not a public domain "

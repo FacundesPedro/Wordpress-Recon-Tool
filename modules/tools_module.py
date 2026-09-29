@@ -53,3 +53,10 @@ class ToolsModule(Module):
             from steps.tools.nmap_step import NmapScriptScanStep
 
             self.add_step(NmapScriptScanStep)
+
+        # Consolidated service inventory (runs after whichever nmap step is
+        # enabled; requires the "services" artifact they publish).
+        if self.config.enable_nmap or self.config.enable_nmap_scripts:
+            from steps.tools.service_inventory_step import ServiceInventoryStep
+
+            self.add_step(ServiceInventoryStep)

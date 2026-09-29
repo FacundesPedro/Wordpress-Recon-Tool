@@ -174,10 +174,14 @@ class HttpClient:
         timeout: int = 10,
         insecure: bool = False,
         config: Optional["ScanConfig"] = None,
+        connect_ip: Optional[str] = None,
+        server_hostname: Optional[str] = None,
     ):
         self.timeout = timeout
         self.insecure = insecure
         self._client: Optional[httpx.AsyncClient] = None
+        self.connect_ip = connect_ip
+        self.server_hostname = server_hostname
         self._current_ua_index = 0
         self._seen_requests: set[tuple[str, str]] = set()
         self._consecutive_errors = 0
@@ -271,16 +275,47 @@ class HttpClient:
             self._consecutive_errors = 0
             return result
 
+    def reset_unreachable(self) -> None:
+        """Clear the circuit breaker so a transient blip can be retried.
+
+        Used by the Runner to give a step/module a fresh chance after a burst
+        of network errors, instead of silently skipping the rest of the scan.
+        """
+        if self.unreachable or self._consecutive_errors:
+            logger.info("Circuit breaker reset - retrying target connectivity")
+        self.unreachable = False
+        self._consecutive_errors = 0
+
     async def __aenter__(self):
         default_headers = {
             "User-Agent": self._get_next_user_agent(),
         }
-        self._client = httpx.AsyncClient(
-            timeout=self.timeout,
-            verify=not self.insecure,
-            follow_redirects=True,
-            headers=default_headers,
-        )
+        if self.connect_ip:
+            from core.pinned_transport import PinnedTransport
+
+            hostname = self.server_hostname
+            if not hostname:
+                raise RuntimeError(
+                    "connect_ip set without server_hostname (Host/SNI hostname)"
+                )
+            transport = PinnedTransport(
+                connect_ip=self.connect_ip,
+                server_hostname=hostname,
+                verify=not self.insecure,
+            )
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                transport=transport,
+                follow_redirects=True,
+                headers=default_headers,
+            )
+        else:
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                verify=not self.insecure,
+                follow_redirects=True,
+                headers=default_headers,
+            )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

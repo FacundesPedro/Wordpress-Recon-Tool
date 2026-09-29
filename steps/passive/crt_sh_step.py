@@ -38,9 +38,13 @@ class CrtShStep(BaseStep):
     MODULE = "passive"
 
     CRTSH_API = "https://crt.sh/?q={pattern}&output=json&exclude=expired"
-    REQUEST_TIMEOUT = 60
+    # Short per-request timeout: crt.sh can hang for 60s+ on a filtered egress
+    # link and stall the whole passive tier. Fail fast and skip after a couple
+    # of failures instead of retrying every pattern.
+    REQUEST_TIMEOUT = 10
     MAX_RETRIES = 2
-    RETRY_DELAY = 5
+    RETRY_DELAY = 1
+    MAX_FAILURES = 2
 
     def __init__(
         self,
@@ -80,6 +84,12 @@ class CrtShStep(BaseStep):
         from utils.domain_utils import is_non_public_domain
 
         domain = self.target.domain
+        if getattr(self.config, "passive_osint", True) is not True:
+            self.logger.info(
+                "CT enumeration skipped: public OSINT disabled (WP_PASSIVE_OSINT=false)"
+            )
+            return self.findings
+
         if is_non_public_domain(domain):
             self.logger.info(
                 f"CT enumeration skipped: {domain} is not a public domain "
@@ -90,21 +100,47 @@ class CrtShStep(BaseStep):
         patterns = self._build_query_patterns(domain)
 
         for pattern in patterns:
+            if len(self._errors) >= self.MAX_FAILURES:
+                self.logger.warning(
+                    f"crt.sh: {len(self._errors)} failure(s) - skipping remaining "
+                    f"query patterns"
+                )
+                break
             self.logger.debug(f"Querying crt.sh with pattern: {pattern}")
-            success = await self._query_with_retry(pattern)
+            await self._query_with_retry(pattern)
             if self._domains:
                 break
 
         if self._domains:
             self._create_findings(domain)
-        elif not self._errors:
+        elif self._errors:
+            # OSINT unavailable is an evidence gap, not a clean negative.
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="Certificate Transparency lookup unavailable",
+                description=(
+                    "crt.sh could not be queried (timeout/errors); CT-based "
+                    "subdomain discovery did not complete"
+                ),
+                evidence="; ".join(self._errors[:5]) or "no response",
+                recommendation=(
+                    "Re-run when outbound HTTPS to crt.sh is available, or set "
+                    "WP_PASSIVE_OSINT=false to skip public OSINT explicitly"
+                ),
+                raw={"domain": domain, "operational": True, "errors": self._errors[:5]},
+            )
+        else:
             self._add_finding(
                 module=self.MODULE,
                 severity="info",
                 title="No certificates found",
                 description="No SSL/TLS certificates found for this domain in CT logs",
                 evidence=f"Domain: {domain}",
-                recommendation="The domain may not have recent SSL certificates or CT logs are unavailable",
+                recommendation=(
+                    "The domain may not have recent SSL certificates or CT logs "
+                    "are unavailable"
+                ),
                 raw={"domain": domain, "patterns_tried": patterns},
             )
 

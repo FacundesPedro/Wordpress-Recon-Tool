@@ -140,8 +140,15 @@ class OpenDoorStep(BaseToolStep):
 
         OpenDoor validates ``--host`` strictly and rejects a host:port
         combination; non-standard ports must go through ``--port``.
+
+        The scheme is parsed by OpenDoor from the ``--host`` URL itself
+        (``--scheme`` only applies to ``--raw-request``), so the full URL is
+        passed here and the scheme is retained.
         """
         url = str(self.target.url) if self.target else ""
+        from utils.target_net import pinned_url
+
+        url = pinned_url(self.target) if self.target else url
         try:
             parsed = urlsplit(url)
             port = parsed.port
@@ -151,6 +158,25 @@ class OpenDoorStep(BaseToolStep):
             return url, None
         host = f"{parsed.scheme}://{parsed.hostname}" if parsed.scheme else parsed.hostname
         return host or url, port
+
+    async def _confirm_wordpress(self) -> bool:
+        """Gate WP-path discovery on an actual WordPress target.
+
+        Generic modes (backup/config/sensitive) are useful on any web target;
+        ``wp_paths`` spends the wordlist on ``/wp-admin``, ``/wp-login.php``,
+        ``xmlrpc.php``, etc. and is skipped when no WP markers are present.
+        """
+        if self.mode != "wp_paths" or self.http is None:
+            return True
+        from utils.wordpress_detect import is_wordpress
+
+        target_url = str(self.target.url) if self.target else ""
+        if await is_wordpress(self.http, target_url, self.logger):
+            return True
+        self.logger.info(
+            "OpenDoor: target is not WordPress - skipping wp_paths discovery"
+        )
+        return False
 
     def build_command(self) -> list[str]:
         """Build the OpenDoor directory discovery command."""
@@ -178,6 +204,13 @@ class OpenDoorStep(BaseToolStep):
 
         if port:
             cmd.extend(["--port", str(port)])
+
+        # Split-horizon: scan the pinned IP but keep the real Host header.
+        from utils.target_net import host_header
+
+        host_header_value = host_header(self.target)
+        if host_header_value:
+            cmd.extend(["--header", f"Host: {host_header_value}"])
 
         if self.delay and self.delay > 0:
             cmd.extend(["--delay", str(self.delay)])
@@ -319,6 +352,9 @@ class OpenDoorStep(BaseToolStep):
                     "(https://github.com/stanislav-web/OpenDoor)"
                 ),
             )
+            return self.findings
+
+        if not await self._confirm_wordpress():
             return self.findings
 
         target_url = str(self.target.url) if self.target else ""

@@ -58,6 +58,13 @@ class FfufBaseStep(BaseToolStep):
     finding_description: str = "Path discovered via FFUF fuzzing"
     finding_recommendation: str = "Review path access controls and functionality"
 
+    # Per-step wordlist override key on ScanConfig (e.g. "ffuf_directory_wordlist").
+    config_wordlist_key: str = ""
+
+    # WordPress-only steps set this so the fuzzing wordlist is not spent on a
+    # non-WordPress target (the WP paths would all fail/calibrate out).
+    wp_only: bool = False
+
     def __init__(
         self,
         target: Target,
@@ -78,8 +85,16 @@ class FfufBaseStep(BaseToolStep):
         default_wordlist = get_wordlist_path(self.wordlist_file) or (
             DEFAULT_WORDLISTS_DIR / Path(self.wordlist_file).name
         )
+        per_step = (
+            config_str(config, self.config_wordlist_key)
+            if self.config_wordlist_key
+            else ""
+        )
         self.wordlist = (
-            wordlist or config_str(config, "ffuf_wordlist") or str(default_wordlist)
+            wordlist
+            or per_step
+            or config_str(config, "ffuf_wordlist")
+            or str(default_wordlist)
         )
         self.timeout = (
             timeout if timeout is not None else config_int(config, "ffuf_timeout", 300)
@@ -102,7 +117,51 @@ class FfufBaseStep(BaseToolStep):
         )
 
     def _target_url(self) -> str:
-        return str(self.target.url) if self.target is not None else ""
+        if self.target is None:
+            return ""
+        from utils.target_net import pinned_url
+
+        return pinned_url(self.target)
+
+    async def _confirm_wordpress(self) -> bool:
+        """Return True when this step is allowed to run.
+
+        WP-only steps (``wp_only=True``) are skipped on targets that do not
+        show WordPress markers, so their wordlist is not wasted on generic
+        SPA/soft-404 servers. When no HTTP client is attached (standalone or
+        unit tests) the gate is a no-op.
+        """
+        if not self.wp_only or self.http is None:
+            return True
+        from utils.wordpress_detect import is_wordpress
+
+        if await is_wordpress(self.http, self._target_url(), self.logger):
+            return True
+        self.logger.info(
+            f"{self.name}: target is not WordPress - skipping WP-specific fuzzing"
+        )
+        return False
+
+    def _wordlist_details(self) -> dict:
+        """Wordlist name, path and entry count (cached) for evidence/reporting."""
+        cached = getattr(self, "_wordlist_meta", None)
+        if cached is not None:
+            return cached
+        path = Path(self.wordlist)
+        lines = 0
+        try:
+            if path.is_file():
+                from utils.wordlist_loader import load_lines
+
+                lines = sum(1 for _ in load_lines(path, skip_comments=True))
+        except Exception:  # pragma: no cover - defensive
+            lines = 0
+        self._wordlist_meta = {
+            "wordlist": path.name,
+            "wordlist_path": str(path),
+            "wordlist_lines": lines,
+        }
+        return self._wordlist_meta
 
     def build_command(self) -> list[str]:
         """Build the FFUF command for discovery."""
@@ -124,6 +183,13 @@ class FfufBaseStep(BaseToolStep):
 
         if self.rate_limit and self.rate_limit > 0:
             cmd.extend(["-rate", str(self.rate_limit)])
+
+        # Split-horizon: fuzz the pinned IP but keep the real Host header.
+        from utils.target_net import host_header
+
+        host = host_header(self.target)
+        if host:
+            cmd.extend(["-H", f"Host: {host}"])
 
         if getattr(self.config, "quiet", False):
             cmd.append("-s")
@@ -171,7 +237,13 @@ class FfufBaseStep(BaseToolStep):
                     description=self.finding_description,
                     evidence=f"URL: {url}\nStatus: {status}\nSize: {length}",
                     recommendation=self.finding_recommendation,
-                    raw={"word": word, "url": url, "status": status, "length": length},
+                    raw={
+                        "word": word,
+                        "url": url,
+                        "status": status,
+                        "length": length,
+                        **self._wordlist_details(),
+                    },
                 )
             )
 
@@ -254,7 +326,15 @@ class FfufBaseStep(BaseToolStep):
         if not self.check_version_compatibility():
             return self.findings
 
+        if not await self._confirm_wordpress():
+            return self.findings
+
         self.logger.info(f"Running FFUF on {self._target_url()}")
+        details = self._wordlist_details()
+        self.logger.info(
+            f"FFUF wordlist: {details['wordlist']} "
+            f"({details['wordlist_lines']} entries)"
+        )
 
         cmd = self.build_command()
         self.logger.debug(f"Command: {' '.join(cmd)}")
@@ -268,6 +348,7 @@ class FfufBaseStep(BaseToolStep):
                 started_at,
                 datetime.now(timezone.utc),
                 native_name=f"ffuf-{self.name}.json",
+                extra=details,
             )
             self._handle_result(result)
         except ToolTimeoutError:

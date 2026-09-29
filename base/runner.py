@@ -45,11 +45,13 @@ class Runner:
         self.target = target
         self.all_findings: list[Finding] = []
         self.errors: list[str] = []
+        self.skipped_steps: list[str] = []
         self.modules_run: list[str] = []
         self.started_at: Optional[datetime] = None
         self.logger = Logger("Runner", config.log_level)
         self._http: Optional[HttpClient] = None
         self._ctx: Optional[ScanContext] = None
+        self._breaker_reset_used = False
 
     def _parallel_enabled(self) -> bool:
         """Explicit identity check so MagicMock configs do not enable it."""
@@ -110,12 +112,25 @@ class Runner:
             return findings
 
         async with semaphore:
+            breaker_reset_used = False
+            skipped: list[str] = []
             for step_class in module.steps:
                 if self._http is not None and self._http.unreachable is True:
-                    self.logger.warning(
-                        f"Target unreachable — skipping step {step_class.__name__}"
-                    )
-                    continue
+                    # A transient blip trips the breaker; give the module one
+                    # chance to resume rather than silently skipping the rest.
+                    if not breaker_reset_used:
+                        breaker_reset_used = True
+                        self._http.reset_unreachable()
+                        self.logger.warning(
+                            "Target was marked unreachable - resetting the "
+                            f"circuit breaker to retry {step_class.__name__}"
+                        )
+                    else:
+                        skipped.append(step_class.__name__)
+                        self.logger.warning(
+                            f"Target unreachable — skipping step {step_class.__name__}"
+                        )
+                        continue
                 try:
                     step = step_class(
                         target=self.target,
@@ -132,6 +147,15 @@ class Runner:
                     err_msg = f"Error running step {step_class.__name__}: {e}"
                     self.logger.error(err_msg)
                     self.errors.append(err_msg)
+
+        if skipped:
+            self.skipped_steps.extend(skipped)
+            msg = (
+                f"Module '{module_name}' INCOMPLETE: {len(skipped)} step(s) "
+                f"skipped by the circuit breaker: {', '.join(skipped)}"
+            )
+            self.logger.warning(msg)
+            self.errors.append(msg)
 
         self.logger.info(f"Module {module_name} completed: {len(findings)} findings")
         return findings
@@ -206,7 +230,20 @@ class Runner:
             await self._run_step_node(node, semaphore_for(node), findings_list)
 
         def should_skip(node) -> bool:
-            return self._http is not None and self._http.unreachable is True
+            if self._http is None or self._http.unreachable is not True:
+                return False
+            # Allow one resume per scan so a transient blip doesn't drop the
+            # rest of the tier; anything after that is recorded as skipped.
+            if not self._breaker_reset_used:
+                self._breaker_reset_used = True
+                self._http.reset_unreachable()
+                self.logger.warning(
+                    "Target was marked unreachable - resetting the circuit "
+                    f"breaker to retry {node.step_class.__name__}"
+                )
+                return False
+            self.skipped_steps.append(node.step_class.__name__)
+            return True
 
         def on_skip(node) -> None:
             if self._ctx is not None and node.provides:
@@ -238,10 +275,18 @@ class Runner:
 
         all_findings = []
 
+        target_ip = getattr(self.target, "connect_ip", None)
+        connect_ip = target_ip if isinstance(target_ip, str) and target_ip else None
+        target_domain = getattr(self.target, "domain", "")
+        server_hostname = (
+            target_domain if isinstance(target_domain, str) and target_domain else None
+        )
         async with HttpClient(
             timeout=self.config.timeout,
             insecure=self.config.insecure,
             config=self.config,
+            connect_ip=connect_ip,
+            server_hostname=server_hostname,
         ) as self._http:
             # Per-target shared context (blackboard + memoized web artifacts).
             self._ctx = ScanContext(
@@ -298,6 +343,11 @@ class Runner:
 
         self.all_findings = all_findings
         self.logger.info(f"Scan complete: {len(all_findings)} total findings")
+        if self.skipped_steps:
+            self.logger.warning(
+                f"INCOMPLETE: {len(self.skipped_steps)} step(s) skipped by the "
+                f"circuit breaker: {', '.join(self.skipped_steps)}"
+            )
 
         return Report(
             target=self.target.url,

@@ -3,8 +3,8 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from steps.active.auth_bypass_step import AuthBypassStep
-from steps.active.rate_limit_step import RateLimitStep
 from steps.active.password_reset_step import PasswordResetStep
+from steps.active.rate_limit_step import RateLimitStep
 
 
 class TestAuthBypassStep:
@@ -86,13 +86,49 @@ class TestRateLimitStep:
     async def test_no_rate_limit_reported(self, mock_http, mock_target, mock_config):
         async def requestor(method, url, **kwargs):
             if url.endswith("/wp-login.php"):
-                return MagicMock(status_code=200, text="<form>login</form>")
+                return MagicMock(
+                    status_code=200,
+                    text=(
+                        '<form action="/wp-login.php" method="post">'
+                        '<input type="password" name="pwd"></form>'
+                    ),
+                )
             return MagicMock(status_code=404, text="Not Found")
 
         mock_http.request = AsyncMock(side_effect=requestor)
         step = self.make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert any("No rate limiting" in f.title for f in findings)
+
+    async def test_redirect_endpoint_not_reported(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A 301 catch-all is not a login endpoint (UPDATE.md A11)."""
+
+        async def requestor(method, url, **kwargs):
+            if url.endswith("/auth"):
+                return MagicMock(status_code=301, text="", headers={})
+            return MagicMock(status_code=404, text="Not Found")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not [f for f in findings if "No rate limiting" in f.title]
+
+    async def test_non_credential_page_not_reported(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A static HTML 200 with no credential signals is not a login endpoint."""
+
+        async def requestor(method, url, **kwargs):
+            if url.endswith("/wp-login.php"):
+                return MagicMock(status_code=200, text="<html>welcome</html>")
+            return MagicMock(status_code=404, text="Not Found")
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not [f for f in findings if "No rate limiting" in f.title]
 
     async def test_429_stops_probe(self, mock_http, mock_target, mock_config):
         count = {"n": 0}

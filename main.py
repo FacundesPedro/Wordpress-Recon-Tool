@@ -359,6 +359,35 @@ def main(
             help="Skip pre-flight DNS/TCP/TLS reachability probe",
         ),
     ] = False,
+    retries: Annotated[
+        int,
+        typer.Option(
+            "--retries",
+            help="Extra pre-flight reachability attempts on transient failures",
+        ),
+    ] = 2,
+    retry_delay: Annotated[
+        float,
+        typer.Option(
+            "--retry-delay",
+            help="Base delay (s) between reachability retries (exponential backoff)",
+        ),
+    ] = 1.0,
+    target_ip: Annotated[
+        Optional[str],
+        typer.Option(
+            "--target-ip",
+            help="Connect to this IP while keeping the hostname for Host/SNI (split-horizon)",
+        ),
+    ] = None,
+    resolve: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--resolve",
+            help="host:ip mapping (repeatable), applied per target "
+            "(e.g. --resolve app.io:10.0.0.5)",
+        ),
+    ] = None,
     active: Annotated[
         bool,
         typer.Option(
@@ -443,6 +472,11 @@ def main(
     config.require_version = require_version
     config.verbose_version_check = verbose_version_check
     config.skip_reachability_check = skip_reachability_check
+    config.retries = retries
+    config.retry_delay = retry_delay
+    if target_ip:
+        config.target_ip = target_ip
+    config.dns_resolve = ",".join(resolve) if resolve else ""
     config.save_raw = save_raw
     if raw_output:
         config.raw_output_dir = raw_output
@@ -493,9 +527,27 @@ def main(
     completed: list[tuple[str, Path, dict]] = []
     failed: list[str] = []
 
+    try:
+        resolve_map = _parse_resolve(resolve or [])
+    except typer.BadParameter as exc:
+        main_logger.error(str(exc))
+        raise typer.Exit(code=1) from exc
+    if target_ip and len(target_urls) > 1:
+        main_logger.warning(
+            "--target-ip applies to a single target; ignoring it for a "
+            "multi-target run. Use --resolve host:ip per target instead."
+        )
+
     for target_url in target_urls:
         try:
-            target_obj = Target(url=target_url, domain=resolve_domain(target_url))
+            connect_ip = _connect_ip_for(
+                target_url, target_ip, resolve_map, len(target_urls)
+            )
+            target_obj = Target(
+                url=target_url,
+                domain=resolve_domain(target_url),
+                connect_ip=connect_ip,
+            )
         except ValidationError as exc:
             main_logger.error(f"Skipping invalid target '{target_url}': {exc}")
             failed.append(target_url)
@@ -529,26 +581,45 @@ def main(
 
             probe = asyncio.run(
                 check_reachability(
-                    target_obj.url, timeout=config.timeout, insecure=config.insecure
+                    target_obj.url,
+                    timeout=config.timeout,
+                    insecure=config.insecure,
+                    attempts=config.retries + 1,
+                    retry_delay=config.retry_delay,
+                    connect_ip=target_obj.connect_ip,
+                    server_hostname=target_obj.domain,
                 )
             )
             if not probe.reachable:
                 main_logger.error(
                     f"{target_obj.url}: {probe.error or 'Target is unreachable'}"
+                    + (
+                        f" (after {probe.attempts} attempt(s))"
+                        if probe.attempts > 1
+                        else ""
+                    )
                 )
                 failed.append(target_url)
                 continue
             if not config.quiet:
+                pinned = (
+                    " [pinned via --target-ip/--resolve]"
+                    if target_obj.connect_ip
+                    else ""
+                )
                 main_logger.info(
                     f"Resolved {target_obj.domain} -> {probe.ip} "
                     f"(DNS {probe.dns_ms:.0f}ms, TCP {probe.tcp_ms:.0f}ms"
                     + (f", TLS {probe.tls_ms:.0f}ms" if probe.tls_ms else "")
                     + ")"
+                    + pinned
                 )
-                main_logger.debug(
-                    "If this IP differs from the intended internal endpoint, run the "
-                    "container with --add-host <host>:<ip> to pin the correct address."
-                )
+                if not target_obj.connect_ip:
+                    main_logger.debug(
+                        "If this IP differs from the intended internal endpoint, "
+                        "re-run with --target-ip <ip> (or --resolve host:ip), or "
+                        "run the container with --add-host <host>:<ip>."
+                    )
 
         # Rebuild modules per target so no state leaks between scans.
         built_modules = build_modules(
@@ -627,6 +698,53 @@ def resolve_domain(url: str) -> str:
 
     parsed = urlparse(url)
     return parsed.netloc or url
+
+
+def _host_key(url: str) -> str:
+    """Return the lowercased hostname (no port) for a target URL."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    return (parsed.hostname or "").lower()
+
+
+def _parse_resolve(entries: list[str]) -> dict[str, str]:
+    """Parse ``--resolve host:ip`` entries into a hostname → IP mapping.
+
+    Each entry may also be a comma-separated list. Raises ``typer.BadParameter``
+    on a malformed entry so a typo fails fast instead of silently doing nothing.
+    """
+    mapping: dict[str, str] = {}
+    for entry in entries:
+        for token in str(entry).split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if ":" not in token:
+                raise typer.BadParameter(f"--resolve expects host:ip, got '{token}'")
+            host, ip = token.rsplit(":", 1)
+            host = host.strip().lower()
+            ip = ip.strip()
+            if not host or not ip:
+                raise typer.BadParameter(f"--resolve expects host:ip, got '{token}'")
+            mapping[host] = ip
+    return mapping
+
+
+def _connect_ip_for(
+    target_url: str,
+    target_ip: Optional[str],
+    resolve_map: dict[str, str],
+    target_count: int,
+) -> Optional[str]:
+    """Resolve the pinned connect IP for one target.
+
+    ``--target-ip`` applies only to a single-target run; ``--resolve`` is keyed
+    by hostname so it works for batches.
+    """
+    if target_ip and target_count == 1:
+        return target_ip.strip() or None
+    return resolve_map.get(_host_key(target_url))
 
 
 def get_module_names(

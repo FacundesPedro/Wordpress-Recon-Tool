@@ -208,3 +208,48 @@ class TestScanContextArtifacts:
     async def test_stats_without_http(self):
         ctx = ScanContext()
         assert ctx.stats == {"requests_made": 0, "requests_saved": 0}
+
+
+class TestScanContextSoft404:
+    @pytest.mark.asyncio
+    async def test_detects_catch_all_and_sets_flag(self):
+        calls = []
+
+        async def handler(method, url, **kwargs):
+            calls.append(url)
+            return make_response(200, "<html><head><title>Shell</title></head></html>")
+
+        ctx = ScanContext(
+            http=make_http(handler), target_url="https://spa.example"
+        )
+        assert ctx.enumeration_is_unreliable is False
+        detector = await ctx.soft404_detector()
+        assert detector.calibrated is True
+        assert ctx.enumeration_is_unreliable is True
+        assert ctx.enumeration_unreliable is True
+        assert len(calls) >= 1
+
+    @pytest.mark.asyncio
+    async def test_detector_is_memoized_per_base_url(self):
+        calls = []
+
+        async def handler(method, url, **kwargs):
+            calls.append(url)
+            return make_response(200, "<html><title>Shell</title></html>")
+
+        ctx = ScanContext(http=make_http(handler), target_url="https://spa.example")
+        d1 = await ctx.soft404_detector()
+        count = len(calls)
+        d2 = await ctx.soft404_detector()
+        assert d1 is d2
+        assert len(calls) == count  # no second calibration
+
+    @pytest.mark.asyncio
+    async def test_calibration_failure_is_safe(self):
+        async def handler(method, url, **kwargs):
+            raise ConnectionError("down")
+
+        ctx = ScanContext(http=make_http(handler), target_url="https://x.example")
+        detector = await ctx.soft404_detector()
+        assert detector.calibrated is False
+        assert ctx.enumeration_is_unreliable is False

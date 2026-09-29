@@ -13,6 +13,7 @@ class FfufFilesStep(FfufBaseStep):
 
     name = "ffuf_files"
     description = "FFUF file discovery"
+    config_wordlist_key = "ffuf_files_wordlist"
     wordlist_file = "ffuf/files.txt"
     url_suffix = "/FUZZ"
     finding_title = "File Found"

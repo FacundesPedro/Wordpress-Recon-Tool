@@ -73,7 +73,11 @@ class NucleiStep(BaseToolStep):
         )
 
     def _target_url(self) -> str:
-        return str(self.target.url) if self.target is not None else ""
+        if self.target is None:
+            return ""
+        from utils.target_net import pinned_url
+
+        return pinned_url(self.target)
 
     def build_command(self) -> list[str]:
         """Build Nuclei command with all options."""
@@ -90,6 +94,13 @@ class NucleiStep(BaseToolStep):
             str(self.rate_limit),
             "-silent",
         ]
+
+        # Split-horizon: scan the pinned IP but keep the real Host header.
+        from utils.target_net import host_header
+
+        host = host_header(self.target)
+        if host:
+            cmd.extend(["-H", f"Host: {host}"])
 
         # Nuclei disables TLS certificate validation by default, so there is
         # no insecure flag to pass (and no --insecure warning to emit).

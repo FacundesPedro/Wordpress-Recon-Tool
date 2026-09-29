@@ -19,6 +19,8 @@ ARG OPENDOOR_VERSION=5.18.0
 ARG TARGETARCH
 ARG SECLISTS_PLUGINS_URL=https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-plugins.fuzz.txt
 ARG SECLISTS_THEMES_URL=https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/CMS/wp-themes.fuzz.txt
+ARG SECLISTS_DIRECTORIES_URL=https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt
+ARG SECLISTS_FILES_URL=https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-files.txt
 
 RUN groupadd -r recon && useradd -r -m -g recon recon
 
@@ -28,9 +30,10 @@ WORKDIR /app
 # - ca-certificates/openssl: kept current so TLS verification works against
 #   valid public chains without --insecure
 # - whois: required by the passive WHOIS step
+# - dnsutils: provides `dig`, required by the passive DNS + email-security steps
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates openssl whois \
+        ca-certificates openssl whois dnsutils \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -73,6 +76,7 @@ RUN if [ "$INSTALL_TOOLS" = "true" ]; then \
         echo "--- installed tool versions ---"; \
         nmap --version | head -1; \
         ffuf -V; \
+        dig -v 2>&1 | head -1; \
         HOME=/home/recon nuclei -version; \
         HOME=/home/recon wpscan --version; \
         opendoor --version || true; \
@@ -101,11 +105,15 @@ ENV PYTHONPATH=/app
 # wordlists/external/ so ~/.config/recon-wp/wordlists/ overrides still win.
 RUN if [ "$INSTALL_RECOMMENDED_WORDLISTS" = "true" ]; then \
         set -e; \
-        mkdir -p wordlists/external/plugins; \
+        mkdir -p wordlists/external/plugins wordlists/external/ffuf; \
         [ -s wordlists/external/plugins/plugin_fallback.txt ] || \
             python -c "import urllib.request; urllib.request.urlretrieve('${SECLISTS_PLUGINS_URL}', 'wordlists/external/plugins/plugin_fallback.txt')"; \
         [ -s wordlists/external/plugins/theme_fallback.txt ] || \
             python -c "import urllib.request; urllib.request.urlretrieve('${SECLISTS_THEMES_URL}', 'wordlists/external/plugins/theme_fallback.txt')"; \
+        [ -s wordlists/external/ffuf/directories.txt ] || \
+            python -c "import urllib.request; urllib.request.urlretrieve('${SECLISTS_DIRECTORIES_URL}', 'wordlists/external/ffuf/directories.txt')"; \
+        [ -s wordlists/external/ffuf/files.txt ] || \
+            python -c "import urllib.request; urllib.request.urlretrieve('${SECLISTS_FILES_URL}', 'wordlists/external/ffuf/files.txt')"; \
     fi
 
 # Writable default output dir + a stable HOME so external tools (ffuf, nuclei)

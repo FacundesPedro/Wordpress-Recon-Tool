@@ -28,6 +28,9 @@ class Target:
     url: str
     domain: str = ""
     scope: Optional[list[str]] = None
+    # Pinned connect IP for split-horizon/internal targets (Host/SNI keep the
+    # hostname). None = normal DNS resolution.
+    connect_ip: Optional[str] = None
 
     def __post_init__(self):
         if self.scope is None:

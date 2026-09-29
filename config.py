@@ -149,6 +149,15 @@ class ScanConfig(BaseSettings):
     ffuf_wordlist: str = Field(
         default="", description="FFUF wordlist path"
     )
+    ffuf_directory_wordlist: str = Field(
+        default="", description="FFUF wordlist for directory discovery (directories step)"
+    )
+    ffuf_files_wordlist: str = Field(
+        default="", description="FFUF wordlist for file discovery (files step)"
+    )
+    ffuf_wp_wordlist: str = Field(
+        default="", description="FFUF wordlist for WordPress path discovery (ffuf_wp step)"
+    )
     ffuf_timeout: int = Field(
         default=300, ge=60, description="FFUF execution timeout in seconds"
     )
@@ -229,6 +238,13 @@ class ScanConfig(BaseSettings):
         default="", description="Login page path wordlist"
     )
 
+    passive_osint: bool = Field(
+        default=True,
+        description=(
+            "Query public OSINT sources (crt.sh, wayback) for the target "
+            "(set false to skip on filtered/internal engagements)"
+        ),
+    )
     spider_max_depth: int = Field(
         default=2, ge=1, le=10, description="Maximum crawl depth for content spider"
     )
@@ -302,6 +318,13 @@ class ScanConfig(BaseSettings):
     raw_no_redact: bool = Field(
         default=False,
         description="Do not redact secrets from persisted raw output (debug only)",
+    )
+    raw_history: bool = Field(
+        default=True,
+        description=(
+            "Before overwriting a raw artifact on re-run, move the previous "
+            "version into <raw>/history/<run-id>/ (append-only evidence)"
+        ),
     )
 
     # Webapp / source review settings
@@ -396,9 +419,54 @@ class ScanConfig(BaseSettings):
         default="",
         description="Absolute path for mass-assignment probing (e.g. /api/register); empty = skip",
     )
+    active_params: str = Field(
+        default="",
+        description=(
+            "Operator-supplied injection targets for the active family, as "
+            "comma-separated path:param pairs (e.g. '/api/items:id,/api/search:q')"
+        ),
+    )
+    active_js_max: int = Field(
+        default=5,
+        ge=0,
+        le=50,
+        description=(
+            "Max same-origin JS bundles to parse for API endpoints/params when "
+            "the homepage exposes no query parameters (SPA support)"
+        ),
+    )
 
     skip_reachability_check: bool = Field(
         default=False, description="Skip pre-flight DNS/TCP/TLS reachability probe"
+    )
+    retries: int = Field(
+        default=2,
+        ge=0,
+        le=10,
+        description=(
+            "Extra attempts for the pre-flight reachability probe on transient "
+            "failures (timeout/reset/refused); 0 = single-shot"
+        ),
+    )
+    retry_delay: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=30.0,
+        description="Base delay between reachability retries (exponential backoff)",
+    )
+    target_ip: str = Field(
+        default="",
+        description=(
+            "Override the target's resolved IP (split-horizon/internal targets); "
+            "HTTP keeps the hostname for Host/SNI. Applies to a single target."
+        ),
+    )
+    dns_resolve: str = Field(
+        default="",
+        description=(
+            "Comma-separated host:ip overrides (e.g. "
+            "'app.example:10.0.0.5,api.example:10.0.0.6')"
+        ),
     )
     unreachable_threshold: int = Field(
         default=5, ge=1,
