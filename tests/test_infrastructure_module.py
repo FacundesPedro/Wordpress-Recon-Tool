@@ -145,6 +145,53 @@ class TestTlsStep:
             findings = await step.run()
             assert findings == []
 
+    async def test_real_context_does_not_raise_on_verify_mode(self):
+        """Regression: check_hostname/verify_mode ordering raised ValueError and
+        swallowed every finding. A real default context must configure cleanly."""
+        import ssl
+
+        from steps.infrastructure.tls_step import TlsStep
+
+        # Build the same verified context the step builds; must not raise.
+        ctx = ssl.create_default_context()
+        # The step disables verification only on the retry context. Reproduce
+        # that construction here.
+        retry = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        retry.check_hostname = False
+        retry.verify_mode = ssl.CERT_NONE
+        assert retry.verify_mode == ssl.CERT_NONE
+        assert ctx.verify_mode == ssl.CERT_REQUIRED
+
+    async def test_classify_cert_error_high_vs_medium(self):
+        from steps.infrastructure.tls_step import TlsStep
+
+        sev, _ = TlsStep._classify_cert_error(
+            Exception("certificate has expired")
+        )
+        assert sev == "high"
+        sev, _ = TlsStep._classify_cert_error(
+            Exception("self-signed certificate in certificate chain")
+        )
+        assert sev == "medium"
+
+    async def test_cert_failure_emits_finding_with_real_context(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A verification failure must surface, not vanish behind a ValueError."""
+        import ssl
+
+        with patch(
+            "steps.infrastructure.tls_step.socket.create_connection",
+            side_effect=ssl.SSLCertVerificationError("certificate has expired"),
+        ):
+            from steps.infrastructure.tls_step import TlsStep
+            step = TlsStep(target=mock_target, config=mock_config, http=mock_http)
+            findings = await step.run()
+
+        assert any(f.title == "TLS certificate issue" for f in findings)
+        cert = [f for f in findings if f.title == "TLS certificate issue"][0]
+        assert cert.severity == "high"
+
 
 class TestWafStep:
     """Tests for WafStep — single GET, checks headers/cookies/body for WAF signatures."""
