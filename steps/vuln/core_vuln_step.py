@@ -11,7 +11,7 @@ from typing import Optional
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
-from core.vulndb import VulnDB, to_finding_severity
+from core.vulndb import VulnDB, cve_finding_severity
 
 
 class CoreVulnStep(BaseHttpStep):
@@ -52,20 +52,41 @@ class CoreVulnStep(BaseHttpStep):
             )
             return self.findings
 
-        by_severity: dict[str, list[dict]] = {}
+        by_severity: dict[str, dict] = {}
         for v in vulns:
-            sev = to_finding_severity(v.severity)
-            if sev not in by_severity:
-                by_severity[sev] = []
-            by_severity[sev].append({
+            # Skip CVEs already fixed in the running version and cap severity
+            # when applicability cannot be proven.
+            sev, confidence = cve_finding_severity(v.severity, version, v.fixed_in)
+            if sev is None:
+                continue
+            bucket = by_severity.setdefault(sev, {"items": [], "confidence": "high"})
+            bucket["items"].append({
                 "id": v.id,
                 "title": v.title,
                 "cvss_score": v.cvss_score,
                 "fixed_in": v.fixed_in,
                 "source": v.source,
             })
+            if confidence == "low":
+                bucket["confidence"] = "low"
 
-        for raw_sev, items in sorted(by_severity.items()):
+        if not by_severity:
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="No applicable CVEs for WordPress core",
+                description=(
+                    f"WordPress {version} matched {len(vulns)} database record(s) "
+                    "but none apply to the running version"
+                ),
+                evidence=f"Version: {version}",
+                recommendation="Keep WordPress updated to the latest version",
+                raw={"version": version, "total_cves": 0, "filtered": len(vulns)},
+            )
+            return self.findings
+
+        for raw_sev, bucket in sorted(by_severity.items()):
+            items = bucket["items"]
             self._add_finding(
                 module=self.MODULE,
                 severity=raw_sev,  # type: ignore[arg-type]
@@ -80,6 +101,7 @@ class CoreVulnStep(BaseHttpStep):
                 ),
                 recommendation="Update WordPress to a patched version. Latest: https://wordpress.org/download/",
                 raw={"version": version, "severity": raw_sev, "cves": items},
+                confidence=bucket["confidence"],  # type: ignore[arg-type]
             )
 
         return self.findings

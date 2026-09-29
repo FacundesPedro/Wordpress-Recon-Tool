@@ -12,7 +12,7 @@ from typing import Optional
 from base.http_step import BaseHttpStep
 from core.auth import get_wp_auth_header
 from core.finding import Finding
-from core.vulndb import VulnDB, to_finding_severity
+from core.vulndb import VulnDB, cve_finding_severity
 
 
 class ThemeVulnStep(BaseHttpStep):
@@ -69,9 +69,15 @@ class ThemeVulnStep(BaseHttpStep):
             )
             return self.findings
 
+        reported = 0
         for entry in all_vulns:
             for cve in entry["cves"]:
-                sev = to_finding_severity(cve["severity"])
+                sev, confidence = cve_finding_severity(
+                    cve["severity"], entry["version"], cve["fixed_in"]
+                )
+                if sev is None:
+                    continue
+                reported += 1
                 self._add_finding(
                     module=self.MODULE,
                     severity=sev,
@@ -93,7 +99,22 @@ class ThemeVulnStep(BaseHttpStep):
                         f"or later to patch this vulnerability"
                     ),
                     raw={"theme": entry["slug"], "version": entry["version"], "cve": cve},
+                    confidence=confidence,  # type: ignore[arg-type]
                 )
+
+        if reported == 0:
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="No applicable theme CVEs found",
+                description=(
+                    f"Checked {len(themes)} theme(s) — vulnerabilities exist in the "
+                    "database but none apply to the detected versions"
+                ),
+                evidence=f"Themes checked: {', '.join(s for s, _ in themes)}",
+                recommendation="Keep all themes updated to their latest versions",
+                raw={"themes_checked": len(themes), "vulnerable": 0},
+            )
 
         return self.findings
 

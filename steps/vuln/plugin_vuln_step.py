@@ -12,7 +12,7 @@ from typing import Optional
 from base.http_step import BaseHttpStep
 from core.auth import get_wp_auth_header
 from core.finding import Finding
-from core.vulndb import VulnDB, to_finding_severity
+from core.vulndb import VulnDB, cve_finding_severity
 
 
 class PluginVulnStep(BaseHttpStep):
@@ -69,9 +69,16 @@ class PluginVulnStep(BaseHttpStep):
             )
             return self.findings
 
+        reported = 0
         for entry in all_vulns:
             for cve in entry["cves"]:
-                sev = to_finding_severity(cve["severity"])
+                sev, confidence = cve_finding_severity(
+                    cve["severity"], entry["version"], cve["fixed_in"]
+                )
+                if sev is None:
+                    # Already patched in the detected version.
+                    continue
+                reported += 1
                 self._add_finding(
                     module=self.MODULE,
                     severity=sev,
@@ -93,7 +100,22 @@ class PluginVulnStep(BaseHttpStep):
                         f"or later to patch this vulnerability"
                     ),
                     raw={"plugin": entry["slug"], "version": entry["version"], "cve": cve},
+                    confidence=confidence,  # type: ignore[arg-type]
                 )
+
+        if reported == 0:
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="No applicable plugin CVEs found",
+                description=(
+                    f"Checked {len(plugins)} plugin(s) — vulnerabilities exist in the "
+                    "database but none apply to the detected versions"
+                ),
+                evidence=f"Plugins checked: {', '.join(s for s, _ in plugins)}",
+                recommendation="Keep all plugins updated to their latest versions",
+                raw={"plugins_checked": len(plugins), "vulnerable": 0},
+            )
 
         return self.findings
 

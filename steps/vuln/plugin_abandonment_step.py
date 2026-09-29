@@ -58,8 +58,11 @@ def abandonment_issues(info: dict, kind: str) -> list[dict]:
     name = info.get("slug") or info.get("name") or kind
 
     if info.get("closed") in (1, True, "1"):
+        close_reason = str(info.get("close_reason", "")).lower()
         issues.append({
-            "severity": "high",
+            # Maintenance state, not a demonstrated exploit. A security
+            # closure is the one case that warrants medium.
+            "severity": "medium" if close_reason == "security" else "low",
             "title": f"{kind.capitalize()} '{name}' is closed/removed from WordPress.org",
             "description": (
                 f"The {kind} has been closed on WordPress.org (reason: "
@@ -75,7 +78,7 @@ def abandonment_issues(info: dict, kind: str) -> list[dict]:
         age_years = (datetime.now(timezone.utc) - last_updated).days / 365.25
         if age_years > ABANDONED_YEARS:
             issues.append({
-                "severity": "medium",
+                "severity": "low",
                 "title": f"{kind.capitalize()} '{name}' not updated in {age_years:.1f} years",
                 "description": (
                     f"Last update: {last_updated.date()}. Long-unmaintained "
@@ -94,6 +97,7 @@ class PluginAbandonmentStep(BaseHttpStep):
     description = "Flag plugins/themes closed or not updated on WordPress.org"
     severity = "medium"
     MODULE = "vuln"
+    # Max emitted is `medium` (security-closure); other cases are `low`.
 
     async def run(self) -> list[Finding]:
         self.logger.info("Checking plugin/theme maintenance status on WordPress.org...")

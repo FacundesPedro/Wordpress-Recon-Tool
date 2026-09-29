@@ -25,13 +25,19 @@ class TestParseLastUpdated:
 
 
 class TestAbandonmentIssues:
-    def test_closed_plugin_high(self):
+    def test_closed_plugin_low(self):
         issues = abandonment_issues({"slug": "x", "closed": 1}, "plugin")
-        assert issues and issues[0]["severity"] == "high"
+        assert issues and issues[0]["severity"] == "low"
 
-    def test_old_update_medium(self):
-        issues = abandonment_issues({"slug": "x", "last_updated": "2020-01-01"}, "plugin")
+    def test_security_closed_plugin_medium(self):
+        issues = abandonment_issues(
+            {"slug": "x", "closed": 1, "close_reason": "security"}, "plugin"
+        )
         assert issues and issues[0]["severity"] == "medium"
+
+    def test_old_update_low(self):
+        issues = abandonment_issues({"slug": "x", "last_updated": "2020-01-01"}, "plugin")
+        assert issues and issues[0]["severity"] == "low"
         assert "not updated" in issues[0]["title"]
 
     def test_recent_update_clean(self):
@@ -64,7 +70,21 @@ class TestPluginAbandonmentStep:
         step = self.make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert any("closed" in f.title.lower() for f in findings)
-        assert any(f.severity == "high" for f in findings)
+        # security closure -> medium
+        assert any(f.severity == "medium" for f in findings)
+
+    async def test_closed_non_security_is_low(self, mock_http, mock_target, mock_config):
+        html = '<link href="/wp-content/plugins/oldplugin/style.css">'
+        api_resp = MagicMock(status_code=200)
+        api_resp.json.return_value = {"slug": "oldplugin", "closed": 1,
+                                      "close_reason": "author request"}
+        mock_http.get = AsyncMock(
+            return_value=MagicMock(status_code=200, text=html)
+        )
+        mock_http.request = AsyncMock(return_value=api_resp)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert any(f.severity == "low" for f in findings)
 
     async def test_unknown_plugin_skipped(self, mock_http, mock_target, mock_config):
         html = '<link href="/wp-content/plugins/ghostplugin/style.css">'
