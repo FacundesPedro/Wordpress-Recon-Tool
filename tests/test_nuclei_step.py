@@ -114,11 +114,19 @@ class TestParseNucleiFinding:
         finding = nuclei_step._parse_nuclei_finding(data)
         assert finding.severity == "info"
 
-    def test_unknown_severity_defaults_to_info(self, nuclei_step):
+    def test_unknown_severity_defaults_to_low(self, nuclei_step):
         data = dict(SAMPLE_NUCLEI_FINDING)
         data["info"] = {"name": "Unknown", "severity": "unknown"}
         finding = nuclei_step._parse_nuclei_finding(data)
-        assert finding.severity == "info"
+        assert finding.severity == "low"
+        assert finding.raw["severity_unknown"] is True
+
+    def test_missing_severity_defaults_to_low(self, nuclei_step):
+        data = dict(SAMPLE_NUCLEI_FINDING)
+        data["info"] = {"name": "No severity"}
+        finding = nuclei_step._parse_nuclei_finding(data)
+        assert finding.severity == "low"
+        assert finding.raw["severity_unknown"] is True
 
 
 class TestParseOutput:
@@ -168,6 +176,20 @@ class TestParseOutput:
         findings = nuclei_step.parse_output(result)
         assert len(findings) == 1
         assert findings[0].title == "Nuclei Completed"
+        assert findings[0].severity == "info"
+
+    def test_unparseable_output_emits_finding(self, nuclei_step):
+        result = ToolResult(
+            stdout="{not valid json",
+            stderr="",
+            returncode=0,
+            success=True,
+        )
+        findings = nuclei_step.parse_output(result)
+        assert len(findings) == 1
+        assert findings[0].title == "Nuclei Output Unparseable"
+        assert findings[0].severity == "medium"
+        assert findings[0].raw["operational"] is True
 
 
 class TestDetectNucleiError:
@@ -184,10 +206,17 @@ class TestDetectNucleiError:
         assert "Network Error" in finding.title
 
     def test_timeout(self, nuclei_step):
+        # A network error only short-circuits the scan when nothing was produced.
         stderr = "timeout"
-        detected, finding = nuclei_step._detect_nuclei_error(stderr, "timeout")
+        detected, finding = nuclei_step._detect_nuclei_error(stderr, "")
         assert detected
         assert "Network Error" in finding.title
+
+    def test_timeout_with_results_is_not_a_network_error(self, nuclei_step):
+        stderr = "timeout"
+        detected, finding = nuclei_step._detect_nuclei_error(stderr, '{"info": {}}')
+        assert not detected
+        assert finding is None
 
     def test_unknown_flag(self, nuclei_step):
         stderr = "unknown flag: -xyz"

@@ -47,7 +47,7 @@ class FfufBaseStep(BaseToolStep):
 
     name = "ffuf"
     description = "FFUF discovery"
-    severity = "info"
+    severity = "low"
     _tool_binary = "ffuf"
     MODULE = "tools"
     min_version = "2.0.0"
@@ -193,7 +193,7 @@ class FfufBaseStep(BaseToolStep):
             )
             self._add_finding(
                 module=self.MODULE,
-                severity="high",
+                severity="low",
                 title="FFUF Execution Failed",
                 description=(
                     f"FFUF exited with code {result.returncode}; the scan did not "
@@ -215,7 +215,7 @@ class FfufBaseStep(BaseToolStep):
             self.logger.error("FFUF output was not valid JSON")
             self._add_finding(
                 module=self.MODULE,
-                severity="high",
+                severity="low",
                 title="FFUF Output Unparseable",
                 description=(
                     "FFUF returned output that could not be parsed as JSON records; "

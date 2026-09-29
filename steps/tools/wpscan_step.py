@@ -12,6 +12,7 @@ updated vulnerability database.
 # WHY: Provides CVE-based vulnerability detection for WP core, plugins, themes
 
 import json
+import re
 import shutil
 from datetime import datetime, timezone
 from typing import Optional
@@ -22,6 +23,95 @@ from config import ScanConfig
 from core.exceptions import ToolTimeoutError
 from core.finding import Finding
 from core.target import Target
+
+_SEVERITY_ORDER = ("info", "low", "medium", "high", "critical")
+
+# WPScan vulnerability `type` values mapped to an impact band. Only the
+# vulnerability class matters - core, plugin and theme findings all use the
+# same mapping so identical vulnerabilities are rated identically.
+_VULN_TYPE_CRITICAL = (
+    "rce", "remote code execution", "command injection", "code injection",
+    "sql injection", "sqli", "auth bypass", "authentication bypass",
+    "privilege escalation", "arbitrary file upload", "file upload",
+    "object injection", "deserialization", "remote file inclusion", "rfi",
+    "template injection", "ssti", "unrestricted upload",
+)
+_VULN_TYPE_HIGH = (
+    "local file inclusion", "file inclusion", "lfi", "path traversal",
+    "directory traversal", "traversal", "arbitrary file read",
+    "arbitrary file deletion", "ssrf", "server-side request forgery",
+    "xml external entity", "xxe",
+)
+_VULN_TYPE_MEDIUM = (
+    "xss", "cross-site scripting", "cross site scripting", "csrf",
+    "cross-site request forgery", "cross site request forgery",
+    "open redirect", "information disclosure", "denial of service", "dos",
+    "brute force", "options update", "media upload", "content injection",
+)
+
+# A configuration backup must look like one: a config stem followed by a
+# backup suffix. This deliberately does NOT match `wp-config-sample.php`,
+# which ships with every stock WordPress install.
+# WPScan `interesting_findings` types worth reporting from this step. Types
+# already owned by dedicated steps (readme, wp_cron, xmlrpc, backups,
+# timthumb, registration, ...) are intentionally excluded to avoid duplicates.
+_INTERESTING_TYPE_SEVERITY = {
+    "debug_log": "medium",
+    "environment": "medium",
+    "full_path_disclosure": "low",
+    "directory_listing": "low",
+    "upload_directory_listing": "low",
+}
+_MAX_INTERESTING = 15
+
+_CONFIG_BACKUP_RE = re.compile(
+    r"(?:^|/)(?:wp-config|\.env|config(?:uration)?\.php|settings\.php|"
+    r"appsettings\.json|web\.config|secrets\.yml)"
+    r"[^/?#]*"
+    r"(?:\.bak|\.old|\.orig|\.save|\.swp|\.swo|\.tmp|\.txt|\.zip|\.tar\.gz|~)$",
+    re.IGNORECASE,
+)
+
+
+def severity_from_vuln_type(vuln_type: str, default: str = "high") -> str:
+    """Map a WPScan vulnerability `type` string to a Finding severity."""
+    text = (vuln_type or "").strip().lower()
+    if not text:
+        return default
+    for keyword in _VULN_TYPE_CRITICAL:
+        if keyword in text:
+            return "critical"
+    for keyword in _VULN_TYPE_HIGH:
+        if keyword in text:
+            return "high"
+    for keyword in _VULN_TYPE_MEDIUM:
+        if keyword in text:
+            return "medium"
+    return default
+
+
+def severity_from_vulnerabilities(vulns: list, default: str = "high") -> str:
+    """Return the highest severity implied by a list of WPScan vuln dicts."""
+    severities = [
+        severity_from_vuln_type(v.get("type", ""), default)
+        for v in vulns
+        if isinstance(v, dict)
+    ]
+    if not severities:
+        return default
+    return max(severities, key=_SEVERITY_ORDER.index)
+
+
+def _apply_confidence(severity: str, confidence_value: object) -> tuple[str, str]:
+    """Downgrade one band + flag low confidence for unreliable detections."""
+    try:
+        confidence = int(str(confidence_value).strip())
+    except (TypeError, ValueError):
+        return severity, "high"
+    if confidence < 50:
+        idx = max(0, _SEVERITY_ORDER.index(severity) - 1)
+        return _SEVERITY_ORDER[idx], "low"
+    return severity, "high"
 
 
 class WpscanStep(BaseToolStep):
@@ -45,7 +135,7 @@ class WpscanStep(BaseToolStep):
 
     name = "wpscan"
     description = "WPScan vulnerability scanner for WordPress"
-    severity = "info"
+    severity = "critical"
     _tool_binary = "wpscan"
     MODULE = "tools"
 
@@ -131,6 +221,28 @@ class WpscanStep(BaseToolStep):
         findings.extend(self._parse_users(data))
         findings.extend(self._parse_config_backups(data))
         findings.extend(self._parse_timthumbs(data))
+        findings.extend(self._parse_interesting_findings(data))
+
+        # WPScan aborts early (no vulnerability data) without an API token or
+        # when the target is unreachable; surface that instead of a cheerful
+        # "completed" finding.
+        aborted = data.get("scan_aborted")
+        if aborted:
+            findings.append(
+                Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity="info",
+                    title="WPScan Scan Aborted",
+                    description=str(aborted)[:500],
+                    evidence=self._target_url(),
+                    recommendation=(
+                        "Provide a WPScan API token (--wpscan-api-token or "
+                        "WPSCAN_API_TOKEN) to get vulnerability data"
+                    ),
+                    raw={"operational": True, "scan_aborted": True},
+                )
+            )
 
         if not findings:
             findings.append(
@@ -162,10 +274,11 @@ class WpscanStep(BaseToolStep):
         if version != "unknown":
             if vulnerabilites:
                 vuln_titles = ', '.join(v.get('title', '') for v in vulnerabilites[:3])
+                severity = severity_from_vulnerabilities(vulnerabilites, default="high")
                 finding = Finding(
                     module=self.MODULE,
                     step=self.name,
-                    severity="high",
+                    severity=severity,  # type: ignore[arg-type]
                     title=f"WordPress {version} - Vulnerable",
                     description=f"WordPress {version} has {len(vulnerabilites)} known vulnerabilities",
                     evidence=f"Version: {version}",
@@ -209,10 +322,15 @@ class WpscanStep(BaseToolStep):
                     vuln_type = v.get("type", "vulnerability")
                     vuln_list.append(f"{vuln_title} ({vuln_type})")
 
+                severity, finding_confidence = _apply_confidence(
+                    severity_from_vulnerabilities(vulnerabilites, default="high"),
+                    confidence,
+                )
                 finding = Finding(
                     module=self.MODULE,
                     step=self.name,
-                    severity="critical",
+                    severity=severity,  # type: ignore[arg-type]
+                    confidence=finding_confidence,  # type: ignore[arg-type]
                     title=f"Plugin Vulnerable: {plugin_name}",
                     description=f"Plugin '{plugin_name}' has {len(vulnerabilites)} known vulnerabilities",
                     evidence=f"Plugin: {plugin_name} | Version: {version} | Location: {location}",
@@ -262,10 +380,11 @@ class WpscanStep(BaseToolStep):
 
             if vulnerabilites:
                 vuln_titles = ', '.join(v.get('title', '') for v in vulnerabilites[:3])
+                severity = severity_from_vulnerabilities(vulnerabilites, default="high")
                 finding = Finding(
                     module=self.MODULE,
                     step=self.name,
-                    severity="high",
+                    severity=severity,  # type: ignore[arg-type]
                     title=f"Theme Vulnerable: {theme_name}",
                     description=f"Theme '{theme_name}' has {len(vulnerabilites)} known vulnerabilities",
                     evidence=f"Theme: {theme_name} | Version: {version} | Location: {location}",
@@ -310,12 +429,15 @@ class WpscanStep(BaseToolStep):
             username = user_data.get("username", user_id)
             id = user_data.get("id", user_id)
             roles = user_data.get("roles", [])
+            # User enumeration enables credential attacks; an administrator
+            # username is a more valuable target than a subscriber.
+            severity = "medium" if "administrator" in roles else "low"
 
             findings.append(
                 Finding(
                     module=self.MODULE,
                     step=self.name,
-                    severity="info",
+                    severity=severity,  # type: ignore[arg-type]
                     title=f"User Found: {username}",
                     description=f"WordPress user with roles: {', '.join(roles) if roles else 'unknown'}",
                     evidence=f"ID: {id} | Username: {username} | Roles: {', '.join(roles)}",
@@ -335,17 +457,17 @@ class WpscanStep(BaseToolStep):
             if not isinstance(entry, str):
                 continue
 
-            if any(
-                pattern in entry.lower()
-                for pattern in ["config", "wp-config", ".bak", ".old", ".save"]
-            ):
+            if _CONFIG_BACKUP_RE.search(entry.strip()):
                 findings.append(
                     Finding(
                         module=self.MODULE,
                         step=self.name,
-                        severity="critical",
+                        severity="high",
                         title="Config Backup Detected",
-                        description="Potential configuration backup file exposed",
+                        description=(
+                            "Configuration backup file exposed - may contain "
+                            "database credentials"
+                        ),
                         evidence=entry,
                         recommendation="Remove or block access to configuration backup files immediately",
                         raw={"file": entry},
@@ -373,6 +495,43 @@ class WpscanStep(BaseToolStep):
                     evidence=thumb,
                     recommendation="Update Timthumb to latest version or remove if not needed",
                     raw={"timthumb": thumb},
+                )
+            )
+
+        return findings
+
+    def _parse_interesting_findings(self, data: dict) -> list[Finding]:
+        """Extract the subset of `interesting_findings` this step owns."""
+        findings: list[Finding] = []
+        entries = data.get("interesting_findings")
+        if not isinstance(entries, list):
+            return findings
+
+        for entry in entries[:_MAX_INTERESTING]:
+            if not isinstance(entry, dict):
+                continue
+            finding_type = str(entry.get("type", "")).lower()
+            severity = _INTERESTING_TYPE_SEVERITY.get(finding_type)
+            if severity is None:
+                continue
+            url = entry.get("url") or entry.get("to_s") or ""
+            if not url:
+                continue
+            findings.append(
+                Finding(
+                    module=self.MODULE,
+                    step=self.name,
+                    severity=severity,  # type: ignore[arg-type]
+                    title=f"WPScan interesting finding: {finding_type}",
+                    description=(
+                        f"WPScan flagged a '{finding_type}' finding at {url}."
+                    ),
+                    evidence=url,
+                    recommendation=(
+                        "Review the referenced resource and remove or protect it "
+                        "if it should not be public"
+                    ),
+                    raw={"type": finding_type, "url": url, "entry": entry},
                 )
             )
 

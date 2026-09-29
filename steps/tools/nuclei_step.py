@@ -37,7 +37,7 @@ class NucleiStep(BaseToolStep):
 
     name = "nuclei"
     description = "Nuclei vulnerability scanner using templates"
-    severity = "info"
+    severity = "medium"
     _tool_binary = "nuclei"
     MODULE = "tools"
 
@@ -115,12 +115,19 @@ class NucleiStep(BaseToolStep):
         lines = result.stdout.strip().split("\n")
         parsed_count = 0
         skipped_lines = 0
+        log_lines = 0
 
         for line in lines:
             if not line.strip():
                 continue
 
-            if line.startswith("[") or not line.startswith("{"):
+            if line.startswith("["):
+                # Nuclei log/status lines (e.g. "[INF] ...", "[Nuclei] ...") are
+                # expected and do not indicate a parse failure.
+                log_lines += 1
+                continue
+
+            if not line.startswith("{"):
                 skipped_lines += 1
                 continue
 
@@ -140,18 +147,42 @@ class NucleiStep(BaseToolStep):
             self.logger.debug(f"Nuclei: skipped {skipped_lines} non-JSON lines")
 
         if not findings:
-            findings.append(
-                Finding(
-                    module=self.MODULE,
-                    step=self.name,
-                    severity="info",
-                    title="Nuclei Completed",
-                    description="Nuclei scan completed without notable findings",
-                    evidence=f"Target: {self._target_url()}",
-                    recommendation="Manual review may reveal additional details",
-                    raw={"scan_type": "nuclei", "parsed": parsed_count},
+            if skipped_lines > 0:
+                # Nuclei produced output we could not parse into findings. This
+                # is an assurance gap, not a clean scan, so it must be visible.
+                findings.append(
+                    Finding(
+                        module=self.MODULE,
+                        step=self.name,
+                        severity="medium",
+                        title="Nuclei Output Unparseable",
+                        description=(
+                            "Nuclei produced output that could not be parsed into "
+                            "findings - the scan may not have run correctly"
+                        ),
+                        evidence=f"Target: {self._target_url()} | skipped_lines={skipped_lines}",
+                        recommendation="Verify the Nuclei version/output format and re-run",
+                        raw={
+                            "scan_type": "nuclei",
+                            "parsed": parsed_count,
+                            "skipped_lines": skipped_lines,
+                            "operational": True,
+                        },
+                    )
                 )
-            )
+            else:
+                findings.append(
+                    Finding(
+                        module=self.MODULE,
+                        step=self.name,
+                        severity="info",
+                        title="Nuclei Completed",
+                        description="Nuclei scan completed without notable findings",
+                        evidence=f"Target: {self._target_url()}",
+                        recommendation="Manual review may reveal additional details",
+                        raw={"scan_type": "nuclei", "parsed": parsed_count},
+                    )
+                )
 
         return findings
 
@@ -160,7 +191,10 @@ class NucleiStep(BaseToolStep):
         info = data.get("info", {})
         matched_at = data.get("matched-at", "")
 
-        severity_str = info.get("severity", "info").lower()
+        severity_str = str(info.get("severity", "")).lower()
+        # `unknown` is a first-class nuclei severity used by untagged/triage
+        # templates; it must not be silently downgraded to `info`. Any other
+        # unrecognised value is treated the same way and flagged in `raw`.
         severity_map = {
             "critical": "critical",
             "high": "high",
@@ -168,18 +202,26 @@ class NucleiStep(BaseToolStep):
             "low": "low",
             "info": "info",
         }
+        known = severity_str in severity_map
         severity = cast(
             Literal["info", "low", "medium", "high", "critical"],
-            severity_map.get(severity_str, "info"),
+            severity_map.get(severity_str, "low"),
         )
 
         title = info.get("name", "Unknown vulnerability")
         description = info.get("description", "")
         recommendation = info.get("remediation", "Review and remediate the finding")
 
-        matched_by = info.get("matched-at", "")
-        template_id = info.get("template-id", "")
+        template_id = info.get("template-id", "") or data.get("template-id", "")
         tags = info.get("tags", [])
+
+        raw = {
+            "template_id": template_id,
+            "tags": tags,
+            "nuclei_data": data,
+        }
+        if not known:
+            raw["severity_unknown"] = True
 
         return Finding(
             module=self.MODULE,
@@ -189,15 +231,11 @@ class NucleiStep(BaseToolStep):
             description=description[:500]
             if description
             else "Vulnerability detected via Nuclei template",
-            evidence=matched_at or matched_by,
+            evidence=matched_at,
             recommendation=recommendation[:500]
             if recommendation
             else "Review and remediate",
-            raw={
-                "template_id": template_id,
-                "tags": tags,
-                "nuclei_data": data,
-            },
+            raw=raw,
         )
 
     def _detect_nuclei_error(
@@ -225,7 +263,12 @@ class NucleiStep(BaseToolStep):
                 recommendation="Update templates: nuclei -ut\nInstall templates directory if missing",
             )
 
-        if "connection refused" in combined_output or "timeout" in combined_output:
+        # Only treat a connection problem as a scan-level error when nothing was
+        # produced on stdout; otherwise a stray "timeout" warning in stderr would
+        # discard valid findings.
+        if (
+            "connection refused" in combined_output or "timeout" in combined_output
+        ) and not stdout.strip():
             return True, Finding(
                 module=self.MODULE,
                 step=self.name,

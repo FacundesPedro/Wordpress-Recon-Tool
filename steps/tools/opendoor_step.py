@@ -10,6 +10,7 @@ Reference: https://github.com/stanislav-web/OpenDoor
 """
 
 import json
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +42,37 @@ REPORTED_BUCKETS = {
     "indexof": "low",
 }
 
+# Names that indicate a sensitive artefact when discovered by discovery modes
+# that do not content-validate the response (OpenDoor reports status only).
+_SENSITIVE_PATH_RE = re.compile(
+    r"(\.env|wp-config|/\.git|id_rsa|\.sql\b|\.dump\b|\.bak\b|\.old\b|"
+    r"\.zip\b|\.tar\.gz\b|/backup|/dump)",
+    re.IGNORECASE,
+)
+
+
+def _is_sensitive_path(url: str, mode: str) -> bool:
+    """Return True when a discovered path is likely to be a secret/backup."""
+    if mode in ("backup", "config"):
+        return True
+    return bool(_SENSITIVE_PATH_RE.search(url or ""))
+
+
+def _operational_finding(step_name: str, title: str, evidence: str) -> Finding:
+    return Finding(
+        module="tools",
+        step=step_name,
+        severity="low",
+        title=title,
+        description=(
+            "OpenDoor did not produce a usable report - the scan may not have "
+            "run correctly"
+        ),
+        evidence=(evidence or "")[:300],
+        recommendation="Verify the OpenDoor version/CLI and re-run the scan",
+        raw={"operational": True},
+    )
+
 
 class OpenDoorStep(BaseToolStep):
     """OpenDoor WordPress path discovery step.
@@ -59,7 +91,7 @@ class OpenDoorStep(BaseToolStep):
 
     name = "opendoor"
     description = "OpenDoor WordPress path discovery"
-    severity = "info"
+    severity = "high"
     _tool_binary = "opendoor"
     MODULE = "tools"
 
@@ -183,9 +215,19 @@ class OpenDoorStep(BaseToolStep):
             data = json.loads(result.stdout)
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse OpenDoor JSON report: {e}")
+            findings.append(
+                _operational_finding(
+                    self.name, "OpenDoor Output Unparseable", result.stdout
+                )
+            )
             return findings
 
         if not isinstance(data, dict):
+            findings.append(
+                _operational_finding(
+                    self.name, "OpenDoor Output Unparseable", result.stdout
+                )
+            )
             return findings
 
         report_items = data.get("report_items") or {}
@@ -216,8 +258,18 @@ class OpenDoorStep(BaseToolStep):
                 size = item.get("size", item.get("length", 0))
                 word = item.get("word") or self._word_from_url(url)
 
+                # `severity` is the bucket default; use a per-item copy so a
+                # sensitive path cannot leak its band to later items.
+                item_severity = severity
+                finding_confidence = "high"
                 if bucket == "success":
                     title_prefix = "OpenDoor Path Found"
+                    # OpenDoor only reports status/size, not content, so a
+                    # sensitive-looking name is a high-impact lead but not a
+                    # confirmed exposure.
+                    if _is_sensitive_path(url, self.mode):
+                        item_severity = "high"
+                        finding_confidence = "low"
                 else:
                     title_prefix = "OpenDoor Directory Listing"
                 findings.append(
@@ -226,7 +278,10 @@ class OpenDoorStep(BaseToolStep):
                         step=self.name,
                         severity=cast(
                             Literal["info", "low", "medium", "high", "critical"],
-                            severity,
+                            item_severity,
+                        ),
+                        confidence=cast(
+                            Literal["low", "medium", "high"], finding_confidence
                         ),
                         title=f"{title_prefix}: {word}",
                         description=(
@@ -241,6 +296,7 @@ class OpenDoorStep(BaseToolStep):
                             "status": status,
                             "size": size,
                             "bucket": bucket,
+                            "mode": self.mode,
                         },
                     )
                 )
@@ -299,6 +355,13 @@ class OpenDoorStep(BaseToolStep):
                     self.logger.debug(f"OpenDoor stderr: {result.stderr[:500]}")
                 self._persist_raw(cmd, result, started_at, datetime.now(timezone.utc))
                 self.logger.info("OpenDoor completed without a JSON report")
+                self.findings.append(
+                    _operational_finding(
+                        self.name,
+                        "OpenDoor Report Missing",
+                        result.stderr or result.stdout or "no report file produced",
+                    )
+                )
                 return self.findings
 
             try:
@@ -306,6 +369,9 @@ class OpenDoorStep(BaseToolStep):
             except OSError as e:
                 self.logger.error(f"Failed to read OpenDoor report: {e}")
                 self._persist_raw(cmd, result, started_at, datetime.now(timezone.utc))
+                self.findings.append(
+                    _operational_finding(self.name, "OpenDoor Report Unreadable", str(e))
+                )
                 return self.findings
 
             report_result = ToolResult(

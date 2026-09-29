@@ -240,6 +240,29 @@ class TestOpenDoorStep:
         assert "OpenDoor Path Found: wp-content" in titles
         assert "OpenDoor Directory Listing: uploads" in titles
 
+    def test_sensitive_path_severity_does_not_leak_to_others(self, opendoor_step):
+        """A sensitive path must not raise the band of later success items."""
+        report = {
+            "report_items": {
+                "success": [
+                    {"url": "https://example.com/wp-config.php", "code": 200},
+                    {"url": "https://example.com/wp-cron.php", "code": 200},
+                    {"url": "https://example.com/wp-login.php", "code": 200},
+                    {"url": "https://example.com/readme.html", "code": 200},
+                ]
+            }
+        }
+        result = ToolResult(
+            stdout=json.dumps(report), stderr="", returncode=0, success=True
+        )
+        findings = opendoor_step.parse_output(result)
+        by_word = {f.raw["word"]: f for f in findings}
+        assert by_word["wp-config.php"].severity == "high"
+        assert by_word["wp-config.php"].confidence == "low"
+        for word in ("wp-cron.php", "wp-login.php", "readme.html"):
+            assert by_word[word].severity == "info"
+            assert by_word[word].confidence == "high"
+
     def test_parse_output_legacy_items(self, opendoor_step):
         """Test parsing of the legacy items-only JSON schema."""
         report = {"items": {"success": ["https://example.com/wp-admin"]}}
@@ -252,7 +275,11 @@ class TestOpenDoorStep:
 
     def test_parse_output_invalid_json(self, opendoor_step):
         result = ToolResult(stdout="not json", stderr="", returncode=0, success=True)
-        assert opendoor_step.parse_output(result) == []
+        findings = opendoor_step.parse_output(result)
+        assert len(findings) == 1
+        assert findings[0].severity == "low"
+        assert findings[0].title == "OpenDoor Output Unparseable"
+        assert findings[0].raw["operational"] is True
 
     async def test_run_reads_json_report(self, opendoor_step):
         """run() should locate and parse the emitted JSON report file."""
@@ -299,22 +326,22 @@ class TestFfufCommandAndFailure:
         ffuf_directory_step.rate_limit = 0
         assert "-rate" not in ffuf_directory_step.build_command()
 
-    def test_nonzero_exit_is_high_finding(self, ffuf_directory_step):
+    def test_nonzero_exit_is_low_finding(self, ffuf_directory_step):
         ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
         result = ToolResult(
             stdout="", stderr="flag provided but not defined: -ik", returncode=2, success=False
         )
         ffuf_directory_step._handle_result(result)
         assert len(ffuf_directory_step.findings) == 1
-        assert ffuf_directory_step.findings[0].severity == "high"
+        assert ffuf_directory_step.findings[0].severity == "low"
         assert ffuf_directory_step.findings[0].title == "FFUF Execution Failed"
 
-    def test_unparseable_output_is_high_finding(self, ffuf_directory_step):
+    def test_unparseable_output_is_low_finding(self, ffuf_directory_step):
         ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
         result = ToolResult(stdout="not json at all", stderr="", returncode=0, success=True)
         ffuf_directory_step._handle_result(result)
         assert len(ffuf_directory_step.findings) == 1
-        assert ffuf_directory_step.findings[0].severity == "high"
+        assert ffuf_directory_step.findings[0].severity == "low"
         assert ffuf_directory_step.findings[0].title == "FFUF Output Unparseable"
 
     def test_empty_output_is_legitimate_zero(self, ffuf_directory_step):
@@ -337,7 +364,7 @@ class TestFfufCommandAndFailure:
         import asyncio
 
         findings = asyncio.run(ffuf_directory_step.run())
-        assert any(f.severity == "high" for f in findings)
+        assert any(f.severity == "low" for f in findings)
 
 
 class TestAllSteps:

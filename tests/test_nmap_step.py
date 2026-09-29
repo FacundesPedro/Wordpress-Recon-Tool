@@ -198,8 +198,16 @@ class TestPortStepParseOutput:
         assert "No Open Ports" in findings[0].title
         assert findings[0].severity == "info"
 
-    def test_invalid_output_no_findings(self, port_step):
+    def test_invalid_output_emits_operational_finding(self, port_step):
         result = ToolResult(stdout="garbage", stderr="", returncode=1, success=False)
+        findings = port_step.parse_output(result)
+        assert len(findings) == 1
+        assert findings[0].severity == "low"
+        assert findings[0].title == "Nmap Output Unparseable"
+        assert findings[0].raw["operational"] is True
+
+    def test_empty_output_no_findings(self, port_step):
+        result = ToolResult(stdout="", stderr="", returncode=1, success=False)
         findings = port_step.parse_output(result)
         assert findings == []
 

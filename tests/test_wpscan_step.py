@@ -149,7 +149,16 @@ class TestParseVersion:
         findings = wpscan_step._parse_version({"version": SAMPLE_VERSION_VULN})
         assert len(findings) == 1
         assert "Vulnerable" in findings[0].title
-        assert findings[0].severity == "high"
+        # The sample vulnerability is an XSS, which maps to medium by class.
+        assert findings[0].severity == "medium"
+
+    def test_version_with_rce_vuln_is_critical(self, wpscan_step):
+        data = {
+            "number": "5.8.0",
+            "vulnerabilities": [{"title": "RCE", "type": "RCE"}],
+        }
+        findings = wpscan_step._parse_version({"version": data})
+        assert findings[0].severity == "critical"
 
 
 class TestParsePlugins:
@@ -185,7 +194,8 @@ class TestParseThemes:
         findings = wpscan_step._parse_themes({"themes": SAMPLE_THEME_VULN})
         assert len(findings) == 1
         assert "Theme Vulnerable: astra" in findings[0].title
-        assert findings[0].severity == "high"
+        # Sample type is XSS -> medium.
+        assert findings[0].severity == "medium"
 
 
 class TestParseUsers:
@@ -213,13 +223,25 @@ class TestParseConfigBackups:
         data = {"interesting_entries": SAMPLE_ENTRIES}
         findings = wpscan_step._parse_config_backups(data)
         assert len(findings) == 1
-        assert findings[0].severity == "critical"
+        assert findings[0].severity == "high"
         assert "wp-config.bak" in findings[0].evidence
 
     def test_non_config_entry_skipped(self, wpscan_step):
         data = {"interesting_entries": ["readme.html"]}
         findings = wpscan_step._parse_config_backups(data)
         assert len(findings) == 0
+
+    def test_wp_config_sample_not_flagged(self, wpscan_step):
+        # Ships with every stock install - must not be reported.
+        data = {"interesting_entries": ["wp-config-sample.php"]}
+        findings = wpscan_step._parse_config_backups(data)
+        assert len(findings) == 0
+
+    def test_env_backup_flagged(self, wpscan_step):
+        data = {"interesting_entries": ["/var/www/.env.bak"]}
+        findings = wpscan_step._parse_config_backups(data)
+        assert len(findings) == 1
+        assert findings[0].severity == "high"
 
 
 class TestParseTimthumbs:
@@ -235,6 +257,43 @@ class TestParseTimthumbs:
         assert "Timthumb" in findings[0].title
 
 
+class TestParseInterestingFindings:
+    def test_debug_log_medium(self, wpscan_step):
+        data = {
+            "interesting_findings": [
+                {"type": "debug_log", "url": "https://example.com/wp-content/debug.log"}
+            ]
+        }
+        findings = wpscan_step._parse_interesting_findings(data)
+        assert len(findings) == 1
+        assert findings[0].severity == "medium"
+        assert "debug.log" in findings[0].evidence
+
+    def test_directory_listing_low(self, wpscan_step):
+        data = {
+            "interesting_findings": [
+                {"type": "directory_listing", "url": "https://example.com/uploads/"}
+            ]
+        }
+        findings = wpscan_step._parse_interesting_findings(data)
+        assert len(findings) == 1
+        assert findings[0].severity == "low"
+
+    def test_owned_types_skipped(self, wpscan_step):
+        data = {
+            "interesting_findings": [
+                {"type": "backups", "url": "https://example.com/wp-config.php.bak"},
+                {"type": "readme", "url": "https://example.com/readme.html"},
+                {"type": "timthumb", "url": "https://example.com/timthumb.php"},
+            ]
+        }
+        # These are owned by dedicated steps and must not be duplicated here.
+        assert wpscan_step._parse_interesting_findings(data) == []
+
+    def test_missing_field_no_findings(self, wpscan_step):
+        assert wpscan_step._parse_interesting_findings({}) == []
+
+
 class TestParseOutput:
     def test_empty_stdout(self, wpscan_step):
         result = ToolResult(stdout="", stderr="", returncode=0, success=True)
@@ -246,6 +305,19 @@ class TestParseOutput:
         findings = wpscan_step.parse_output(result)
         assert len(findings) == 1
         assert findings[0].title == "WPScan Output Parse Error"
+
+    def test_scan_aborted_surfaced(self, wpscan_step):
+        result = ToolResult(
+            stdout=json.dumps({"scan_aborted": "An API token is required"}),
+            stderr="",
+            returncode=4,
+            success=False,
+        )
+        findings = wpscan_step.parse_output(result)
+        assert len(findings) == 1
+        assert findings[0].title == "WPScan Scan Aborted"
+        assert findings[0].severity == "info"
+        assert findings[0].raw["operational"] is True
 
     def test_full_output(self, wpscan_step):
         data = {

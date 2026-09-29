@@ -190,12 +190,32 @@ def _format_port(port: dict) -> str:
     return f"{portid}/{protocol} {service}{suffix}"
 
 
+def _unparseable_finding(step_name: str, stdout: str) -> Finding:
+    """Operational finding for nmap output that could not be parsed.
+
+    Prevents a broken run from being indistinguishable from a clean scan.
+    """
+    return Finding(
+        module="tools",
+        step=step_name,
+        severity="low",
+        title="Nmap Output Unparseable",
+        description=(
+            "nmap produced output that could not be parsed as XML - the scan "
+            "may not have run correctly"
+        ),
+        evidence=(stdout or "")[:300],
+        recommendation="Verify the nmap version and that its XML output is intact",
+        raw={"operational": True},
+    )
+
+
 class NmapPortScanStep(BaseToolStep):
     """Direct port scan with service/version detection."""
 
     name = "nmap_ports"
     description = "Nmap port scan with version detection"
-    severity = "info"
+    severity = "high"
     _tool_binary = "nmap"
     MODULE = "tools"
     min_version = "7.92"
@@ -251,6 +271,8 @@ class NmapPortScanStep(BaseToolStep):
         if not run:
             if result.stderr:
                 self.logger.debug(f"Nmap stderr: {result.stderr[:500]}")
+            if result.stdout and result.stdout.strip():
+                findings.append(_unparseable_finding(self.name, result.stdout))
             return findings
 
         host = self._scan_host()
@@ -377,6 +399,8 @@ class NmapScriptScanStep(BaseToolStep):
         if not run:
             if result.stderr:
                 self.logger.debug(f"Nmap stderr: {result.stderr[:500]}")
+            if result.stdout and result.stdout.strip():
+                findings.append(_unparseable_finding(self.name, result.stdout))
             return findings
 
         host = self.target.domain or ""
