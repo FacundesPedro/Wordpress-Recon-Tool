@@ -6,6 +6,71 @@
 
 ## Recent Changes
 
+### S25 - Field-report follow-up: dig in image, OSINT timeout, breaker resume, rate-limit FP, HTTP evidence, Keycloak, SPA param discovery (2026-09-29)
+
+Second pass over `reports/verifai.senaicimatec.com.br/UPDATE.md` (new items
+A8-A11, B4, C5 + a C1 update).
+
+| Item | Change |
+|------|--------|
+| A8 `dig` missing | `Dockerfile` always installs `dnsutils` (provides `dig`) alongside `whois`, and echoes `dig -v` in the tool-version block, so the passive DNS/email-security steps actually run. |
+| A9 crt.sh stalls | `CrtShStep` request timeout 60s → 10s, retry delay 5s → 1s, and a `MAX_FAILURES` cap that stops trying further patterns; when OSINT fails it now emits an `info` operational finding instead of silently returning nothing. New `WP_PASSIVE_OSINT` (default true) opts out of public OSINT (crt.sh + wayback). |
+| A10 breaker aborts module | `HttpClient.reset_unreachable()`; the `Runner` now resets the circuit breaker once per module/tier to retry a transient blip, records the steps it still had to skip, and logs the module as **INCOMPLETE** (also appended to `Report.errors`) instead of "completed". |
+| A11 rate-limit FP | `RateLimitStep` no longer follows redirects for the baseline/burst, skips 3xx and non-credential-processing responses (`_looks_like_login`: 401/403, JSON error, or a password field), and records `final_url`/`content_type`/`snippet`. A 301→SPA-shell can no longer produce "No rate limiting observed". |
+| B4 no HTTP evidence | `RawArtifactWriter.persist_evidence()` writes `<step>.requests.jsonl` + `.meta.json` (`type: http-evidence`); `ActiveHttpStep` records every probe (method/url/status/length/content-type/snippet/redactable payload) and persists them on `run()` completion via an `__init_subclass__` wrapper. |
+| C1 Keycloak | `tech_fingerprint` adds a Keycloak body signature **and** probes `/auth/realms/master` + `/realms/master` for realm-discovery JSON (`public_key`/`token-service`) so an unlinked IdP is surfaced. |
+| C5 SPA params | `ActiveHttpStep.discover_params()` now also parses same-origin JS bundles for API paths + parameter names (`WP_ACTIVE_JS_MAX`, default 5) and honours operator-supplied `WP_ACTIVE_PARAMS` (`path:param` pairs), so the injection family can run on client-rendered SPAs. |
+
+Tests: +15 (crt.sh OSINT gating/failure cap, breaker reset + resume, rate-limit
+redirect/non-credential skips, HTTP evidence persistence, Keycloak detection,
+SPA param discovery). Suite **1917 passing**; ruff clean on all new/changed
+lines (pre-existing `E501` UA strings in `core/http_client.py` and a few
+pre-existing `crt_sh`/`wayback` long lines remain).
+
+### S24 - Field-report update: split-horizon pinning, pre-flight retries, combined raw output, WP-gated tool steps (2026-09-29)
+
+Driven by the `verifai.senaicimatec.com.br` engagement (source notes were
+`reports/verifai.senaicimatec.com.br/UPDATE.md`). Every item below is grounded
+in that run's evidence.
+
+**Defects (Section A)**
+
+| Item | Change |
+|------|--------|
+| A1 split-horizon | New `--target-ip <ip>` / `--resolve host:ip` (config `WP_TARGET_IP` / `WP_DNS_RESOLVE`). `Target.connect_ip` + `core/pinned_transport.py` (httpx connects to the IP while keeping the real `Host` header and `sni_hostname`, and follows redirects through the transport). Tool steps pin too: nmap scans the IP; ffuf/nuclei add `-H "Host: ..."`; opendoor adds `--header "Host: ..."`. Reachability probes the pinned IP. Helpers in `utils/target_net.py`; `--target-ip` warns on a multi-target run. |
+| A2 pre-flight abort | `core/reachability.py` retries transient failures with exponential backoff; permanent failures (NXDOMAIN, cert verification) are not retried. New `WP_RETRIES` (2), `WP_RETRY_DELAY` (1.0), CLI `--retries`/`--retry-delay`; result carries `attempts`/`permanent`. |
+| A3 compose | `docker-compose.yml` `env_file` is now `{path: .env, required: false}` so `docker compose up` works without a `.env`. |
+| A4 raw overwrite | `RawArtifactWriter` archives the previous `<step>.*` into `<raw>/history/<original-run-id>/` before overwriting (`WP_RAW_HISTORY`, default on). |
+| A5 opendoor `--host` | **Investigated, no change** — verified against the pinned OpenDoor 5.18.0 `--help` and its source: `--host` accepts a full URL and parses the scheme from it; `--scheme` only applies to `--raw-request`. The proposed bare-host + `--scheme` change would default to `http://` and regress. Documented + regression test. |
+| A6 WP-only tool steps | `FfufWpStep` (`wp_only=True`, `requires=("wordpress",)`) and OpenDoor `wp_paths` are skipped on non-WordPress targets via the existing `utils.wordpress_detect.is_wordpress` gate. |
+| A7 ffuf wordlists | Per-step overrides `WP_FFUF_DIRECTORY_WORDLIST` / `WP_FFUF_FILES_WORDLIST` / `WP_FFUF_WP_WORDLIST`; the Dockerfile bakes SecLists `raft-medium-directories.txt` / `raft-medium-files.txt` into `wordlists/external/ffuf/`. Wordlist name/path/entry-count are logged and recorded in the finding `raw` and `.meta.json`. |
+
+**Observability (Section B)** — `RawArtifactWriter.persist()` now always writes
+`<step>.output`, one combined proof-of-execution record (header with tool
+version/returncode/timings, `########## command/stdout/stderr` sections with
+`(empty)` markers, and a native section only when it differs from stdout). The
+native file is written even when empty (`native_name is not None`), and
+`.meta.json` gains `stdout_bytes`/`stderr_bytes`/`native`/`run_id` plus any
+`extra` metadata. `base/step.py:_persist_raw` forwards `extra`.
+
+**Detections / architecture (Section C/D)** — `tech_fingerprint` gains
+Angular (`data-beasties-container`, `main-*.js`/`chunk-*.js`), Tailwind v4
+(`@layer theme,base,components,utilities`, `--tw-*`) and server banners
+(nginx/Apache/IIS/Caddy/LiteSpeed/Tomcat/gunicorn/Werkzeug), plus a
+machine-readable `raw["technologies"]` inventory finding. `ScanContext` gains a
+first-class soft-404 capability (`soft404_detector()` memoized per base URL +
+`enumeration_unreliable`/`enumeration_is_unreliable`). A new
+`ServiceInventoryStep` (tools module, `requires=("services",)`) consolidates
+nmap banner data (published by both nmap steps) into one normalized inventory
+finding — the basis for the report's service table and the future infra-CVE
+step (C3, deferred).
+
+Tests: +40 (reachability retries/permanent/pinning, pinned transport,
+`target_net`, combined raw output + history archive, WP gating, pinned Host
+headers, tech signatures, soft-404 capability, service inventory). Suite **1902
+passing**; ruff clean on all new/changed files (pre-existing `E501` UA strings
+in `core/http_client.py` remain).
+
 ### S23 - Severity audit + `Finding.confidence` (2026-09-29)
 
 Full, code-grounded audit of the severity of every finding across all 96 steps.
