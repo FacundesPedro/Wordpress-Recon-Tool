@@ -23,10 +23,6 @@ ARG SECLISTS_THEMES_URL=https://raw.githubusercontent.com/danielmiessler/SecList
 RUN groupadd -r recon && useradd -r -m -g recon recon
 
 WORKDIR /app
-COPY --from=builder /build/dist /tmp/dist
-RUN pip install --no-cache-dir --find-links /tmp/dist "wordpress-recon-tool[pdf]" \
-    && pip install --no-cache-dir --upgrade certifi \
-    && rm -rf /tmp/dist
 
 # Base runtime dependencies (always installed)
 # - ca-certificates/openssl: kept current so TLS verification works against
@@ -81,6 +77,14 @@ RUN if [ "$INSTALL_TOOLS" = "true" ]; then \
         HOME=/home/recon wpscan --version; \
         opendoor --version || true; \
     fi
+
+# Install the application wheel. Kept AFTER the (slow, source-independent)
+# external-tool install so that code-only changes do not invalidate the tool
+# layer and force a full rebuild.
+COPY --from=builder /build/dist /tmp/dist
+RUN pip install --no-cache-dir --find-links /tmp/dist "wordpress-recon-tool[pdf]" \
+    && pip install --no-cache-dir --upgrade certifi \
+    && rm -rf /tmp/dist
 
 # Built-in wordlists are always shipped
 COPY wordlists/ wordlists/
