@@ -118,11 +118,23 @@ class TestOembedProxyStep:
 
 
 class TestPingbackSsrfStep:
-    """Tests for PingbackSsrfStep — single POST to xmlrpc.php."""
+    """PingbackSsrfStep delegates to the canonical XmlrpcSsrfStep logic."""
 
-    async def test_available_via_pingback_ping_string(self, mock_http, mock_target, mock_config):
+    SUCCESS_XML = (
+        '<methodResponse><params><param><value>'
+        '<string>pingback.ping registered successfully</string>'
+        '</value></param></params></methodResponse>'
+    )
+    FAULT_XML = (
+        '<methodResponse><fault><value><struct>'
+        '<member><name>faultCode</name><value><int>33</int></value></member>'
+        '<member><name>faultString</name><value><string>pingback.ping</string></value></member>'
+        '</struct></value></fault></methodResponse>'
+    )
+
+    async def test_available_via_success(self, mock_http, mock_target, mock_config):
         mock_http.post = AsyncMock(
-            return_value=MagicMock(status_code=200, text="pingback.ping")
+            return_value=MagicMock(status_code=200, text=self.SUCCESS_XML)
         )
 
         from steps.ssrf.pingback_ssrf_step import PingbackSsrfStep
@@ -135,11 +147,9 @@ class TestPingbackSsrfStep:
         assert f.severity == "medium"
         assert "pingback.ping" in f.title
 
-    async def test_available_via_fault_code_zero(self, mock_http, mock_target, mock_config):
+    async def test_available_via_positive_fault_code(self, mock_http, mock_target, mock_config):
         mock_http.post = AsyncMock(
-            return_value=MagicMock(
-                status_code=200, text="<faultCode>0</faultCode>"
-            )
+            return_value=MagicMock(status_code=200, text=self.FAULT_XML)
         )
 
         from steps.ssrf.pingback_ssrf_step import PingbackSsrfStep
@@ -149,8 +159,19 @@ class TestPingbackSsrfStep:
         assert len(findings) == 1
 
     async def test_not_available(self, mock_http, mock_target, mock_config):
+        # A method-not-found fault (negative code, no clean methodResponse) is
+        # a rejection and must NOT be reported.
         mock_http.post = AsyncMock(
-            return_value=MagicMock(status_code=200, text="<faultCode>404</faultCode>")
+            return_value=MagicMock(
+                status_code=200,
+                text=(
+                    '<methodResponse><fault><value><struct>'
+                    '<member><name>faultCode</name><value><int>-32601</int></value></member>'
+                    '<member><name>faultString</name><value>'
+                    '<string>Requested method not found</string></value></member>'
+                    '</struct></value></fault></methodResponse>'
+                ),
+            )
         )
 
         from steps.ssrf.pingback_ssrf_step import PingbackSsrfStep

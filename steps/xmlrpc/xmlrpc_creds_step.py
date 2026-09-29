@@ -12,10 +12,21 @@ Falls back to limited default credentials if no wordlist configured.
 # SECURITY: Rate limited (5/sec), exponential backoff, skips after 3 lockouts
 # FALLBACK: Uses 20 common WordPress credentials if no wordlist configured
 
+import re
+
 from base.dependencies import WordlistDependencyMixin
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 from utils.rate_limiter import RetryLimiter
+
+# wp.getUsersBlogs serialises the isAdmin flag either as a bare element
+# (`<isAdmin>1</isAdmin>`) or as a member (`<name>isAdmin</name><value>
+# <boolean>1</boolean></value>`). Match both shapes.
+_ADMIN_BARE_RE = re.compile(r"<isAdmin>\s*(?:1|true)\s*</isAdmin>", re.IGNORECASE)
+_ADMIN_MEMBER_RE = re.compile(
+    r"<name>\s*isAdmin\s*</name>\s*<value>\s*<boolean>\s*(?:1|true)\s*</boolean>",
+    re.IGNORECASE,
+)
 
 
 class XmlrpcCredsStep(BaseHttpStep, WordlistDependencyMixin):
@@ -62,7 +73,7 @@ class XmlrpcCredsStep(BaseHttpStep, WordlistDependencyMixin):
         )
 
         url = self.urljoin("xmlrpc.php")
-        successful_logins = []
+        successful_logins: list[tuple[str, str, bool]] = []
         tested_count = 0
 
         for username, password in credentials:
@@ -82,18 +93,28 @@ class XmlrpcCredsStep(BaseHttpStep, WordlistDependencyMixin):
                 self.logger.debug(f"Tested {tested_count} credentials...")
 
         if successful_logins:
+            admin_logins = [u for u, _p, is_admin in successful_logins if is_admin]
+            # A confirmed administrator credential is an admin takeover.
+            severity = "critical" if admin_logins else self.severity
             self._add_finding(
                 module=self.MODULE,
-                severity=self.severity,
+                severity=severity,
                 title="Valid credentials found via XML-RPC",
                 description=f"Found {len(successful_logins)} valid credential(s) via XML-RPC brute force. "
-                f"Tested {tested_count} combinations.",
-                evidence=f"{url}: " + ", ".join(f"{u}:{p}" for u, p in successful_logins[:5]),
+                f"Tested {tested_count} combinations."
+                + (
+                    f" Administrator access confirmed for: {', '.join(admin_logins[:5])}."
+                    if admin_logins
+                    else ""
+                ),
+                evidence=f"{url}: "
+                + ", ".join(f"{u}:{p}" for u, p, _a in successful_logins[:5]),
                 recommendation="Disable XML-RPC if not needed, implement account lockout policies, "
                 "use strong unique passwords",
                 raw={
                     "url": url,
-                    "valid_credentials": successful_logins,
+                    "valid_credentials": [f"{u}:{p}" for u, p, _a in successful_logins],
+                    "admin_credentials": admin_logins,
                     "tested_count": tested_count,
                     "mode": mode,
                 },
@@ -121,8 +142,11 @@ class XmlrpcCredsStep(BaseHttpStep, WordlistDependencyMixin):
 
     async def _test_credentials(
         self, url: str, username: str, password: str
-    ) -> tuple[str, str] | None:
-        """Test a single username/password combination."""
+    ) -> tuple[str, str, bool] | None:
+        """Test a single username/password combination.
+
+        Returns ``(username, password, is_admin)`` on success, else ``None``.
+        """
         xml_request = f"""<?xml version="1.0"?>
 <methodCall>
 <methodName>wp.getUsersBlogs</methodName>
@@ -143,9 +167,16 @@ class XmlrpcCredsStep(BaseHttpStep, WordlistDependencyMixin):
                 response.status_code == 200
                 and "<array>" in content
                 and "<data>" in content
-                and "<isAdmin>" in content
+                and (
+                    "<isAdmin>" in content
+                    or re.search(r"<name>\s*isAdmin\s*</name>", content, re.IGNORECASE)
+                )
             ):
-                return (username, password)
+                is_admin = bool(
+                    _ADMIN_BARE_RE.search(content)
+                    or _ADMIN_MEMBER_RE.search(content)
+                )
+                return (username, password, is_admin)
 
         except Exception as e:
             self.logger.debug(f"Error testing {username}: {e}")

@@ -201,6 +201,61 @@ class TestXmlrpcCredsStep:
         assert "admin:password" in findings[0].evidence
         assert "user:pass" in findings[0].evidence
 
+    async def test_admin_credentials_escalate_to_critical(
+        self, mock_http, mock_target, mock_config
+    ):
+        mock_http.post = AsyncMock(
+            return_value=MagicMock(status_code=200, text=self.SUCCESS_XML)
+        )
+        from steps.xmlrpc.xmlrpc_creds_step import XmlrpcCredsStep
+        step = XmlrpcCredsStep(target=mock_target, config=mock_config, http=mock_http)
+        step.resolve_credentials_with_fallback = MagicMock(
+            return_value=[("admin", "password")]
+        )
+        findings = await step.run()
+        assert len(findings) == 1
+        assert findings[0].severity == "critical"
+        assert findings[0].raw["admin_credentials"] == ["admin"]
+
+    async def test_non_admin_credentials_stay_high(
+        self, mock_http, mock_target, mock_config
+    ):
+        non_admin_xml = self.SUCCESS_XML.replace(
+            "<isAdmin>1</isAdmin>", "<isAdmin>0</isAdmin>"
+        )
+        mock_http.post = AsyncMock(
+            return_value=MagicMock(status_code=200, text=non_admin_xml)
+        )
+        from steps.xmlrpc.xmlrpc_creds_step import XmlrpcCredsStep
+        step = XmlrpcCredsStep(target=mock_target, config=mock_config, http=mock_http)
+        step.resolve_credentials_with_fallback = MagicMock(
+            return_value=[("user", "pass")]
+        )
+        findings = await step.run()
+        assert len(findings) == 1
+        assert findings[0].severity == "high"
+        assert findings[0].raw["admin_credentials"] == []
+
+    async def test_admin_member_boolean_form(self, mock_http, mock_target, mock_config):
+        member_xml = (
+            '<methodResponse><params><param><value><array><data><value>'
+            '<struct><member><name>isAdmin</name>'
+            '<value><boolean>1</boolean></value></member>'
+            '<member><name>blogid</name><value><int>1</int></value></member>'
+            '</struct></value></data></array></value></param></params></methodResponse>'
+        )
+        mock_http.post = AsyncMock(
+            return_value=MagicMock(status_code=200, text=member_xml)
+        )
+        from steps.xmlrpc.xmlrpc_creds_step import XmlrpcCredsStep
+        step = XmlrpcCredsStep(target=mock_target, config=mock_config, http=mock_http)
+        step.resolve_credentials_with_fallback = MagicMock(
+            return_value=[("admin", "pw")]
+        )
+        findings = await step.run()
+        assert len(findings) == 1
+        assert findings[0].severity == "critical"
+
     async def test_no_valid_credentials(self, mock_http, mock_target, mock_config):
         mock_http.post = AsyncMock(
             return_value=MagicMock(status_code=200, text=self.FAILURE_XML)
