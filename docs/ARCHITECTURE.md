@@ -39,6 +39,7 @@ wordpress_testing_tool/
 │
 ├── core/                           # ── ATOMS ──
 │   ├── http_client.py              # Shared async httpx session (UA rotation)
+│   ├── scan_context.py             # Per-target shared data + memoized web artifacts
 │   ├── target.py                   # Target(url, domain, scope)
 │   ├── finding.py                  # Finding dataclass + SARIF export
 │   ├── logger.py                   # Rich-powered timestamped logger
@@ -51,10 +52,11 @@ wordpress_testing_tool/
 │   ├── step.py                     # BaseStep ABC, BaseHttpStep, BaseToolStep
 │   ├── tool.py                     # ToolRunner, AsyncToolRunner, ToolResult
 │   ├── dependencies.py             # WordlistDependencyMixin, BinaryDependencyMixin
+│   ├── scheduler.py                # Step dependency graph (requires/provides/depends_on)
 │   ├── runner.py                   # Async orchestrator (risk-tier parallel execution)
 │   └── aggregator.py               # Collects + deduplicates all findings
 │
-├── steps/                          # ── ORGANISMS (75 steps across 13 modules) ──
+├── steps/                          # ── ORGANISMS (96 steps across 14 modules) ──
 │   │
 │   ├── access/                     # Authenticated REST API + login + hardening (7)
 │   │   ├── plugins_step.py         # WpJsonPluginsStep
@@ -336,38 +338,12 @@ ReportGenerator    ← findings.json + report.md + report.html
 
 ### Risk Tier Parallel Execution
 
-Modules execute in sequential risk tiers, with parallel execution within each tier:
+Risk tiers run sequentially (Tier 1 → Tier 5); modules within a tier run in parallel. The authoritative mapping is `RISK_TIERS` in `modules/__init__.py`: 1 passive · 2 infrastructure, discovery, fingerprint, access, vuln, webapp · 3 users, api, xmlrpc, secrets, ssrf · 4 tools · 5 active.
 
-```
-Tier 1 (parallel): passive
-Tier 2 (parallel): infrastructure, discovery, fingerprint  
-Tier 3 (parallel): users, api, xmlrpc, secrets, ssrf
-Tier 4 (parallel): tools (wpscan, nuclei)
-```
-
-**Implementation:**
-```python
-async def run_all(self) -> Report:
-    RISK_TIERS = {
-        1: ["passive"],
-        2: ["infrastructure", "discovery", "fingerprint"],
-        3: ["users", "api", "xmlrpc", "secrets", "ssrf"],
-        4: ["tools"],
-    }
-    
-    semaphore = asyncio.Semaphore(self.config.threads)
-    
-    for tier in sorted(RISK_TIERS.keys()):
-        modules_in_tier = [m for m in self.modules if m.name in RISK_TIERS[tier]]
-        
-        async with asyncio.TaskGroup() as tg:
-            for module in modules_in_tier:
-                tg.create_task(self.run_module(module, semaphore))
-```
-
-- **Sequential tiers**: Each tier waits for the previous to complete
-- **Parallel within tier**: `asyncio.TaskGroup` runs modules concurrently
-- **Concurrency control**: `Semaphore(config.threads)` limits simultaneous operations
+- **Sequential tiers**: each tier waits for the previous to complete.
+- **Parallel within tier**: `asyncio.TaskGroup` runs modules concurrently.
+- **Concurrency control**: `Semaphore(config.threads)` limits simultaneous operations.
+- **Step relations** (`WP_PARALLEL_STEPS=true`, off by default): a tier's steps run as a DAG instead (`base/scheduler.py`), and the per-target `ScanContext` (`core/scan_context.py`) memoizes shared responses (`homepage()`, `wp_json()`, `robots()`) so the same request is made once. `WP_STEP_CONCURRENCY` caps concurrent steps.
 
 ### `Runner` depends on abstraction, not concretions
 ```python
@@ -408,7 +384,7 @@ MODULE_REGISTRY = {
     "xmlrpc":          XmlrpcModule,         # 5 steps — detect, methods, creds, multicall, SSRF
     "secrets":         SecretsModule,        # 5 steps — config backup, .env, .git, debug log, phpinfo
     "ssrf":            SsrfModule,           # 2 steps — oEmbed proxy, pingback SSRF
-    "webapp":          WebappModule,         # 13 steps — source review, CORS, cookies, methods, CSP, API/admin surface, redirects, ...
+    "webapp":          WebappModule,         # 21 steps — source review, CORS, cookies, methods, CSP, API/admin surface, redirects, ...
     "tools":           ToolsModule,          # 8 steps — WPScan, Nuclei, FFUF (3), OpenDoor, Nmap (2)
 }
 

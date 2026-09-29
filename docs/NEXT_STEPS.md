@@ -1,14 +1,21 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-09-11  
-**Current Branch:** `main`  
-**HEAD:** `443702e` — Update brute-force and http_client tests for concurrency and progress features (1200 tests passing)
+**Last Updated:** 2026-09-28
+**Current Branch:** `main`
+**HEAD:** `7297f39` — feat: shared ScanContext + dependency-aware parallel step execution
 
 ---
 
+## Step Relations (implemented 2026-09-28, status: ✅ complete)
+
+Per-target `ScanContext` + `WebArtifacts` single-flight memoization of common
+responses; `requires`/`provides`/`depends_on` step relations and a dependency
+graph scheduler (`base/scheduler.py`). Opt-in via `WP_PARALLEL_STEPS` /
+`--parallel-steps`. See AGENTS.md "Latest feature" and CHANGELOG S22.
+
 ## Web Pentest + Intrusive Expansion (implemented 2026-09-11, status: ✅ complete)
 
-Research-driven expansion in 7 phases — all implemented and tested (96 steps, 1605 tests passing). Full reference list in `docs/REFERENCES.md`
+Research-driven expansion in 7 phases — all implemented and tested (96 steps, 1804 tests passing). Full reference list in `docs/REFERENCES.md`
 (sections "Web Pentest Expansion References" and "Active testing").
 
 ### Phase 0 — Foundation: `active` module + `intrusive` profile ✅
@@ -107,7 +114,7 @@ Research-driven expansion in 7 phases — all implemented and tested (96 steps, 
 | 43 | — | **Generic web security: `webapp` module + `web` profile + Nmap integration** — 10 new steps, 139 new tests (see "Generic Web App Security ✅" below) |
 | 44 | — | **Webapp module expansion: 5 new research steps + 6 refinements** — CSP audit, API surface, admin surface, open redirect, host header; 80 new tests, 1419 total (see "Webapp Research Expansion ✅" below) |
 
-**Current state:** 14 modules, 96 steps, 1727 tests passing (0 PDF env failures — pure-Python xhtml2pdf replaced WeasyPrint). Web pentest expansion + active module (`active` tier 5, 15 gated steps), `intrusive`/`web-intrusive` profiles for authorized client assessments — see AGENTS.md for config reference.
+**Current state:** 14 modules, 96 steps, 1804 tests passing (0 PDF env failures — pure-Python xhtml2pdf replaced WeasyPrint). Web pentest expansion + active module (`active` tier 5, 15 gated steps), `intrusive`/`web-intrusive` profiles for authorized client assessments — see AGENTS.md for config reference.
 
 ---
 
@@ -362,7 +369,7 @@ Both brute-force steps use `asyncio.Semaphore` + batched `asyncio.gather` for bo
 
 **Status:** Implemented. Two new areas: a `webapp` module (13 pure-HTTP steps) and Nmap integration (2 tool steps), plus a `web` scan profile.
 
-### 1. `webapp` Module (tier 2, 13 steps)
+### 1. `webapp` Module (tier 2, 21 steps)
 
 | Step | WSTG ref | What it checks |
 |------|----------|----------------|

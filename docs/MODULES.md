@@ -1,7 +1,7 @@
 # WordPress Testing Tool - Module Reference
 
-**Tool:** WordPress Security Reconnaissance Tool  
-**Version:** 2.2  
+**Tool:** WordPress Security Reconnaissance Tool
+**Version:** 2.2
 **Last Updated:** 2026-07-08
 
 ---
@@ -30,30 +30,31 @@
 
 ## Overview
 
-The tool is organized into **13 modules** containing **75 steps** total:
+The tool is organized into **14 modules** containing **96 steps** total:
 
 | Module | Steps | Purpose |
 |--------|-------|---------|
 | [access](#module-access) | 7 | Authenticated REST API enumeration + login brute-force + REST hardening |
-| [passive](#module-passive) | 5 | External intelligence (WHOIS, DNS, certificates, Shodan) |
-| [infrastructure](#module-infrastructure) | 5 | Server configuration (headers, TLS, WAF, ports, hosting) |
-| [discovery](#module-discovery) | 9 | File enumeration + brute-force plugin/theme detection + content spider |
+| [passive](#module-passive) | 7 | External intelligence (WHOIS, DNS, certificates, Shodan) |
+| [infrastructure](#module-infrastructure) | 6 | Server configuration (headers, TLS, WAF, ports, hosting) |
+| [discovery](#module-discovery) | 10 | File enumeration + brute-force plugin/theme detection + content spider |
 | [fingerprint](#module-fingerprint) | 6 | Version detection (WP, themes, plugins, plugin versions) |
-| [vuln](#module-vuln) | 3 | CVE correlation (core, plugin, theme vulnerability lookup) |
-| [users](#module-users) | 4 | User enumeration (REST, oEmbed, author IDs) |
+| [vuln](#module-vuln) | 4 | CVE correlation (core, plugin, theme vulnerability lookup) |
+| [users](#module-users) | 5 | User enumeration (REST, oEmbed, author IDs) |
 | [api](#module-api) | 3 | REST API surface discovery |
 | [xmlrpc](#module-xml-rpc) | 5 | XML-RPC testing (methods, SSRF, brute force) |
 | [secrets](#module-secrets) | 5 | Sensitive file exposure (config, .env, .git) |
 | [ssrf](#module-ssrf) | 2 | SSRF vulnerability testing |
-| [webapp](#module-webapp) | 13 | Generic web app security checks (non-WordPress targets) |
+| [webapp](#module-webapp) | 21 | Generic web app security checks (non-WordPress targets) |
+| [active](#module-active) | 15 | Intrusive checks (tier 5, requires `--authorized`) |
 | [tools](#module-tools) | 8 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor, Nmap) |
 
 ---
 
 ## Module: Access
 
-**Profile:** `access` (included in `full` profile; requires `--wp-user` + `--wp-app-password`)  
-**Risk Level:** Low (authenticated REST API queries)  
+**Profile:** `access` (included in `full` profile; requires `--wp-user` + `--wp-app-password`)
+**Risk Level:** Low (authenticated REST API queries)
 **Authentication:** WordPress Application Password (WP >= 5.6)
 
 ### Steps
@@ -248,8 +249,8 @@ python main.py main --target https://example.com --profile full \
 
 ## Module: Passive
 
-**Profile:** `passive`  
-**Risk Level:** None (no direct target interaction)  
+**Profile:** `passive`
+**Risk Level:** None (no direct target interaction)
 **External Services:** WHOIS servers, DNS resolvers, crt.sh, Wayback Machine, Shodan
 
 ### Steps
@@ -431,8 +432,8 @@ Evidence: Registrar: GoDaddy, Created: 2020-01-15, Expires: 2026-01-15
 
 ## Module: Infrastructure
 
-**Profile:** `infrastructure`  
-**Risk Level:** Low (passive HTTP requests only)  
+**Profile:** `infrastructure`
+**Risk Level:** Low (passive HTTP requests only)
 **Purpose:** Server and network configuration analysis
 
 ### Steps
@@ -549,8 +550,8 @@ Evidence: X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security
 
 ## Module: Discovery
 
-**Profile:** `discovery`  
-**Risk Level:** Low (simple HTTP GET requests)  
+**Profile:** `discovery`
+**Risk Level:** Low (simple HTTP GET requests)
 **Purpose:** File and page enumeration
 
 ### Steps
@@ -678,8 +679,8 @@ python main.py main --target https://example.com --profile full
 
 ## Module: Fingerprint
 
-**Profile:** `fingerprint`  
-**Risk Level:** Low (passive HTML parsing)  
+**Profile:** `fingerprint`
+**Risk Level:** Low (passive HTML parsing)
 **Purpose:** WordPress component identification and version detection
 
 ### Steps
@@ -813,8 +814,8 @@ Evidence: contact-form-7: 5.8.2, akismet: unknown, jetpack: 12.1
 
 ## Module: Users
 
-**Profile:** `users`  
-**Risk Level:** Low (enumeration only)  
+**Profile:** `users`
+**Risk Level:** Low (enumeration only)
 **Purpose:** User account enumeration
 
 ### Steps
@@ -890,8 +891,8 @@ Evidence: john.doe (johndoe), jane.smith (janesmith)
 
 ## Module: Vuln
 
-**Profile:** `vuln` (included in `full` profile; runs in Tier 2)  
-**Risk Level:** Low (passive API queries to WPVulnerability.net)  
+**Profile:** `vuln` (included in `full` profile; runs in Tier 2)
+**Risk Level:** Low (passive API queries to WPVulnerability.net)
 **External Services:** WPVulnerability.net (primary, free, no key), WPScan API (optional secondary)
 
 ### Steps
@@ -963,8 +964,8 @@ Evidence: john.doe (johndoe), jane.smith (janesmith)
 
 ## Module: XML-RPC
 
-**Profile:** `xmlrpc`  
-**Risk Level:** Medium-High (brute force, SSRF)  
+**Profile:** `xmlrpc`
+**Risk Level:** Medium-High (brute force, SSRF)
 **Purpose:** XML-RPC interface testing
 
 ### Steps
@@ -1085,8 +1086,8 @@ Recommendation: Disable XML-RPC, implement account lockout
 
 ## Module: Secrets
 
-**Profile:** `secrets`  
-**Risk Level:** Low-Medium (GET requests only)  
+**Profile:** `secrets`
+**Risk Level:** Low-Medium (GET requests only)
 **Purpose:** Sensitive file exposure detection
 
 ### Steps
@@ -1191,8 +1192,8 @@ Recommendation: Remove immediately - contains database credentials
 
 ## Module: SSRF
 
-**Profile:** `ssrf`  
-**Risk Level:** Medium (tests SSRF, but protected)  
+**Profile:** `ssrf`
+**Risk Level:** Medium (tests SSRF, but protected)
 **Purpose:** Server-Side Request Forgery testing
 
 ### Steps
@@ -1245,8 +1246,8 @@ Both steps use built-in SSRF protection that blocks:
 
 ## Module: Webapp
 
-**Profile:** `web` (generic non-WordPress assessments)  
-**Risk Level:** Low (non-intrusive HTTP checks)  
+**Profile:** `web` (generic non-WordPress assessments)
+**Risk Level:** Low (non-intrusive HTTP checks)
 **Purpose:** Generic web application security checks for non-WordPress targets (OWASP WSTG-based)
 
 Source discovery is shared via `utils/source_discovery.py`: static asset/link extraction from HTML, a wordlist fuzzing pass over `wordlists/webapp/assets.txt` (resolvable via `WP_SOURCE_ASSETS`), same-origin normalization, and bounded fetching.
@@ -1436,10 +1437,40 @@ Source discovery is shared via `utils/source_discovery.py`: static asset/link ex
 
 ---
 
+## Module: Active
+
+**Profiles:** `intrusive`, `web-intrusive`, `full` (requires `--authorized`)
+**Risk Tier:** 5 (highest — intrusive probes)
+**Purpose:** Detection-only active testing. Gated by `WP_ACTIVE_ENABLED` /
+`--active` + `--authorized`; capped by `WP_ACTIVE_MAX_REQUESTS` (100) and paced by
+`WP_ACTIVE_DELAY` (0.5s). `--parallel-steps` keeps this module serialized.
+
+### Steps
+
+| Step | File | Checks |
+|------|------|--------|
+| `SqlInjectionStep` | `sql_injection_step.py` | Error-signature SQLi (+ optional time-based) |
+| `ReflectedXssStep` | `reflected_xss_step.py` | Canary reflection + context analysis |
+| `SstiStep` | `ssti_step.py` | Server-side template injection (arithmetic canary) |
+| `PathTraversalStep` | `path_traversal_step.py` | Directory traversal canary |
+| `CrlfInjectionStep` | `crlf_injection_step.py` | CRLF / header injection |
+| `HttpParameterPollutionStep` | `http_parameter_pollution_step.py` | Duplicate-parameter behaviour |
+| `AuthBypassStep` | `auth_bypass_step.py` | Path-confusion / header bypass |
+| `RateLimitStep` | `rate_limit_step.py` | Missing rate limiting |
+| `PasswordResetStep` | `password_reset_step.py` | Reset-flow weaknesses |
+| `CsrfStep` | `csrf_step.py` | Missing anti-CSRF tokens |
+| `DefaultCredentialsStep` | `default_credentials_step.py` | Capped default-credential check |
+| `RequestSmugglingStep` | `request_smuggling_step.py` | CL.TE/TE.CL timing (double-gated) |
+| `MassAssignmentStep` | `mass_assignment_step.py` | Operator-supplied endpoint (double-gated) |
+| `RaceConditionStep` | `race_condition_step.py` | Operator-supplied endpoint (double-gated) |
+| `FileUploadStep` | `file_upload_step.py` | Safe marker upload (double-gated) |
+
+---
+
 ## Module: Tools
 
-**Profile:** `tools`  
-**Risk Level:** Varies (external tool execution)  
+**Profile:** `tools`
+**Risk Level:** Varies (external tool execution)
 **Purpose:** External security tool integration
 
 ### Steps
@@ -1592,8 +1623,8 @@ export WP_NMAP_TIMEOUT=300
 
 ## Module: API
 
-**Profile:** `api`  
-**Status:** Implemented (3 steps)  
+**Profile:** `api`
+**Status:** Implemented (3 steps)
 **Purpose:** REST API surface analysis
 
 ### Steps

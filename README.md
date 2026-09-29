@@ -188,11 +188,9 @@ Controlled by `--save-raw/--no-save-raw` (default on), `--raw-output DIR`,
 best-effort: a failure logs a warning and never aborts the scan.
 
 ### Concurrency
-- **Risk Tier Parallel Execution**
-  - Tier 1 (parallel): passive
-  - Tier 2 (parallel): infrastructure, discovery, fingerprint, access, vuln, webapp
-  - Tier 3 (parallel): users, api, xmlrpc, secrets, ssrf
-  - Tier 4 (parallel): tools (wpscan, nuclei, nmap)
+- **Risk tiers** run sequentially; modules inside a tier run in parallel.
+  - Tier 1: passive · Tier 2: infrastructure, discovery, fingerprint, access, vuln, webapp · Tier 3: users, api, xmlrpc, secrets, ssrf · Tier 4: tools (wpscan, nuclei, nmap) · Tier 5: active
+- **Step relations** (opt-in: `--parallel-steps`, or `WP_PARALLEL_STEPS=true`): steps in a tier run as a dependency graph and share fetched data through a per-target context, so common requests (homepage, `/wp-json/`, `robots.txt`) are made once. `--step-concurrency` caps concurrent steps (default = `--threads`).
 
 ## Docker
 
@@ -327,10 +325,12 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | `--modules` / `-m` | Specific modules to run | profile default |
 | `--output` / `-o` | Base output directory (per-target subfolders created inside) | ./reports |
 | `--flat-output` | Write all reports directly into the output directory (no per-target folders) | false |
-| `--format` / `-f` | Output format (json, markdown, sarif, all) | markdown |
+| `--format` / `-f` | Output format (json, markdown, sarif, html, pdf, all) | markdown |
 | `--report-file` | Custom report filename | auto-generated |
 | `--quiet` / `-q` | Report output only | false |
 | `--threads` | Number of concurrent threads | 2 |
+| `--parallel-steps` | Run a tier's steps as a dependency graph sharing fetched data | false |
+| `--step-concurrency` | Max concurrent steps in parallel mode (0 = `--threads`) | 0 |
 | `--timeout` | Request timeout in seconds | 10 |
 | `--debug` / `-d` | Enable debug logging | false |
 | `--insecure` | Skip TLS verification | false |
@@ -355,9 +355,11 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 |---------|---------|
 | `passive` | passive |
 | `light` | passive, infrastructure, discovery, fingerprint |
-| `standard` | passive, infrastructure, discovery, fingerprint, users, api, xmlrpc, secrets, ssrf |
-| `web` | passive, infrastructure, webapp, secrets, tools (generic non-WP assessments) |
-| `full` | All 13 modules including access and vuln |
+| `standard` | passive, infrastructure, discovery, fingerprint, vuln, users, api, xmlrpc, secrets, ssrf |
+| `web` | passive, infrastructure, webapp, secrets, tools (generic non-WP assessments; alias `web-generic`) |
+| `intrusive` | standard + webapp + active (requires `--authorized`) |
+| `web-intrusive` | passive, infrastructure, webapp, active (requires `--authorized`) |
+| `full` | All 14 modules |
 | `aggressive` | users, xmlrpc, secrets, tools |
 
 ## Modules
@@ -365,17 +367,17 @@ See [wordlists/README.md](wordlists/README.md) for the full resolution chain and
 | Module | Steps | Description |
 |--------|-------|-------------|
 | `access` | 7 | Auth REST API enumeration, login brute-force, cookie admin, REST hardening |
-| `passive` | 5 | Passive reconnaissance (WHOIS, DNS, crt.sh, Wayback, Shodan) |
-| `infrastructure` | 5 | Headers, TLS, WAF, port scanning, hosting fingerprint |
-| `discovery` | 9 | Readme, license, sitemap, login, wp-cron, uploads, plugin/theme brute-force, spider |
+| `passive` | 7 | Passive reconnaissance (WHOIS, DNS, crt.sh, Wayback, Shodan) |
+| `infrastructure` | 6 | Headers, TLS, WAF, port scanning, hosting fingerprint |
+| `discovery` | 10 | Readme, license, sitemap, login, wp-cron, uploads, plugin/theme brute-force, spider |
 | `fingerprint` | 6 | WordPress version, themes, plugins, asset versions |
-| `vuln` | 3 | CVE correlation for core, plugins, and themes |
-| `users` | 4 | REST API users, oEmbed, author ID enumeration |
+| `vuln` | 4 | CVE correlation for core, plugins, and themes |
+| `users` | 5 | REST API users, oEmbed, author ID enumeration |
 | `api` | 3 | REST surface, IP leak, app passwords |
 | `xmlrpc` | 5 | XML-RPC detection, methods, credentials, multicall, SSRF |
 | `secrets` | 5 | Config backups, .env files, git exposure, debug logs |
 | `ssrf` | 2 | oEmbed proxy, pingback SSRF |
-| `webapp` | 13 | Generic web app checks (source credential review, CORS, cookies, HTTP methods, headers, stack traces, CSP, API surface, admin surface, open redirect, host header) |
+| `webapp` | 21 | Generic web app checks (source credential review, CORS, cookies, HTTP methods, headers, stack traces, CSP, API surface, admin surface, open redirect, host header) |
 | `tools` | 8 | External tool integrations (WPScan, Nuclei, FFUF, OpenDoor, Nmap) |
 
 ## Environment Variables
@@ -387,6 +389,10 @@ Configuration can also be set via environment variables:
 export WP_THREADS=4
 export WP_TIMEOUT=10
 export WP_LOG_LEVEL=DEBUG
+
+# Step relations / parallel execution
+export WP_PARALLEL_STEPS=true
+export WP_STEP_CONCURRENCY=6
 
 # WPScan
 export WP_WPSCAN_API_TOKEN=your_token
@@ -482,7 +488,7 @@ wordpress_testing_tool/
 
 ## Documentation
 
-- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 13 modules
+- [Module Reference](docs/MODULES.md) - Complete documentation of all steps across 14 modules
 - [Architecture Plan](docs/ARCHITECTURE.md) - Project architecture
 - [Security Documentation](docs/SECURITY.md) - Security features
 - [Changelog](CHANGELOG.md) - Change history
