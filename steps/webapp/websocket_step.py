@@ -117,7 +117,7 @@ class WebSocketStep(BaseHttpStep):
 
     name = "websocket"
     description = "Discover WebSocket endpoints and test cross-origin handshakes"
-    severity = "medium"
+    severity = "low"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -162,19 +162,22 @@ class WebSocketStep(BaseHttpStep):
                 continue
             status, reason = result
             if status == 101:
+                # No cookies are sent by the probe, so a 101 proves only that
+                # the upgrade happens before authentication - not CSWSH.
                 self.add_finding(
-                    "medium",
+                    "low",
                     f"WebSocket accepts cross-origin handshake at {endpoint}",
                     (
                         f"The WebSocket endpoint completed a 101 upgrade with "
-                        f"Origin: {CANARY_ORIGIN} (unrelated origin). If the "
-                        f"connection carries session cookies, cross-site "
-                        f"WebSocket hijacking may be possible."
+                        f"Origin: {CANARY_ORIGIN} (unrelated origin) without "
+                        f"credentials. Confirm whether cookie-authenticated "
+                        f"sessions are also accepted cross-origin (CSWSH)."
                     ),
                     f"Handshake to {endpoint} with foreign Origin -> 101 {reason}",
                     "Validate the Origin header against an allowlist before "
                     "completing the upgrade; require per-message auth",
                     raw={"endpoint": endpoint, "status": status},
+                    confidence="low",
                 )
             else:
                 self.logger.debug(
@@ -189,7 +192,8 @@ class WebSocketStep(BaseHttpStep):
 
     def add_finding(self, severity: str, title: str, description: str,
                     evidence: str, recommendation: str,
-                    raw: Optional[dict] = None) -> None:
+                    raw: Optional[dict] = None,
+                    confidence: str = "high") -> None:
         self._add_finding(
             module=self.MODULE,
             severity=severity,
@@ -198,4 +202,5 @@ class WebSocketStep(BaseHttpStep):
             evidence=evidence,
             recommendation=recommendation,
             raw=raw or {},
+            confidence=confidence,  # type: ignore[arg-type]
         )

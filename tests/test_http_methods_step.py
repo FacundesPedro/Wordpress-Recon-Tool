@@ -43,7 +43,7 @@ class TestHttpMethodsStep:
         titles = [f.title for f in findings]
         assert "TRACE method enabled" in titles
         trace = [f for f in findings if f.title == "TRACE method enabled"][0]
-        assert trace.severity == "medium"
+        assert trace.severity == "low"
         assert "200" in trace.evidence
 
     async def test_put_delete_propfind_flagged(self, mock_http, mock_target, mock_config):

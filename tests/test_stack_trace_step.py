@@ -32,8 +32,16 @@ class TestStackTraceStep:
 
         assert any("Python traceback" in f.title for f in findings)
         finding = [f for f in findings if "Python traceback" in f.title][0]
-        assert finding.severity == "medium"
+        assert finding.severity == "low"
         assert "views.py" in finding.evidence
+
+    async def test_internal_path_leak_is_medium(self, mock_http, mock_target, mock_config):
+        body = "Uncaught Error in /var/www/html/index.php on line 10"
+        mock_http.request = AsyncMock(return_value=response(500, body))
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        leak = [f for f in findings if "Internal path leak" in f.title]
+        assert leak and leak[0].severity == "medium"
 
     async def test_php_fatal_error(self, mock_http, mock_target, mock_config):
         body = (

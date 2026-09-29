@@ -226,7 +226,7 @@ class TestSourceReviewStep:
         assert "internal-ip" in rule_ids
         assert not any(f.raw.get("source") == "/" for f in findings)
         aws = [f for f in findings if f.raw.get("rule_id") == "aws-access-key-id"][0]
-        assert aws.severity == "critical"
+        assert aws.severity == "high"
         assert "/static/app.js" in aws.evidence
         assert _FAKE_AWS_KEY not in aws.evidence
 

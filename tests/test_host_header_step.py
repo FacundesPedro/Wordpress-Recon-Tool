@@ -109,7 +109,7 @@ class TestHostHeaderStep:
         findings = await step.run()
 
         finding = [f for f in findings if "X-Forwarded-Host" in f.title][0]
-        assert finding.severity == "medium"
+        assert finding.severity == "low"
 
     async def test_disabled_by_config(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(return_value=response(200, {}, "home"))

@@ -48,7 +48,7 @@ def audit_csp(directives: dict[str, list[str]]) -> list[dict]:
     if "unsafe-inline" in joined:
         issues.append(
             {
-                "severity": "medium",
+                "severity": "low",
                 "title": "CSP allows inline scripts (unsafe-inline)",
                 "description": (
                     "The Content-Security-Policy permits inline scripts via "
@@ -63,7 +63,7 @@ def audit_csp(directives: dict[str, list[str]]) -> list[dict]:
     if "unsafe-eval" in joined:
         issues.append(
             {
-                "severity": "medium",
+                "severity": "low",
                 "title": "CSP allows eval (unsafe-eval)",
                 "description": (
                     "The Content-Security-Policy permits dynamic code evaluation "
@@ -206,7 +206,7 @@ class CspAuditStep(BaseHttpStep):
 
     name = "csp_audit"
     description = "Audit Content-Security-Policy for weak or missing directives"
-    severity = "medium"
+    severity = "low"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:

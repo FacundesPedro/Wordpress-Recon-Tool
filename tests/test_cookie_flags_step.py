@@ -157,7 +157,31 @@ class TestCookieFlagsStep:
         titles = {f.title for f in findings}
         assert "Cookies with SameSite=None but no Secure flag" in titles
         samesite = [f for f in findings if "SameSite=None" in f.title][0]
-        assert samesite.severity == "medium"
+        # Browsers reject SameSite=None without Secure, so this is a broken
+        # config indicator rather than an exploitable weakness.
+        assert samesite.severity == "low"
+
+    async def test_non_session_cookie_is_low(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {"/": response(200, {"set-cookie": "theme=dark; Path=/"})}
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings
+        assert all(f.severity == "low" for f in findings)
+
+    async def test_session_cookie_is_medium(self, mock_http, mock_target, mock_config):
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {"/": response(200, {"set-cookie": "PHPSESSID=abc; Path=/"})}
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        titles = {f.title: f.severity for f in findings}
+        assert titles["Cookies without HttpOnly flag"] == "medium"
 
     async def test_samesite_none_with_secure_ok(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

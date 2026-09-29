@@ -47,9 +47,24 @@ class TestDecodeJwt:
 
 
 class TestJwtIssues:
-    def test_alg_none_critical(self):
+    def test_alg_none_high(self):
         issues = jwt_issues({"alg": "none"}, {"sub": "1"}, "h.p.")
-        assert any(i["severity"] == "critical" for i in issues)
+        assert any(i["severity"] == "high" for i in issues)
+        assert not any(i["severity"] == "critical" for i in issues)
+
+    def test_empty_signature_high(self):
+        issues = jwt_issues({"alg": "HS256"}, {"sub": "1"}, "h.p.")
+        assert any("empty signature" in i["title"].lower() for i in issues)
+
+    def test_weak_email_claim_is_low(self):
+        issues = jwt_issues({"alg": "HS256"}, {"email": "a@b.c"}, "h.p.sig")
+        claim = [i for i in issues if "sensitive" in i["title"].lower()][0]
+        assert claim["severity"] == "low"
+
+    def test_strong_password_claim_is_medium(self):
+        issues = jwt_issues({"alg": "HS256"}, {"password": "x"}, "h.p.sig")
+        claim = [i for i in issues if "sensitive" in i["title"].lower()][0]
+        assert claim["severity"] == "medium"
 
     def test_missing_exp(self):
         issues = jwt_issues({"alg": "HS256"}, {"sub": "1"}, "h.p.sig")

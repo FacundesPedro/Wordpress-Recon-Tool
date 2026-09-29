@@ -61,7 +61,7 @@ class FormSecurityStep(BaseHttpStep):
 
     name = "form_security"
     description = "Audit login forms: transport, autocomplete, cacheability"
-    severity = "medium"
+    severity = "high"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:

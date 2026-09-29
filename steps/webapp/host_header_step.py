@@ -49,7 +49,7 @@ class HostHeaderStep(BaseHttpStep):
 
     name = "host_header"
     description = "Probe Host/X-Forwarded-Host handling (vhosts, reflection)"
-    severity = "medium"
+    severity = "low"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -158,7 +158,7 @@ class HostHeaderStep(BaseHttpStep):
         if canary in text or canary in headers_dump:
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="low",
                 title="X-Forwarded-Host reflected in response",
                 description=(
                     f"The server reflected the X-Forwarded-Host header "

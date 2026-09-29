@@ -91,7 +91,8 @@ def audit_html(html: str) -> list[dict]:
 
     for match in _POSTMESSAGE_WILDCARD_RE.findall(html):
         issues.append({
-            "severity": "medium",
+            "severity": "low",
+            "confidence": "low",
             "title": "postMessage with wildcard targetOrigin (*)",
             "description": (
                 "Messages are posted with targetOrigin '*', so any window "
@@ -105,7 +106,8 @@ def audit_html(html: str) -> list[dict]:
     for match in _LOCALSTORAGE_RE.findall(html):
         if _SENSITIVE_KEY_RE.search(match):
             issues.append({
-                "severity": "medium",
+                "severity": "low",
+                "confidence": "low",
                 "title": f"Sensitive-looking data written to localStorage ('{match}')",
                 "description": (
                     "localStorage is accessible to any script on the page; "
@@ -130,7 +132,8 @@ def audit_js(content: str, minified: bool = False) -> list[dict]:
 
     for match in _POSTMESSAGE_WILDCARD_RE.findall(content):
         issues.append({
-            "severity": "medium",
+            "severity": "low",
+            "confidence": "low",
             "title": "postMessage with wildcard targetOrigin (*)",
             "description": (
                 "Messages are posted with targetOrigin '*', so any window "
@@ -184,7 +187,8 @@ def audit_js(content: str, minified: bool = False) -> list[dict]:
     for match in _LOCALSTORAGE_RE.findall(content):
         if _SENSITIVE_KEY_RE.search(match):
             issues.append({
-                "severity": "medium",
+                "severity": "low",
+                "confidence": "low",
                 "title": f"Sensitive-looking data written to localStorage ('{match}')",
                 "description": (
                     "localStorage is accessible to any script on the page; "
@@ -216,7 +220,7 @@ class ClientSideAuditStep(BaseHttpStep):
 
     name = "client_side_audit"
     description = "Static HTML/JS audit: DOM sinks, postMessage, storage, tabnabbing"
-    severity = "medium"
+    severity = "low"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -261,6 +265,7 @@ class ClientSideAuditStep(BaseHttpStep):
                 evidence=f"{source_url}: {issue['evidence']}",
                 recommendation=issue["recommendation"],
                 raw={**issue.get("raw", {}), "source_url": source_url},
+                confidence=issue.get("confidence", "high"),  # type: ignore[arg-type]
             )
 
         if len(issues) > MAX_FINDINGS:

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from steps.webapp.sensitive_files_step import (
     SensitiveFilesStep,
+    classify_sensitive_file,
     is_interesting_content,
     looks_like_soft_404,
 )
@@ -70,6 +71,32 @@ class TestContentHeuristics:
         )
 
 
+class TestClassifySensitiveFile:
+    def test_db_dump_is_critical(self):
+        assert classify_sensitive_file("db.sql") == "critical"
+        assert classify_sensitive_file("/var/www/backup.sql") == "critical"
+
+    def test_service_account_is_critical(self):
+        assert classify_sensitive_file("service-account.json") == "critical"
+        assert classify_sensitive_file(".kube/config") == "critical"
+
+    def test_config_backup_is_high(self):
+        assert classify_sensitive_file("wp-config.php.bak") == "high"
+        assert classify_sensitive_file("settings.py.bak") == "high"
+
+    def test_lockfile_and_api_docs_are_low(self):
+        assert classify_sensitive_file("composer.lock") == "low"
+        assert classify_sensitive_file("package-lock.json") == "low"
+        assert classify_sensitive_file("swagger.json") == "low"
+        assert classify_sensitive_file(".DS_Store") == "low"
+
+    def test_log_is_medium(self):
+        assert classify_sensitive_file("error.log") == "medium"
+
+    def test_unknown_backup_is_medium(self):
+        assert classify_sensitive_file("site.old") == "medium"
+
+
 class TestSensitiveFilesStep:
     async def test_exposed_file_reported(self, mock_http, mock_target, mock_config):
         async def requestor(method, url, **kwargs):
@@ -81,7 +108,7 @@ class TestSensitiveFilesStep:
         step = SensitiveFilesStep(target=mock_target, config=mock_config, http=mock_http)
         findings = await step.run()
         assert any("backup.zip" in f.title for f in findings)
-        assert findings[0].severity == "high"
+        assert findings[0].severity == "critical"
 
     async def test_nothing_exposed(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

@@ -53,7 +53,7 @@ class TestCanaryHelpers:
 
 
 class TestOpenRedirectStep:
-    async def test_open_redirect_on_login_high(self, mock_http, mock_target, mock_config):
+    async def test_open_redirect_on_login_medium(self, mock_http, mock_target, mock_config):
         async def redirector(method, url, **kwargs):
             if "/login" in url and "url=" in url:
                 target = unquote(parse_qs(url.split("?", 1)[1])["url"][0])
@@ -66,7 +66,7 @@ class TestOpenRedirectStep:
 
         assert findings
         finding = findings[0]
-        assert finding.severity == "high"
+        assert finding.severity == "medium"
         assert finding.raw["path"] == "/login"
         assert finding.raw["param"] == "url"
 

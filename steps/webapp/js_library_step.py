@@ -42,6 +42,12 @@ _BANNER_RES: list[tuple[str, re.Pattern]] = [
 _VERSION_IN_URL_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 _MAX_FINDINGS = 8
 
+# Libraries whose CVEs are server-side (template/upload RCE/SSTI). A client-side
+# `<script src>` match does not prove the vulnerable server path is reachable.
+_SERVER_SIDE_LIBS = {
+    "handlebars", "ejs", "jquery-file-upload", "blueimp-file-upload", "qs",
+}
+
 
 def version_tuple(version: str) -> tuple:
     """Parse '1.2.3' into a 3-component tuple for comparison."""
@@ -129,7 +135,7 @@ class JsLibraryStep(BaseHttpStep):
             if lib:
                 version = version_from_url(src)
                 if version and is_vulnerable(version, lib.get("vulnerable_below", "")):
-                    self._report_version(lib, version, src)
+                    self._report_version(lib, version, src, source="url")
                     reported.add(lib.get("name", ""))
 
             # 2. SRI check for cross-origin third-party scripts
@@ -162,7 +168,7 @@ class JsLibraryStep(BaseHttpStep):
                      if l.get("name", "").lower() == name.lower()), None
                 )
                 if lib and is_vulnerable(version, lib.get("vulnerable_below", "")):
-                    self._report_version(lib, version, url)
+                    self._report_version(lib, version, url, source="banner")
                     reported.add(name)
         except Exception as e:
             self.logger.debug(f"JS asset fetch failed: {e}")
@@ -191,22 +197,38 @@ class JsLibraryStep(BaseHttpStep):
                 return html[start:match.end() + 100]
         return ""
 
-    def _report_version(self, lib: dict, version: str, src: str) -> None:
+    def _report_version(
+        self, lib: dict, version: str, src: str, source: str = "url"
+    ) -> None:
         name = lib.get("name", "unknown")
         below = lib.get("vulnerable_below", "")
         cve = lib.get("cve", "")
+        # A version parsed from the URL path (e.g. /static/v1.2.3/jquery.js) is
+        # frequently wrong; a banner comment is much more reliable. Server-side
+        # CVEs matched from a client script are leads only.
+        severity = "medium"
+        confidence = "high"
+        note = ""
+        if source == "url":
+            severity, confidence = "low", "low"
+        if name.lower() in _SERVER_SIDE_LIBS:
+            severity, confidence = "low", "low"
+            note = " This CVE affects server-side usage; confirm the server path is reachable."
+        elif source == "url":
+            note = " Version parsed from the URL path - verify against the file banner."
         self._add_finding(
             module=self.MODULE,
-            severity="medium",
+            severity=severity,  # type: ignore[arg-type]
+            confidence=confidence,  # type: ignore[arg-type]
             title=f"Vulnerable JS library: {name} {version} (< {below})",
             description=(
                 f"{name} {version} is below the known-vulnerable threshold "
-                f"{below} ({cve}): {lib.get('summary', '')}"
+                f"{below} ({cve}): {lib.get('summary', '')}{note}"
             ),
-            evidence=f"script src: {src[:200]} (version {version})",
+            evidence=f"script src: {src[:200]} (version {version}, source: {source})",
             recommendation=f"Upgrade {name} to >= {below}",
             raw={"library": name, "version": version,
-                 "vulnerable_below": below, "cve": cve},
+                 "vulnerable_below": below, "cve": cve, "version_source": source},
         )
 
     def _report_sri(self, url: str) -> None:

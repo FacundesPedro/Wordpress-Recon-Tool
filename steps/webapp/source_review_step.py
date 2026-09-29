@@ -51,8 +51,10 @@ DEFAULT_ASSET_PATHS = [
 
 SECRET_RULES: list[dict] = [
     {
+        # A key *ID* is an identifier, not a secret on its own - the paired
+        # secret key is a separate rule. Unusable alone, so high not critical.
         "id": "aws-access-key-id",
-        "severity": "critical",
+        "severity": "high",
         "description": "AWS access key ID",
         "recommendation": "Rotate the exposed key in IAM and remove it from source code",
         "pattern": re.compile(r"\b(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16}\b"),
@@ -86,14 +88,14 @@ SECRET_RULES: list[dict] = [
     },
     {
         "id": "github-token",
-        "severity": "critical",
+        "severity": "high",
         "description": "GitHub token",
         "recommendation": "Revoke the token in GitHub settings and purge it from history",
         "pattern": re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[0-9a-zA-Z]{36}\b"),
     },
     {
         "id": "github-fine-grained-pat",
-        "severity": "critical",
+        "severity": "high",
         "description": "GitHub fine-grained PAT",
         "recommendation": "Revoke the token in GitHub settings and purge it from history",
         "pattern": re.compile(r"\bgithub_pat_[0-9a-zA-Z_]{82}\b"),
@@ -422,6 +424,14 @@ def scan_for_secrets(
                     continue
             else:
                 value = match.group(0)
+            # Minified/vendor bundles are dominated by false positives for
+            # token-shaped rules; keep them as low-confidence leads.
+            if (
+                minified
+                and rule["severity"] in ("high", "critical")
+                and rule["id"] != "hardcoded-password"
+            ):
+                confidence = "low"
             hits.append(
                 {
                     "rule": rule,
@@ -495,7 +505,10 @@ class SourceReviewStep(BaseHttpStep, WordlistDependencyMixin):
                 if hits >= MAX_TOTAL_HITS:
                     break
                 severity = hit["rule"]["severity"]
-                if hit.get("confidence") == "low" and severity in ("medium", "high", "critical"):
+                if hit.get("minified") and severity in ("high", "critical"):
+                    # Not a confirmed secret in obfuscated vendor code.
+                    severity = "medium"
+                elif hit.get("confidence") == "low" and severity in ("medium", "high", "critical"):
                     severity = "low"
                 self._add_finding(
                     module=self.MODULE,

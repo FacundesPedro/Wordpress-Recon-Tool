@@ -96,7 +96,7 @@ class TestHeaderQualityStep:
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         xfo = [f for f in findings if "X-Frame-Options" in f.title]
-        assert xfo and xfo[0].severity == "medium"
+        assert xfo and xfo[0].severity == "low"
 
     async def test_xfo_deny_ok(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

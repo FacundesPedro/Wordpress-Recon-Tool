@@ -103,7 +103,7 @@ class HeaderQualityStep(BaseHttpStep):
             if xfo.lower() == "none":
                 self._add_finding(
                     module=self.MODULE,
-                    severity="medium",
+                    severity="low",
                     title="X-Frame-Options set to NONE",
                     description=(
                         "X-Frame-Options: NONE explicitly allows the site to be "

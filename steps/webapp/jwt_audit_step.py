@@ -34,10 +34,15 @@ JWT_RE = re.compile(
     r"\b([A-Za-z0-9_-]{8,})\.([A-Za-z0-9_-]{8,})\.([A-Za-z0-9_-]*)"
 )
 
-SENSITIVE_CLAIMS = (
-    "email", "phone", "ssn", "password", "secret", "api_key", "apikey",
-    "token", "private_key", "credit_card", "card_number", "address",
-)
+# Claims that genuinely should not be in a readable JWT payload vs. claims
+# that are extremely common/benign (e.g. `email`) and would make the finding
+# fire on essentially every real application.
+SENSITIVE_CLAIMS_STRONG = frozenset({
+    "ssn", "password", "secret", "api_key", "apikey",
+    "private_key", "credit_card", "card_number",
+})
+SENSITIVE_CLAIMS_WEAK = frozenset({"email", "phone", "token", "address"})
+SENSITIVE_CLAIMS = SENSITIVE_CLAIMS_STRONG | SENSITIVE_CLAIMS_WEAK
 
 WEAK_SECRETS = [
     "secret", "password", "123456", "jwt_secret", "your-256-bit-secret",
@@ -84,7 +89,10 @@ def jwt_issues(header: dict, payload: dict, token: str) -> list[dict]:
 
     if alg in ("none", ""):
         issues.append({
-            "severity": "critical",
+            # Declaration only: the token is never replayed against the
+            # server, so this is a high-confidence lead, not confirmed.
+            "severity": "high",
+            "confidence": "low",
             "title": "JWT uses alg:none",
             "description": (
                 "The token declares alg:none or omits the algorithm, meaning "
@@ -93,9 +101,11 @@ def jwt_issues(header: dict, payload: dict, token: str) -> list[dict]:
             "recommendation": "Reject alg:none server-side and pin allowed algorithms",
         })
 
-    if not token.split(".")[2]:
+    if not token.split(".")[2] and alg not in ("none", ""):
+        # alg:none already implies an empty signature; avoid a duplicate.
         issues.append({
-            "severity": "critical",
+            "severity": "high",
+            "confidence": "low",
             "title": "JWT has an empty signature",
             "description": "The signature segment is empty; the token is unsigned.",
             "recommendation": "Enforce signature verification for all tokens",
@@ -142,9 +152,10 @@ def jwt_issues(header: dict, payload: dict, token: str) -> list[dict]:
             })
 
     sensitive = [k for k in payload if str(k).lower() in SENSITIVE_CLAIMS]
+    strong = [k for k in sensitive if str(k).lower() in SENSITIVE_CLAIMS_STRONG]
     if sensitive:
         issues.append({
-            "severity": "medium",
+            "severity": "medium" if strong else "low",
             "title": f"JWT payload carries sensitive claim(s): {', '.join(sensitive)}",
             "description": (
                 "JWT payloads are base64-encoded, not encrypted. Sensitive "
@@ -175,7 +186,7 @@ class JwtAuditStep(BaseHttpStep):
 
     name = "jwt_audit"
     description = "Audit JWTs for alg:none, expiry, sensitive claims, weak HMAC secrets"
-    severity = "medium"
+    severity = "critical"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -271,6 +282,7 @@ class JwtAuditStep(BaseHttpStep):
                     description=issue["description"],
                     evidence=f"{source_url}: JWT header (b64): {evidence}",
                     recommendation=issue["recommendation"],
+                    confidence=issue.get("confidence", "high"),  # type: ignore[arg-type]
                     raw={"source_url": source_url,
                          "header": header,
                          "claims": sorted(payload.keys()),

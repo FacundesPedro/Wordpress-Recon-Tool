@@ -157,7 +157,7 @@ class CorsStep(BaseHttpStep):
                 )
             self._add_finding(
                 module=self.MODULE,
-                severity="high" if credentials else "medium",
+                severity="high" if credentials else "low",
                 title="CORS origin reflection"
                 + (" with credentials" if credentials else ""),
                 description=description,

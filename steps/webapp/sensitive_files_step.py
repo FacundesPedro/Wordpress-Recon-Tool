@@ -13,6 +13,8 @@ file paths and reports anything that responds 200 with non-HTML content.
 # WHY: Forgotten backups and config files are a frequent direct path to
 #      credentials and source code
 
+import re
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 from utils.soft404 import is_html_body
@@ -115,8 +117,6 @@ def _looks_like_xml(body: str) -> bool:
 
 def _looks_like_yaml(body: str) -> bool:
     """True when the body has YAML key lines."""
-    import re
-
     if body.lstrip().startswith("---"):
         return True
     return bool(re.search(r"(?m)^\s*[\w.-]+:\s*\S", body))
@@ -159,12 +159,54 @@ def is_interesting_content(
     return False
 
 
+# File classes, most severe first. A bare `.bak` of an unknown file is a
+# hardening/config-leak issue, not automatically a confirmed secret.
+_CRITICAL_FILE_RE = re.compile(
+    r"(^|/)(id_rsa|id_dsa|credentials\.json|secrets\.json|\.kube/config|"
+    r"terraform\.tfstate|.*service-account.*\.json|firebase-adminsdk.*\.json|"
+    r"(backup|database|db|dump|.*\.dump)\.sql|.*\.sql|"
+    r"(backup|dump).*\.(zip|tar\.gz|tgz))$",
+    re.IGNORECASE,
+)
+_HIGH_FILE_RE = re.compile(
+    r"(wp-config|config(uration)?|settings|appsettings|web\.config|secrets)"
+    r".*(\.bak|\.old|\.orig|\.save|\.swp|\.php~|~)$|"
+    r"(^|/)\.git/config$|"
+    r"(^|/)\.env(\.|$)|"
+    r".*\.(pem|key)$",
+    re.IGNORECASE,
+)
+_LOW_FILE_RE = re.compile(
+    r"(swagger|openapi|api-docs|schema)\.(json|yaml|yml)$|"
+    r"(composer\.lock|package-lock\.json|yarn\.lock)$|"
+    r"\.ds_store$|(^|/)\.svn/entries$|"
+    r"(makefile|jenkinsfile).*\.bak$",
+    re.IGNORECASE,
+)
+_LOG_FILE_RE = re.compile(r"\.log$", re.IGNORECASE)
+
+
+def classify_sensitive_file(path: str) -> str:
+    """Return a severity for a discovered file based on its name/type."""
+    name = (path or "").split("?", 1)[0]
+    if _LOW_FILE_RE.search(name):
+        return "low"
+    if _LOG_FILE_RE.search(name):
+        return "medium"
+    if _CRITICAL_FILE_RE.search(name):
+        return "critical"
+    if _HIGH_FILE_RE.search(name):
+        return "high"
+    # A backup/unknown artefact we could not classify: hardening-level.
+    return "medium"
+
+
 class SensitiveFilesStep(BaseHttpStep):
     """Probe common backup/config file paths (generic, non-WP)."""
 
     name = "sensitive_files"
     description = "Probe for exposed backup/config/credential files"
-    severity = "high"
+    severity = "critical"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -189,7 +231,7 @@ class SensitiveFilesStep(BaseHttpStep):
             snippet = " ".join(body.split())[:120]
             self._add_finding(
                 module=self.MODULE,
-                severity="high",
+                severity=classify_sensitive_file(path),  # type: ignore[arg-type]
                 title=f"Sensitive file exposed at {url}",
                 description=(
                     f"The file {path} is publicly accessible and contains "

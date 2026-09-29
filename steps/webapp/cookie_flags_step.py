@@ -11,10 +11,25 @@ and SameSite flags on session cookies.
 # WHY: Missing flags enable XSS session theft (no HttpOnly), MITM
 #      (no Secure), and CSRF (no SameSite)
 
+import re
+
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 
 COOKIE_SCAN_PATHS = ["/", "/login", "/signin", "/wp-login.php"]
+
+# Cookies whose compromise actually matters: session/credential cookies.
+# Missing flags on analytics/theming cookies are hardening notes, not medium.
+_SESSION_COOKIE_RE = re.compile(
+    r"(sess|phpsessid|jsessionid|sid\b|auth|token|jwt|remember|login|"
+    r"wordpress_logged_in|wp-settings)",
+    re.IGNORECASE,
+)
+
+
+def is_session_cookie(name: str) -> bool:
+    """Return True when a cookie name looks credential/session related."""
+    return bool(_SESSION_COOKIE_RE.search(name or ""))
 
 
 def parse_set_cookie(header: str) -> dict:
@@ -109,7 +124,9 @@ class CookieFlagsStep(BaseHttpStep):
         if missing_httponly:
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="medium"
+                if any(is_session_cookie(c.split(" ")[0]) for c in missing_httponly)
+                else "low",
                 title="Cookies without HttpOnly flag",
                 description=(
                     "Cookie(s) are set without HttpOnly, allowing JavaScript "
@@ -123,7 +140,9 @@ class CookieFlagsStep(BaseHttpStep):
         if missing_secure:
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="medium"
+                if any(is_session_cookie(c.split(" ")[0]) for c in missing_secure)
+                else "low",
                 title="Cookies without Secure flag",
                 description=(
                     "Cookie(s) are set without Secure on an HTTPS target, "
@@ -138,7 +157,9 @@ class CookieFlagsStep(BaseHttpStep):
         if missing_samesite:
             self._add_finding(
                 module=self.MODULE,
-                severity="low",
+                severity="medium"
+                if any(is_session_cookie(c.split(" ")[0]) for c in missing_samesite)
+                else "low",
                 title="Cookies without SameSite attribute",
                 description=(
                     "Cookie(s) are set without SameSite, weakening CSRF "
@@ -158,7 +179,7 @@ class CookieFlagsStep(BaseHttpStep):
         if samesite_none_insecure:
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="low",
                 title="Cookies with SameSite=None but no Secure flag",
                 description=(
                     "Cookie(s) use SameSite=None without the Secure flag, which "

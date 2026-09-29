@@ -104,9 +104,16 @@ class StackTraceStep(BaseHttpStep):
             if _matches(pattern, text):
                 reported.add(name)
                 excerpt = _excerpt_around(text, pattern, max_len=300)
+                # Generic traces disclose that debug mode is on; SQL-state and
+                # internal-path leaks additionally confirm DB/filesystem layout.
+                severity = (
+                    "medium"
+                    if name in ("SQL state leak", "Internal path leak")
+                    else "low"
+                )
                 self._add_finding(
                     module=self.MODULE,
-                    severity=self.severity,
+                    severity=severity,  # type: ignore[arg-type]
                     title=f"{name} leaked in error response",
                     description=(
                         f"A {label} probe ({probe_url}) returned HTTP "

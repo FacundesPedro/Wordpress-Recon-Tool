@@ -125,7 +125,7 @@ class ApiSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
 
     name = "api_surface"
     description = "Discover API endpoints, OpenAPI/Swagger docs, and GraphQL"
-    severity = "high"
+    severity = "medium"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -295,9 +295,12 @@ class ApiSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
                     f"API documentation at {path} exposes an OpenAPI "
                     "specification."
                 )
+            # A spec is documentation, not access. It is only bumped above
+            # `low` when it advertises admin/internal/privileged routes.
+            openapi_severity = "medium" if sensitive else "low"
             self._add_finding(
                 module=self.MODULE,
-                severity="high",
+                severity=openapi_severity,  # type: ignore[arg-type]
                 title="OpenAPI/Swagger documentation exposed",
                 description=description,
                 evidence=url,
@@ -324,7 +327,7 @@ class ApiSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
             urls = [u for _, u in entries]
             self._add_finding(
                 module=self.MODULE,
-                severity="medium",
+                severity="low",
                 title="Swagger UI exposed",
                 description=(
                     "Swagger UI documentation interface(s) are publicly "
@@ -340,7 +343,7 @@ class ApiSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
         for path, url, names in kwargs["graphql_open"]:
             self._add_finding(
                 module=self.MODULE,
-                severity="high",
+                severity="low",
                 title=f"GraphQL introspection enabled at {path}",
                 description=(
                     f"The GraphQL endpoint at {path} answers introspection "

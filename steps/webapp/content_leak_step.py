@@ -59,7 +59,7 @@ class ContentLeakStep(BaseHttpStep):
 
     name = "content_leak"
     description = "Review web page content for information leakage"
-    severity = "info"
+    severity = "low"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:

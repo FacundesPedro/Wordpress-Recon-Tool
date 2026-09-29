@@ -92,7 +92,9 @@ class TestApiSurfaceStep:
         assert finding.severity == "info"
         assert finding.raw["url_count"] == 2
 
-    async def test_openapi_json_high(self, mock_http, mock_target, mock_config):
+    async def test_openapi_json_medium_with_sensitive_paths(
+        self, mock_http, mock_target, mock_config
+    ):
         spec = (
             '{"openapi":"3.0.0","paths":{'
             '"/users":{"get":{},"post":{}},'
@@ -106,10 +108,24 @@ class TestApiSurfaceStep:
         findings = await step.run()
 
         finding = [f for f in findings if "OpenAPI" in f.title][0]
-        assert finding.severity == "high"
+        assert finding.severity == "medium"
         assert finding.raw["endpoint_count"] == 4
         assert "/admin/export" in finding.raw["sensitive_paths"]
         assert "/login" in finding.raw["sensitive_paths"]
+
+    async def test_openapi_json_low_without_sensitive_paths(
+        self, mock_http, mock_target, mock_config
+    ):
+        spec = '{"openapi":"3.0.0","paths":{"/items":{"get":{}},"/products":{"post":{}}}}'
+        mock_http.request = AsyncMock(
+            side_effect=responder({"swagger.json": response(200, spec)})
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+
+        finding = [f for f in findings if "OpenAPI" in f.title][0]
+        assert finding.severity == "low"
+        assert finding.raw["sensitive_paths"] == []
 
     async def test_swagger_ui_medium(self, mock_http, mock_target, mock_config):
         html = (
@@ -122,9 +138,9 @@ class TestApiSurfaceStep:
         step = make_step(mock_http, mock_target, mock_config, paths=["swagger-ui.html"])
         findings = await step.run()
         finding = [f for f in findings if "Swagger UI" in f.title][0]
-        assert finding.severity == "medium"
+        assert finding.severity == "low"
 
-    async def test_graphql_introspection_high(self, mock_http, mock_target, mock_config):
+    async def test_graphql_introspection_low(self, mock_http, mock_target, mock_config):
         gql = '{"data":{"types":[{"name":"User"},{"name":"Query"},{"name":"Mutation"}]}}'
         mock_http.request = AsyncMock(
             side_effect=responder({"graphql": response(200, gql)})
@@ -133,7 +149,7 @@ class TestApiSurfaceStep:
         findings = await step.run()
 
         finding = [f for f in findings if "GraphQL introspection" in f.title][0]
-        assert finding.severity == "high"
+        assert finding.severity == "low"
         assert finding.raw["type_count"] == 3
         assert finding.raw["types"] == ["User", "Query", "Mutation"]
         post_calls = [

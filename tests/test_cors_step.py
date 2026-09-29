@@ -75,7 +75,7 @@ class TestCorsStep:
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         finding = [f for f in findings if "reflection" in f.title][0]
-        assert finding.severity == "medium"
+        assert finding.severity == "low"
 
     async def test_wildcard_info(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

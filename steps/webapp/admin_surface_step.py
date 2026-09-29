@@ -73,10 +73,12 @@ PATH_SEVERITIES: dict[str, str] = {
     "actuator/heapdump": "high",
     "actuator/env": "high",
     "debug/vars": "high",
-    "admin": "medium",
-    "admin/": "medium",
-    "administrator": "medium",
-    "manager/html": "medium",
+    # A publicly reachable *login page* (CMS admin, Tomcat manager) is normal
+    # and grants nothing without credentials - it is fingerprint-grade.
+    "admin": "low",
+    "admin/": "low",
+    "administrator": "low",
+    "manager/html": "low",
     "catalina": "low",
     "grafana": "medium",
     "grafana/login": "medium",
@@ -91,7 +93,7 @@ PATH_SEVERITIES: dict[str, str] = {
     "superset": "medium",
     "minio": "medium",
     "registry/v2/": "medium",
-    "console": "medium",
+    "console": "low",
     "phpmyadmin": "medium",
     "phpmyadmin/index.php": "medium",
     "pma": "medium",
@@ -101,7 +103,7 @@ PATH_SEVERITIES: dict[str, str] = {
     "actuator": "low",
     "actuator/mappings": "low",
     "actuator/configprops": "low",
-    "debug": "medium",
+    "debug": "low",
     "trace": "low",
     "error": "info",
     "server-status": "low",
@@ -133,7 +135,7 @@ class AdminSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
 
     name = "admin_surface"
     description = "Enumerate exposed admin/management/service interfaces"
-    severity = "medium"
+    severity = "high"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:

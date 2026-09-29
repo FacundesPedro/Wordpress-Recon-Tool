@@ -103,7 +103,7 @@ class OpenRedirectStep(BaseHttpStep):
 
     name = "open_redirect"
     description = "Detect open redirects via canary-URL parameter probes"
-    severity = "high"
+    severity = "medium"
     MODULE = "webapp"
 
     async def run(self) -> list[Finding]:
@@ -136,8 +136,11 @@ class OpenRedirectStep(BaseHttpStep):
                 if not canary_in_location(location, canary):
                     continue
 
+                # Open redirects are phishing-grade; `high` is reserved for a
+                # proven chain (OAuth redirect_uri token leak, etc.) which this
+                # step does not test.
                 if path in AUTH_PATHS:
-                    severity = "high"
+                    severity = "medium"
                     note = "on an authentication-related path"
                 else:
                     severity = "medium"

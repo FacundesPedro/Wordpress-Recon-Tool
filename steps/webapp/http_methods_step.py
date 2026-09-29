@@ -99,7 +99,7 @@ class HttpMethodsStep(BaseHttpStep):
                 continue
 
             if method == "TRACE":
-                severity = "medium"
+                severity = "low"
                 title = "TRACE method enabled"
                 description = (
                     "TRACE is enabled (HTTP "
@@ -109,7 +109,7 @@ class HttpMethodsStep(BaseHttpStep):
                     "Disable the TRACE method at the web server or WAF level"
                 )
             elif method == "PUT":
-                severity = "medium"
+                severity = "low"
                 title = "PUT method allowed"
                 description = (
                     f"PUT is processed differently from GET (HTTP {status} on a "
@@ -118,7 +118,7 @@ class HttpMethodsStep(BaseHttpStep):
                 )
                 recommendation = "Restrict PUT to authenticated, validated endpoints only"
             elif method == "DELETE":
-                severity = "medium"
+                severity = "low"
                 title = "DELETE method allowed"
                 description = (
                     f"DELETE is processed differently from GET (HTTP {status} on "
