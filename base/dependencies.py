@@ -227,12 +227,12 @@ class WordlistDependencyMixin:
         """Add a finding indicating the step was disabled due to missing dependency."""
         self._add_finding(
             module=getattr(self, "MODULE", "unknown"),
-            severity="low",
+            severity="info",
             title=title,
             description=description,
             evidence=evidence,
             recommendation=recommendation,
-            raw={"reason": "dependency_not_configured"},
+            raw={"reason": "dependency_not_configured", "operational": True},
         )
 
     def load_credentials_from_wordlist(
@@ -415,7 +415,7 @@ class BinaryDependencyMixin:
         """Add a finding indicating the step was disabled due to missing binary."""
         self._add_finding(
             module=getattr(self, "MODULE", "unknown"),
-            severity="low",
+            severity="info",
             title=title,
             description=f"The '{binary}' binary is not installed on this system",
             evidence=error or f"Binary '{binary}' not found in PATH",
@@ -424,5 +424,6 @@ class BinaryDependencyMixin:
                 "binary": binary,
                 "install_hint": install_hint,
                 "reason": "binary_not_found",
+                "operational": True,
             },
         )

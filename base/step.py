@@ -103,8 +103,14 @@ class BaseStep(ABC):
         evidence: str = "",
         recommendation: str = "",
         raw: Optional[dict] = None,
+        confidence: Literal["low", "medium", "high"] = "high",
     ) -> None:
-        """Add a finding to the findings list."""
+        """Add a finding to the findings list.
+
+        ``confidence`` records how certain the detection is and is independent
+        of ``severity`` (impact). Default ``high`` means the evidence confirms
+        the issue; use ``low``/``medium`` for heuristic or inferred detections.
+        """
         finding = Finding(
             step=self.name,
             module=module,
@@ -113,6 +119,7 @@ class BaseStep(ABC):
             description=description,
             evidence=evidence,
             recommendation=recommendation,
+            confidence=confidence,
             raw=raw or {},
         )
 
@@ -243,11 +250,12 @@ class BaseToolStep(BaseStep):
                 self.logger.warning(result.message)
                 self._add_finding(
                     module=getattr(self, "MODULE", "tools"),
-                    severity="low",
+                    severity="info",
                     title=f"{self._tool_binary.title()} Version Incompatible",
                     description=result.message,
                     evidence=f"Installed: {result.installed}",
-                    recommendation=f"Update {self._tool_binary} to meet requirements"
+                    recommendation=f"Update {self._tool_binary} to meet requirements",
+                    raw={"operational": True},
                 )
 
             return result.is_compatible
@@ -334,11 +342,12 @@ class BaseToolStep(BaseStep):
             self.logger.error(error)
             self._add_finding(
                 module=getattr(self, "MODULE", "tools"),
-                severity="low",
+                severity="info",
                 title=f"{self._tool_binary.title()} Not Available",
                 description=f"{self._tool_binary} binary not found or not installed",
                 evidence=error,
                 recommendation=f"Install {self._tool_binary}",
+                raw={"operational": True},
             )
             return self.findings
 
@@ -364,13 +373,14 @@ class BaseToolStep(BaseStep):
                 )
                 self._add_finding(
                     module=getattr(self, "MODULE", "tools"),
-                    severity="low",
+                    severity="info",
                     title=f"{self._tool_binary.title()} Execution Failed",
                     description=f"{self._tool_binary} completed with errors",
                     evidence=result.stderr[:500]
                     if result.stderr
                     else result.output[:500],
                     recommendation=f"Check {self._tool_binary} installation and network connectivity",
+                    raw={"operational": True},
                 )
 
         except ToolTimeoutError:
@@ -388,21 +398,23 @@ class BaseToolStep(BaseStep):
             )
             self._add_finding(
                 module=getattr(self, "MODULE", "tools"),
-                severity="low",
+                severity="info",
                 title=f"{self._tool_binary.title()} Timeout",
                 description=f"{self._tool_binary} exceeded timeout",
                 evidence="Timeout",
                 recommendation="Increase timeout or reduce enumeration scope",
+                raw={"operational": True},
             )
         except Exception as e:
             self.logger.error(f"{self._tool_binary} error: {e}")
             self._add_finding(
                 module=getattr(self, "MODULE", "tools"),
-                severity="low",
+                severity="info",
                 title=f"{self._tool_binary.title()} Error",
                 description=f"{self._tool_binary} encountered an unexpected error",
                 evidence=str(e),
                 recommendation=f"Check {self._tool_binary} installation",
+                raw={"operational": True},
             )
 
         return self.findings

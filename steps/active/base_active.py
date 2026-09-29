@@ -133,7 +133,8 @@ class ActiveHttpStep(BaseHttpStep):
 
     def add_finding(self, severity: str, title: str, description: str,
                     evidence: str, recommendation: str,
-                    raw: Optional[dict] = None) -> None:
+                    raw: Optional[dict] = None,
+                    confidence: str = "high") -> None:
         self._add_finding(
             module=self.MODULE,
             severity=severity,
@@ -142,4 +143,5 @@ class ActiveHttpStep(BaseHttpStep):
             evidence=evidence,
             recommendation=recommendation,
             raw=raw or {},
+            confidence=confidence,  # type: ignore[arg-type]
         )

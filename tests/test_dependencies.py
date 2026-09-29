@@ -103,7 +103,8 @@ class TestResolveWordlistOrFallback:
         )
         assert result is None
         assert len(step.findings) == 1
-        assert step.findings[0].severity == "low"
+        assert step.findings[0].severity == "info"
+        assert step.findings[0].raw["operational"] is True
 
     def test_with_custom_loader(self, step):
         with NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
