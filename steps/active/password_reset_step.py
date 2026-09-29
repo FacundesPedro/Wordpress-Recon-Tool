@@ -108,7 +108,7 @@ class PasswordResetStep(ActiveHttpStep):
                 )
                 if response is not None and CANARY_HOST in (response.text or ""):
                     self.add_finding(
-                        "medium",
+                        "low",
                         f"Canary Host reflected on reset page ({path})",
                         (
                             "The reset flow reflects the Host header in its "
@@ -120,6 +120,7 @@ class PasswordResetStep(ActiveHttpStep):
                         "never from the Host header",
                         raw={"path": path, "url": self.urljoin(path),
                              "canary_host": CANARY_HOST},
+                        confidence="low",
                     )
 
         self.logger.info(

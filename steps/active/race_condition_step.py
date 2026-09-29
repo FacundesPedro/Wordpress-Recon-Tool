@@ -31,7 +31,7 @@ class RaceConditionStep(ActiveHttpStep):
 
     name = "race_condition"
     description = "Detect race windows via concurrent request burst (endpoint required)"
-    severity = "medium"
+    severity = "low"
     MODULE = "active"
 
     async def run(self) -> list[Finding]:
@@ -71,7 +71,7 @@ class RaceConditionStep(ActiveHttpStep):
 
         if successes and failures:
             self.add_finding(
-                "medium",
+                "low",
                 f"Mixed outcomes under concurrency at {endpoint}",
                 (
                     f"{BURST} concurrent identical requests produced both "
@@ -85,6 +85,7 @@ class RaceConditionStep(ActiveHttpStep):
                 "keys, atomic counters)",
                 raw={"endpoint": endpoint, "statuses": statuses,
                      "distribution": distribution},
+                confidence="low",
             )
         elif successes == len(statuses) and getattr(
             self.config, "active_race_endpoint", ""

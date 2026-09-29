@@ -27,7 +27,7 @@ class HttpParameterPollutionStep(ActiveHttpStep):
 
     name = "http_parameter_pollution"
     description = "Detect HTTP parameter pollution via duplicate-param diffs"
-    severity = "low"
+    severity = "info"
     MODULE = "active"
 
     async def run(self) -> list[Finding]:

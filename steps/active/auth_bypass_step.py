@@ -63,7 +63,7 @@ class AuthBypassStep(ActiveHttpStep):
 
     name = "auth_bypass"
     description = "Detect auth bypass via path confusion and header spoofing"
-    severity = "critical"
+    severity = "high"
     MODULE = "active"
 
     async def run(self) -> list[Finding]:
@@ -148,6 +148,7 @@ class AuthBypassStep(ActiveHttpStep):
                 raw={"path": path, "url": url, "bypass": bypass_path,
                      "bypass_url": bypass_url,
                      "status": response.status_code},
+                confidence="medium",
             )
 
     async def _probe_header_bypasses(
@@ -185,4 +186,5 @@ class AuthBypassStep(ActiveHttpStep):
                 raw={"path": path, "url": url, "header": header_name,
                      "value": headers[header_name],
                      "status": response.status_code},
+                confidence="medium",
             )

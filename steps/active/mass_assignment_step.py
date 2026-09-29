@@ -120,6 +120,7 @@ class MassAssignmentStep(ActiveHttpStep):
                 raw={"endpoint": endpoint, "url": url, "fields": extra,
                      "status": response.status_code,
                      "reflected": reflected},
+                confidence="low",
             )
 
         self.logger.info(

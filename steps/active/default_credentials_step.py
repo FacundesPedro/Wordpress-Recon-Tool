@@ -41,6 +41,10 @@ DEFAULT_PAIRS = [
 MAX_ATTEMPTS = 10
 MAX_FINDINGS = 3
 
+# Usernames conventionally reserved for administrators; a working default
+# login for one of these is an admin takeover.
+_ADMIN_USERNAMES = {"admin", "administrator", "root"}
+
 # Passwords used to fingerprint the failure response for each endpoint.
 INVALID_USER = "recon-invalid-7f3a"
 INVALID_PASSWORD = "recon-invalid-7f3a"
@@ -98,13 +102,22 @@ class DefaultCredentialsStep(ActiveHttpStep):
                 if response is None:
                     continue
                 if self._login_success(response, invalid_baseline):
+                    severity = (
+                        "critical"
+                        if user.lower() in _ADMIN_USERNAMES
+                        else "high"
+                    )
                     self.add_finding(
-                        "critical",
+                        severity,
                         f"Default credentials accepted at {path}",
                         (
                             f"Login with '{user}:{password}' succeeded at "
-                            f"{path}. Default or weak administrative "
-                            f"credentials are in use."
+                            f"{path}. Default or weak credentials are in use"
+                            + (
+                                " for an administrative account."
+                                if user.lower() in _ADMIN_USERNAMES
+                                else "; verify the account's privileges."
+                            )
                         ),
                         f"POST {url} ({user}/{password}) -> "
                         f"{response.status_code} "

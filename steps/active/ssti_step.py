@@ -69,7 +69,7 @@ class SstiStep(ActiveHttpStep):
                 if baseline is not None and expected in (baseline.text or ""):
                     continue
                 self.add_finding(
-                    "high",
+                    "critical",
                     f"Possible SSTI via {param} ({engine})",
                     (
                         f"Parameter '{param}' at {path} reflects the arithmetic "
@@ -81,6 +81,7 @@ class SstiStep(ActiveHttpStep):
                     "rendering or data-only template variables",
                     raw={"path": path, "param": param, "payload": payload,
                          "engine": engine, "result": expected},
+                    confidence="medium",
                 )
                 break
 

@@ -114,7 +114,7 @@ class SqlInjectionStep(ActiveHttpStep):
                 if signature in baseline_errors:
                     continue  # error exists without injection - not a signal
                 self.add_finding(
-                    "high",
+                    "critical",
                     f"Possible SQL error disclosure via {param} ({engine})",
                     (
                         f"Parameter '{param}' at {path} triggers a {engine} error "
@@ -127,6 +127,7 @@ class SqlInjectionStep(ActiveHttpStep):
                     "and confirm manually before exploitation",
                     raw={"path": path, "param": param, "payload": payload,
                          "engine": engine, "signature": signature},
+                    confidence="medium",
                 )
                 break  # one finding per param is enough
 
@@ -166,6 +167,7 @@ class SqlInjectionStep(ActiveHttpStep):
                     "timing test before reporting",
                     raw={"path": path, "param": param, "payload": payload,
                          "elapsed": round(elapsed, 2)},
+                    confidence="low",
                 )
                 break
 

@@ -35,7 +35,7 @@ class TestReflectedXssStep:
         step = self.make_step(mock_http, mock_target, mock_config, enabled=False)
         assert await step.run() == []
 
-    async def test_raw_reflection_high(self, mock_http, mock_target, mock_config):
+    async def test_raw_reflection_medium(self, mock_http, mock_target, mock_config):
         async def requestor(method, url, **kwargs):
             if MARKER in url:
                 return MagicMock(status_code=200, text=f'value="\'"><{MARKER}>')
@@ -45,7 +45,7 @@ class TestReflectedXssStep:
         step = self.make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert findings
-        assert findings[0].severity == "high"
+        assert findings[0].severity == "medium"
         assert findings[0].raw["context"] == "raw-tag"
 
     async def test_encoded_reflection_ignored(self, mock_http, mock_target, mock_config):

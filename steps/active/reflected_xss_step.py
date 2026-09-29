@@ -44,7 +44,7 @@ class ReflectedXssStep(ActiveHttpStep):
 
     name = "reflected_xss"
     description = "Detect reflected XSS via unescaped canary reflection (detection-only)"
-    severity = "high"
+    severity = "medium"
     MODULE = "active"
 
     async def run(self) -> list[Finding]:
@@ -70,7 +70,9 @@ class ReflectedXssStep(ActiveHttpStep):
             if context == "none" or context == "encoded":
                 continue
 
-            severity = "high" if context == "raw-tag" else "medium"
+            # Anonymous reflected XSS is CVSS ~6.1; `high` is reserved for an
+            # authenticated/sensitive context, which is not established here.
+            severity = "medium" if context == "raw-tag" else "low"
             self.add_finding(
                 severity,
                 f"Unescaped reflection of canary in {param} ({context})",
@@ -84,6 +86,7 @@ class ReflectedXssStep(ActiveHttpStep):
                 "output encoding and a restrictive CSP",
                 raw={"path": path, "param": param, "context": context,
                      "marker": MARKER},
+                confidence="medium" if context == "raw-tag" else "low",
             )
 
         self.logger.info(

@@ -80,7 +80,7 @@ class RequestSmugglingStep(ActiveHttpStep):
 
     name = "request_smuggling"
     description = "Detect request smuggling via CL.TE/TE.CL timing probes (suspected-only)"
-    severity = "high"
+    severity = "low"
     MODULE = "active"
 
     async def run(self) -> list[Finding]:
@@ -125,7 +125,7 @@ class RequestSmugglingStep(ActiveHttpStep):
             if delta < DELAY_THRESHOLD:
                 continue
             self.add_finding(
-                "medium",
+                "low",
                 f"Possible request smuggling ({label}) - suspected",
                 (
                     f"A {label} framing-conflict request took {elapsed:.1f}s "
@@ -141,6 +141,7 @@ class RequestSmugglingStep(ActiveHttpStep):
                 raw={"technique": label, "elapsed": round(elapsed, 2),
                      "baseline": round(baseline_elapsed, 2),
                      "delta": round(delta, 2)},
+                confidence="low",
             )
 
         self.logger.info(
