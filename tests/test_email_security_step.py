@@ -14,9 +14,13 @@ class TestAnalyzeSpf:
         issue = analyze_spf(["v=DMARC1; p=none"])
         assert issue and "No SPF" in issue["title"]
 
-    def test_plus_all_high(self):
+    def test_plus_all_medium(self):
         issue = analyze_spf(["v=spf1 ip4:1.2.3.4 +all"])
-        assert issue and issue["severity"] == "high"
+        assert issue and issue["severity"] == "medium"
+
+    def test_tilde_all_not_treated_as_plus_all(self):
+        issue = analyze_spf(["v=spf1 ip4:1.2.3.4 ~all"])
+        assert issue and "soft fail" in issue["title"].lower()
 
     def test_soft_fail_low(self):
         issue = analyze_spf(["v=spf1 include:_spf.google.com ~all"])

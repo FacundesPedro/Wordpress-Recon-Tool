@@ -11,7 +11,7 @@ Queries web.archive.org to discover historical URLs and endpoints.
 
 import asyncio
 import re
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from config import Config
@@ -31,7 +31,7 @@ class WaymachineStep(BaseStep):
 
     name = "wayback"
     description = "Wayback Machine archive enumeration"
-    severity = "info"
+    severity = "low"
     MODULE = "passive"
 
     WAYBACK_API = "https://web.archive.org/cdx/search/cdx?url={domain}/*&output=json&fl=original&limit=1000&filter=statuscode:200"
@@ -210,13 +210,12 @@ class WaymachineStep(BaseStep):
 
         sensitive_endpoints = self._check_sensitive_endpoints(unique_urls)
         if sensitive_endpoints:
-            severity: Literal["info", "low", "medium", "high", "critical"] = "low"
-            if len(sensitive_endpoints) > 5:
-                severity = "medium"
-
+            # These URLs live in the third-party Wayback archive; nothing is
+            # exposed on the target, so this is a recon lead, not a finding.
+            # Volume is not a risk signal.
             self._add_finding(
                 module=self.MODULE,
-                severity=severity,
+                severity="low",
                 title="Potential Sensitive Endpoints Found",
                 description=f"Found {len(sensitive_endpoints)} endpoint(s) that may reveal sensitive information",
                 evidence="\n".join(f"  - {url}" for url in sensitive_endpoints[:15]),

@@ -126,7 +126,7 @@ class TestQueryAndParse:
 
         sensitive = [f for f in findings if "Sensitive Endpoints" in f.title]
         assert len(sensitive) == 1
-        assert sensitive[0].severity == "medium"
+        assert sensitive[0].severity == "low"
 
     async def test_empty_response_returns_empty(self):
         mock_target = MagicMock()

@@ -56,7 +56,7 @@ class DnsStep(BaseToolStep):
 
     name = "dns"
     description = "DNS record enumeration with intelligence analysis"
-    severity = "info"
+    severity = "medium"
     MODULE = "passive"
     _tool_binary = "dig"
 
@@ -215,9 +215,9 @@ class DnsStep(BaseToolStep):
             severity = "medium"
             severity_note = "No fail mechanism configured"
 
+        # Lookup-count pressure is a deliverability/robustness concern, not an
+        # email-spoofing risk, and must not overwrite the spoofing severity.
         include_count = len(re.findall(r"include:", spf_text, re.IGNORECASE))
-        if include_count > 5:
-            severity = "medium"
 
         self._add_finding(
             module=self.MODULE,

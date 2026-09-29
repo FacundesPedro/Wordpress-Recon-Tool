@@ -34,7 +34,7 @@ class CrtShStep(BaseStep):
 
     name = "crt_sh"
     description = "Certificate transparency enumeration"
-    severity = "info"
+    severity = "low"
     MODULE = "passive"
 
     CRTSH_API = "https://crt.sh/?q={pattern}&output=json&exclude=expired"

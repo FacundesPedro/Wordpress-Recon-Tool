@@ -44,9 +44,12 @@ def analyze_spf(records: list[str]) -> Optional[dict]:
             "raw": {},
         }
     lowered = spf.lower()
-    if "+all" in lowered or "all" == lowered.split()[-1]:
+    tokens = lowered.split()
+    # `all` with a pass qualifier (bare `all` defaults to `+`). `~all`/`-all`/
+    # `?all` are handled below and must not match here.
+    if "+all" in tokens or "all" in tokens:
         return {
-            "severity": "high",
+            "severity": "medium",
             "title": "SPF allows any sender (+all)",
             "description": f"SPF record ends with a permissive all: {spf[:120]}",
             "recommendation": "End SPF with -all (hard fail)",
