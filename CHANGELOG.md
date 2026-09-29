@@ -1,10 +1,48 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-28
+## Last Updated: 2026-09-29
 
 ---
 
 ## Recent Changes
+
+### S23 - Severity audit + `Finding.confidence` (2026-09-29)
+
+Full, code-grounded audit of the severity of every finding across all 96 steps.
+Calibrated ratings to real-world impact (CVSS-style), fixed the detection bugs
+that made several severities indefensible, and added a `confidence` dimension so
+heuristics no longer share a band with confirmed exploitation.
+
+**Correctness fixes**
+
+| File | Change |
+|------|--------|
+| `steps/infrastructure/tls_step.py` | **Bug:** `check_hostname=True` then `verify_mode=CERT_NONE` raised `ValueError` (swallowed) so the step emitted **zero findings in production**; now validates the cert first (emits `high` for expired/hostname-mismatch, `medium` for untrusted) and retries unverified to still report version/cipher. |
+| `steps/tools/nuclei_step.py` | `unknown`/missing severity → `low` (+`raw["severity_unknown"]`); new "Nuclei Output Unparseable" `medium` finding; network-error trigger no longer discards real findings; `matched-at`/`template-id` reads fixed. |
+| `steps/xmlrpc/xmlrpc_creds_step.py` | Parses `<isAdmin>` (bare + struct forms); confirmed admin credentials → `critical`; admin logins recorded in `raw`. |
+| `steps/vuln/{core,plugin,theme}_vuln_step.py`, `core/vulndb.py`, `utils/version.py` (new) | CVEs are now filtered by `fixed_in` vs the detected version; a real CVE is never `info`; applicability unknown → capped at `medium` with `confidence="low"`. |
+| `steps/tools/wpscan_step.py` | Config-backup detection is shape-based (`wp-config-sample.php` no longer flagged) → `high`; core/plugin/theme vuln severity is **type-driven** (SQLi/RCE→critical, XSS→medium); users → `low`/`medium`; plugin confidence gates severity; `interesting_findings` (debug_log/environment/full_path_disclosure/directory_listing/upload_directory_listing) now parsed. |
+| `steps/ssrf/pingback_ssrf_step.py` | Was a broken duplicate (inverted `faultCode`); now delegates to `XmlrpcSsrfStep` and is no longer registered in `SsrfModule` (no double-counting). |
+| `steps/tools/nmap_step.py`, `opendoor_step.py` | No more silent parse failures; OpenDoor escalates sensitive-looking paths to `high`/`confidence="low"`. |
+
+**Severity recalibration (highlights)** — downgrades: API docs/GraphQL introspection → `low`; admin login pages/consoles → `low`; CORS reflection without credentials → `low`; CSP `unsafe-inline`/`unsafe-eval` → `low`; XFO `NONE` → `low`; cookie flags session-gated (missing-SameSite on session cookies → `medium`, `SameSite=None` w/o Secure → `low`); postMessage-`*`/localStorage → `low`; open redirect → `medium`; JWT `alg:none`/empty sig → `high`; source_review AWS key-ID/GitHub tokens → `high`; request smuggling/race condition → `low`; wayback/spider/pages_ip_leak → `low`/`info`. Upgrades: SQLi/SSTI → `critical`; subdomain/user-enumeration family unified; sensitive DB dumps/service-accounts → `critical`; risky ports → `medium`; XML-RPC `isAdmin` → `critical`. Tool operational failures unified to `info` (+`raw["operational"]`), except ffuf "ran but produced nothing usable" → `low`.
+
+**New model**
+
+| File | Change |
+|------|--------|
+| `core/finding.py` | **ADDED** `confidence: Literal["low","medium","high"] = "high"` (excluded from dedup; included in `to_dict()`/`to_sarif()`). |
+| `base/step.py`, `steps/active/base_active.py`, `steps/webapp/websocket_step.py` | `_add_finding`/`add_finding` accept a `confidence` kwarg. |
+| `utils/report.py` | Markdown/HTML/PDF show the confidence; SARIF rules carry `properties.confidence`. |
+| `tests/conftest.py` | `mock_http` now also exposes an async `post`. |
+
+Raw `.cmd` artifacts are now rendered as a shell command wrapped at 100 columns
+with line continuations (`utils/raw_output.py:format_command`), so they are
+readable and pasteable without horizontal overflow (previously one argv per
+line). Verified live against WordPress + Juice Shop in Docker (per-host report
+folders + `raw/`); surfaced and fixed two live regressions along the way
+(OpenDoor per-item severity leak, WPScan `scan_aborted` now reported).
+Full suite **1846 passing** (was 1804 before this work), no new ruff violations.
 
 ### S22 - Step relations: shared ScanContext + dependency-aware parallel execution (2026-09-28)
 

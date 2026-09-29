@@ -1721,13 +1721,27 @@ export WP_NMAP_TIMEOUT=300
 
 ## Severity Levels
 
-| Level | Color | Steps |
-|-------|-------|-------|
-| **Critical** | 🔴 | WpConfigBackupStep, EnvFileStep (if exposed) |
-| **High** | 🟠 | XmlrpcCredsStep, XmlrpcMulticallStep, LoginBruteforceStep |
-| **Medium** | 🟡 | InactivePluginCheckStep, RestHardeningStep, WpCronStep, UploadsListingStep, XmlrpcSsrfStep, PingbackSsrfStep, SpiderStep (upload dirs) |
-| **Low** | 🔵 | ReadmeStep, LicenseStep, PortsStep |
-| **Info** | ⚪ | Most steps |
+Severity expresses **impact**, not certainty. It is set per finding (the
+class-level `severity` attribute on a step is its **maximum** possible value and
+is not itself the severity of any finding). The bands follow the CVSS mapping in
+`core/vulndb.py`: `>=9 critical`, `>=7 high`, `>=4 medium`, `<4 low`, `info` for
+pure fingerprint/discovery.
+
+| Level | Meaning | Representative steps |
+|-------|---------|----------------------|
+| **Critical** | Unauthenticated RCE / auth bypass / admin takeover / usable secret set | `sql_injection`, `ssti`, `default_credentials` (admin), `xmlrpc_creds` (isAdmin), `sensitive_files` (DB dumps, service-account JSON, `.kube/config`) |
+| **High** | Credential/secret exposure, upload→RCE, path traversal, XSS in sensitive context, confirmed admin brute-force | `wp_config_backup`, `env_file`, `git_exposure`, `source_review` (secrets), `path_traversal`, `mass_assignment`, `login_bruteforce`, `xmlrpc_creds`, `xmlrpc_multicall`, `sensitive_files` (config backups), `subdomain_takeover` |
+| **Medium** | User enumeration, missing rate limiting, CSRF, CRLF/header injection, open redirect, SSRF, cache deception, risky ports, missing SPF/DMARC, EOL PHP | `author_id`, `rest_api_users`, `login_verbosity`, `rate_limit`, `password_reset`, `csrf`, `crlf_injection`, `open_redirect`, `oembed_proxy`, `xmlrpc_ssrf`, `ports` (risky), `php_version` (EOL), `email_security`, `reflected_xss` (raw tag), `jwt_audit` (`alg:none`) |
+| **Low** | Hardening/defense-in-depth, info leaks needing conditions, version disclosure, dir listing, missing optional headers, sourcemaps, tool "ran but produced nothing usable" | `headers`, `csp_audit`, `header_quality`, `cookie_flags`, `client_side_audit`, `host_header`, `websocket`, `stack_trace`, `http_methods`, `js_library`, `spider`, `wayback`, `inactive_plugin_check`, `plugin_abandonment`, `uploads_listing`, `wp_cron` |
+| **Info** | Pure fingerprint/discovery, tool operational failures (`raw["operational"] == true`) | `wp_version`, `plugin`, `theme`, `versioned_assets`, `readme`, `license`, `sitemap`, `whois`, `dns`, `crt_sh`, `shodan`, `hosting`, `waf`, `tech_fingerprint`, `ports` (open), `app_passwords`, `rest_surface`, `xmlrpc_detect` |
+
+### Confidence
+
+Findings also carry a `confidence` value (`low` / `medium` / `high`, default
+`high`) recording how certain the detection is, independent of impact. Canary,
+timing, reflection and substring heuristics are reported as `low`/`medium`
+confidence (and often one band lower) so they cannot be mistaken for confirmed
+exploitation. It appears in JSON, Markdown, HTML, PDF, and SARIF output.
 
 ---
 
