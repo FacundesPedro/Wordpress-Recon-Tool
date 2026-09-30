@@ -3,6 +3,8 @@ AsyncToolRunner - non-blocking subprocess execution for async contexts.
 """
 
 import asyncio
+import contextlib
+import os
 import re
 import shutil
 import subprocess
@@ -229,6 +231,7 @@ class AsyncToolRunner:
         timeout: int = 600,
         cwd: Optional[str] = None,
         env: Optional[dict] = None,
+        use_pty: bool = False,
     ) -> ToolResult:
         """Execute a command asynchronously without blocking the event loop.
 
@@ -237,6 +240,9 @@ class AsyncToolRunner:
             timeout: Maximum execution time in seconds
             cwd: Working directory for execution
             env: Environment variables override
+            use_pty: Allocate a pseudo-terminal for stdin/stdout/stderr. Some
+                CLIs (e.g. OpenDoor) call ``stty``/``isatty`` and crash on a
+                plain pipe; a PTY makes them behave as if run interactively.
 
         Returns:
             ToolResult with stdout, stderr, returncode, success
@@ -251,6 +257,9 @@ class AsyncToolRunner:
         safe_env = None
         if env:
             safe_env = {k: str(v) for k, v in env.items() if v is not None}
+
+        if use_pty:
+            return await self._run_with_pty(args, timeout, cwd, safe_env)
 
         proc: Optional[asyncio.subprocess.Process] = None
         try:
@@ -287,3 +296,76 @@ class AsyncToolRunner:
             raise ToolTimeoutError(self._binary_path, timeout)
         except OSError as e:
             raise RuntimeError(f"Error executing {self._binary_path}: {str(e)}") from e
+
+    async def _run_with_pty(
+        self,
+        args: list[str],
+        timeout: int,
+        cwd: Optional[str],
+        safe_env: Optional[dict],
+    ) -> ToolResult:
+        """Run a command attached to a pseudo-terminal (see ``use_pty``)."""
+        import pty
+
+        master_fd, slave_fd = pty.openpty()
+        proc: Optional[asyncio.subprocess.Process] = None
+        try:
+            async with asyncio.timeout(timeout):
+                proc = await asyncio.create_subprocess_exec(
+                    *self._build_cmd(args),
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    cwd=cwd,
+                    env=safe_env,
+                )
+                os.close(slave_fd)
+                slave_fd = -1
+                # stdout and stderr are merged onto the PTY.
+                stdout_bytes = await self._read_pty(master_fd)
+                await proc.wait()
+
+            stdout = _redact_sensitive_from_output(
+                ToolRunner._decode_output(stdout_bytes)
+            )
+            return ToolResult(
+                stdout=stdout,
+                stderr="",
+                returncode=proc.returncode if proc.returncode is not None else -1,
+                success=(proc.returncode == 0)
+                if proc.returncode is not None
+                else False,
+            )
+        except TimeoutError:
+            if proc is not None and proc.returncode is None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except ProcessLookupError:
+                    pass
+            raise ToolTimeoutError(self._binary_path, timeout) from None
+        except OSError as e:
+            raise RuntimeError(f"Error executing {self._binary_path}: {str(e)}") from e
+        finally:
+            for fd in (slave_fd, master_fd):
+                if fd is not None and fd >= 0:
+                    with contextlib.suppress(OSError):
+                        os.close(fd)
+
+    async def _read_pty(self, master_fd: int) -> bytes:
+        """Read a PTY master until the child closes it (EIO) or EOF."""
+        loop = asyncio.get_running_loop()
+        chunks: list[bytes] = []
+
+        def _read() -> bytes:
+            try:
+                return os.read(master_fd, 65536)
+            except OSError:
+                return b""
+
+        while True:
+            data = await loop.run_in_executor(None, _read)
+            if not data:
+                break
+            chunks.append(data)
+        return b"".join(chunks)

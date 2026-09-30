@@ -18,6 +18,15 @@ class TestServiceInventoryStep:
         assert step.name == "service_inventory"
         assert step.requires == ("services",)
 
+    def test_accepts_http_kwarg(self):
+        """The Runner passes http= to every step class; it must be accepted."""
+        from unittest.mock import MagicMock
+
+        step = ServiceInventoryStep(
+            target=MagicMock(), config=MagicMock(), http=MagicMock()
+        )
+        assert step.name == "service_inventory"
+
     async def test_emits_deduplicated_inventory(self):
         step = _step_with_context(
             [

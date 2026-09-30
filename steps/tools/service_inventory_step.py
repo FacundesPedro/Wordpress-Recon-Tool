@@ -24,7 +24,14 @@ class ServiceInventoryStep(BaseStep):
     requires = ("services",)
     provides = ("service_inventory",)
 
-    def __init__(self, target=None, config=None, name=None, description=None):
+    def __init__(
+        self,
+        target=None,
+        config=None,
+        http=None,  # accepted for Runner/BaseStep compatibility; unused
+        name=None,
+        description=None,
+    ):
         super().__init__(
             target=target,
             config=config,

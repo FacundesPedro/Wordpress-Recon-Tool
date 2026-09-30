@@ -304,7 +304,7 @@ class TestOpenDoorStep:
             "total": {"success": 1},
         }
 
-        async def fake_run(cmd, timeout=None):
+        async def fake_run(cmd, timeout=None, **kwargs):
             reports_dir = cmd[cmd.index("--reports-dir") + 1]
             target_dir = Path(reports_dir) / "example.com"
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -319,6 +319,19 @@ class TestOpenDoorStep:
         findings = await opendoor_step.run()
         assert len(findings) == 1
         assert findings[0].title == "OpenDoor Path Found: wp-content"
+
+    async def test_run_uses_pty(self, opendoor_step):
+        """OpenDoor needs a TTY (it calls stty); run() must request use_pty."""
+        opendoor_step.check_binary = lambda binary: (True, "")
+        captured = {}
+
+        async def fake_run(cmd, timeout=None, **kwargs):
+            captured.update(kwargs)
+            return ToolResult(stdout="", stderr="boom", returncode=1, success=False)
+
+        opendoor_step._async_tool_runner.run = fake_run
+        await opendoor_step.run()
+        assert captured.get("use_pty") is True
 
 
 class TestFfufCommandAndFailure:
@@ -360,6 +373,22 @@ class TestFfufCommandAndFailure:
         result = ToolResult(stdout="", stderr="", returncode=0, success=True)
         ffuf_directory_step._handle_result(result)
         assert ffuf_directory_step.findings == []
+
+    def test_zero_results_with_errors_is_finding(self, ffuf_directory_step):
+        """ffuf exits 0 even when every request failed (e.g. TLS SNI on an IP)."""
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        result = ToolResult(
+            stdout="",
+            stderr=":: Progress: [122/122] :: Errors: 122 ::",
+            returncode=0,
+            success=True,
+        )
+        ffuf_directory_step._handle_result(result)
+        assert len(ffuf_directory_step.findings) == 1
+        f = ffuf_directory_step.findings[0]
+        assert f.severity == "low"
+        assert f.title == "FFUF requests failed"
+        assert f.raw["errors"] == 122
 
     def test_run_persists_and_fails_loudly(self, ffuf_directory_step):
         ffuf_directory_step.config = MagicMock(quiet=False, insecure=False, save_raw=False)
@@ -440,7 +469,7 @@ class TestWpGatingAndPinning:
         opendoor_step.http = object()
         ran = {"value": False}
 
-        async def fake_run(cmd, timeout=None):
+        async def fake_run(cmd, timeout=None, **kwargs):
             ran["value"] = True
             return ToolResult(stdout="", stderr="", returncode=0, success=True)
 
@@ -468,6 +497,22 @@ class TestWpGatingAndPinning:
     def test_ffuf_no_host_header_when_unpinned(self, ffuf_directory_step):
         ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
         assert "-H" not in ffuf_directory_step.build_command()
+
+    def test_ffuf_sni_when_pinned(self):
+        target = Target(
+            url="https://app.example.com",
+            domain="app.example.com",
+            connect_ip="10.0.0.5",
+        )
+        step = FfufDirectoryStep(target=target, config=MagicMock(spec=ScanConfig))
+        step.config = MagicMock(quiet=False, insecure=False)
+        cmd = step.build_command()
+        assert "-sni" in cmd
+        assert cmd[cmd.index("-sni") + 1] == "app.example.com"
+
+    def test_ffuf_no_sni_when_unpinned(self, ffuf_directory_step):
+        ffuf_directory_step.config = MagicMock(quiet=False, insecure=False)
+        assert "-sni" not in ffuf_directory_step.build_command()
 
     def test_ffuf_wordlist_details_in_raw(self, ffuf_directory_step):
         ffuf_directory_step.wordlist = str(

@@ -383,7 +383,9 @@ class OpenDoorStep(BaseToolStep):
             cmd = self.build_command()
             self.logger.debug(f"Command: {' '.join(cmd)}")
 
-            result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
+            result = await self._async_tool_runner.run(
+                cmd, timeout=self.timeout, use_pty=True
+            )
 
             report_file = self._find_report(reports_dir)
             if report_file is None:

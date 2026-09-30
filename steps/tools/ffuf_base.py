@@ -13,6 +13,7 @@ Version note:
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -185,11 +186,17 @@ class FfufBaseStep(BaseToolStep):
             cmd.extend(["-rate", str(self.rate_limit)])
 
         # Split-horizon: fuzz the pinned IP but keep the real Host header.
-        from utils.target_net import host_header
+        from utils.target_net import host_header, sni_hostname
 
         host = host_header(self.target)
         if host:
             cmd.extend(["-H", f"Host: {host}"])
+
+        # ffuf derives TLS SNI from the URL host (the pinned IP); point it at
+        # the real hostname so the virtual host serves its certificate.
+        sni = sni_hostname(self.target)
+        if sni:
+            cmd.extend(["-sni", sni])
 
         if getattr(self.config, "quiet", False):
             cmd.append("-s")
@@ -301,9 +308,40 @@ class FfufBaseStep(BaseToolStep):
 
         self.findings = findings
         if not findings:
+            error_count = self._count_errors(stderr)
+            if error_count:
+                # ffuf exits 0 even when every request fails (TLS/SNI, DNS,
+                # connection refused); surface that instead of a silent "0 results".
+                self.logger.error(
+                    f"FFUF reported {error_count} request error(s) and no results"
+                )
+                self._add_finding(
+                    module=self.MODULE,
+                    severity="low",
+                    title="FFUF requests failed",
+                    description=(
+                        f"FFUF completed with 0 results and {error_count} request "
+                        "error(s); the scan did not reach the target (check TLS "
+                        "SNI/Host for pinned targets)."
+                    ),
+                    evidence=stderr[-1000:],
+                    recommendation=(
+                        "For pinned/IP targets pass -sni <host> (handled "
+                        "automatically when --resolve/--target-ip is used); verify "
+                        "the target is reachable."
+                    ),
+                    raw={"errors": error_count},
+                )
+                return
             self.logger.info("FFUF completed: 0 results")
         else:
             self.logger.info(f"FFUF completed: {len(findings)} result(s)")
+
+    @staticmethod
+    def _count_errors(stderr: str) -> int:
+        """Return the highest 'Errors: N' count reported by ffuf, else 0."""
+        counts = [int(m) for m in re.findall(r"Errors:\s*(\d+)", stderr or "")]
+        return max(counts) if counts else 0
 
     async def run(self) -> list[Finding]:
         """Execute FFUF discovery with loud failure handling."""

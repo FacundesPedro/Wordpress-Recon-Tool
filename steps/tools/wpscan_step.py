@@ -162,8 +162,12 @@ class WpscanStep(BaseToolStep):
     def _target_url(self) -> str:
         return str(self.target.url) if self.target is not None else ""
 
-    def build_command(self) -> list[str]:
-        """Build WPScan command with all options."""
+    def build_command(self, force: bool = False) -> list[str]:
+        """Build WPScan command with all options.
+
+        ``force`` adds ``--force`` (skip the WordPress/403 pre-check), used as
+        a one-shot retry when the initial run aborts behind a WAF/403.
+        """
         cmd = [self._tool_binary, "--url", self._target_url()]
 
         cmd.extend(["--format", "json"])
@@ -179,6 +183,9 @@ class WpscanStep(BaseToolStep):
         cmd.extend(["--enumerate", self.enumerate])
 
         cmd.extend(["--random-user-agent"])
+
+        if force:
+            cmd.append("--force")
 
         if getattr(self.config, "insecure", False):
             cmd.append("--disable-tls-checks")
@@ -593,6 +600,21 @@ class WpscanStep(BaseToolStep):
 
         return False, None
 
+    @staticmethod
+    def _needs_force_retry(result: ToolResult) -> bool:
+        """True when WPScan aborted on the WordPress/403 pre-check.
+
+        WPScan exits (code 4) with a "use --force" hint and a ``scan_aborted``
+        JSON key when the target answers 403 for its initial probe (common
+        behind a WAF). One ``--force`` retry restores the scan.
+        """
+        combined = ((result.stderr or "") + "\n" + (result.stdout or "")).lower()
+        return (
+            "use --force" in combined
+            or "scan_aborted" in combined
+            or getattr(result, "returncode", 0) == 4
+        )
+
     async def run(self) -> list[Finding]:
         """Execute WPScan and parse results."""
         exists, error = self.check_binary(self._tool_binary)
@@ -616,6 +638,18 @@ class WpscanStep(BaseToolStep):
         started_at = datetime.now(timezone.utc)
         try:
             result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
+
+            # WPScan aborts (rc 4 / scan_aborted) when the initial probe gets a
+            # 403 (WAF). Retry once with --force before giving up.
+            if self._needs_force_retry(result):
+                self.logger.warning(
+                    "WPScan aborted on the WordPress/403 pre-check - "
+                    "retrying once with --force"
+                )
+                cmd = self.build_command(force=True)
+                self.logger.debug(f"Retry command: {' '.join(cmd)}")
+                result = await self._async_tool_runner.run(cmd, timeout=self.timeout)
+
             self._persist_raw(
                 cmd,
                 result,

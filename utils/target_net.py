@@ -56,6 +56,18 @@ def host_header(target) -> str | None:
     return f"{domain}:{port}" if port else domain
 
 
+def sni_hostname(target) -> str | None:
+    """TLS SNI value when the target is pinned, else None.
+
+    Tools that connect to the pinned IP derive the TLS SNI from the URL host
+    (= the IP), which fails vhost routing. This returns the real hostname
+    (no port) to pass as the tool's ``-sni``/``--sni`` value.
+    """
+    if not pinned_ip(target):
+        return None
+    return _domain(target) or None
+
+
 def pinned_url(target) -> str:
     """Target URL with the host swapped for the pinned IP (scheme/port kept)."""
     ip = pinned_ip(target)
@@ -66,6 +78,29 @@ def pinned_url(target) -> str:
     if not parsed.hostname:
         return url
     netloc = f"{ip}:{parsed.port}" if parsed.port else ip
+    return urlunsplit(
+        (parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment)
+    )
+
+
+def restore_public_host(url: str, target) -> str:
+    """Rewrite a pinned connect IP back to the public hostname in a URL.
+
+    Pinned transports make ``response.url`` carry the internal IP; reports must
+    never leak it, so any URL whose host is the pinned IP is rewritten to the
+    real domain (port preserved).
+    """
+    ip = pinned_ip(target)
+    domain = _domain(target)
+    if not ip or not domain or not url:
+        return url
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+    if parsed.hostname != ip:
+        return url
+    netloc = f"{domain}:{parsed.port}" if parsed.port else domain
     return urlunsplit(
         (parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment)
     )

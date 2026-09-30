@@ -390,3 +390,25 @@ class TestAsyncToolRunner:
         result = asyncio.run(AsyncToolRunner("mytool").run(["mytool"]))
         assert result.returncode == -1
         assert result.success is False
+
+    def test_run_with_pty_captures_output(self):
+        import shutil
+
+        binary = shutil.which("printf") or "printf"
+        result = asyncio.run(
+            AsyncToolRunner(binary).run([binary, "pty-ok"], timeout=30, use_pty=True)
+        )
+        assert result.returncode == 0
+        assert "pty-ok" in result.stdout
+
+    def test_run_with_pty_supports_tty_tools(self):
+        """A tool that requires a terminal works under the PTY path."""
+        import shutil
+
+        binary = shutil.which("stty")
+        if not binary:
+            pytest.skip("stty not available")
+        result = asyncio.run(
+            AsyncToolRunner(binary).run([binary, "size"], timeout=30, use_pty=True)
+        )
+        assert result.returncode == 0

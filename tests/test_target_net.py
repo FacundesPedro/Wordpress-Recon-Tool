@@ -7,7 +7,9 @@ from utils.target_net import (
     host_header,
     pinned_ip,
     pinned_url,
+    restore_public_host,
     scan_host,
+    sni_hostname,
 )
 
 
@@ -50,3 +52,48 @@ class TestPinnedTarget:
         target.domain = ""
         target.url = "https://fallback.example"
         assert scan_host(target) == "https://fallback.example"
+
+
+class TestSniHostname:
+    def test_pinned_returns_domain(self):
+        target = Target(
+            url="https://app.example.com:8443/x",
+            domain="app.example.com",
+            connect_ip="10.0.0.5",
+        )
+        assert sni_hostname(target) == "app.example.com"
+
+    def test_unpinned_is_none(self):
+        target = Target(url="https://app.example.com", domain="app.example.com")
+        assert sni_hostname(target) is None
+
+
+class TestRestorePublicHost:
+    def test_rewrites_pinned_ip(self):
+        target = Target(
+            url="https://app.example.com:8443/base",
+            domain="app.example.com",
+            connect_ip="10.0.0.5",
+        )
+        assert (
+            restore_public_host("https://10.0.0.5:8443/wp-cron.php?x=1", target)
+            == "https://app.example.com:8443/wp-cron.php?x=1"
+        )
+
+    def test_keeps_public_url(self):
+        target = Target(
+            url="https://app.example.com",
+            domain="app.example.com",
+            connect_ip="10.0.0.5",
+        )
+        assert (
+            restore_public_host("https://app.example.com/x", target)
+            == "https://app.example.com/x"
+        )
+
+    def test_unpinned_unchanged(self):
+        target = Target(url="https://app.example.com", domain="app.example.com")
+        assert (
+            restore_public_host("https://10.0.0.5/x", target)
+            == "https://10.0.0.5/x"
+        )

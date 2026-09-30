@@ -436,3 +436,43 @@ class TestRun:
         findings = await wpscan_step.run()
         assert len(findings) == 1
         assert "WPScan Execution Failed" in findings[0].title
+
+
+class TestForceRetry:
+    @patch("steps.tools.wpscan_step.WpscanStep.check_binary")
+    async def test_retries_with_force_on_abort(self, mock_check, wpscan_step):
+        mock_check.return_value = (True, "")
+        abort = ToolResult(
+            stdout=json.dumps({"scan_aborted": "403 - use --force"}),
+            stderr="",
+            returncode=4,
+            success=False,
+        )
+        ok = ToolResult(
+            stdout=json.dumps({"version": SAMPLE_VERSION}),
+            stderr="",
+            returncode=0,
+            success=True,
+        )
+        wpscan_step._async_tool_runner.run = AsyncMock(side_effect=[abort, ok])
+
+        findings = await wpscan_step.run()
+
+        assert wpscan_step._async_tool_runner.run.await_count == 2
+        retry_cmd = wpscan_step._async_tool_runner.run.await_args_list[1].args[0]
+        assert "--force" in retry_cmd
+        assert any("Version Detected" in f.title for f in findings)
+        assert not any("Scan Aborted" in f.title for f in findings)
+
+    @patch("steps.tools.wpscan_step.WpscanStep.check_binary")
+    async def test_no_retry_when_successful(self, mock_check, wpscan_step):
+        mock_check.return_value = (True, "")
+        ok = ToolResult(
+            stdout=json.dumps({"version": SAMPLE_VERSION}),
+            stderr="",
+            returncode=0,
+            success=True,
+        )
+        wpscan_step._async_tool_runner.run = AsyncMock(return_value=ok)
+        await wpscan_step.run()
+        assert wpscan_step._async_tool_runner.run.await_count == 1
