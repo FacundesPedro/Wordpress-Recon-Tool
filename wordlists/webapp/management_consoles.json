@@ -1,0 +1,76 @@
+[
+  {
+    "name": "Nginx Proxy Manager",
+    "kind": "management",
+    "probe_paths": ["/api/", "/"],
+    "signature": "(?i)nginx\\s*proxy\\s*manager|nginx-proxy-manager|nginxproxy",
+    "version_paths": ["/api/"],
+    "version_pattern": "\"version\"\\s*:\\s*\"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
+    "advisories": [
+      {
+        "cve": "CVE-2026-40519",
+        "title": "Authenticated remote code execution in Nginx Proxy Manager",
+        "fixed_in": "2.15.2",
+        "severity": "high"
+      },
+      {
+        "cve": "CVE-2026-93964",
+        "title": "Privilege escalation / data exposure in Nginx Proxy Manager",
+        "fixed_in": "2.15.2",
+        "severity": "high"
+      }
+    ]
+  },
+  {
+    "name": "Portainer",
+    "kind": "management",
+    "probe_paths": ["/api/status", "/"],
+    "signature": "(?i)portainer",
+    "version_paths": ["/api/status", "/api/system/status"],
+    "version_pattern": "\"Version\"\\s*:\\s*\"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
+    "advisories": []
+  },
+  {
+    "name": "Grafana",
+    "kind": "management",
+    "probe_paths": ["/api/health", "/login"],
+    "signature": "(?i)grafana",
+    "version_paths": ["/api/health"],
+    "version_pattern": "\"version\"\\s*:\\s*\"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
+    "advisories": [
+      {
+        "cve": "CVE-2021-43798",
+        "title": "Grafana directory traversal (plugin file read)",
+        "fixed_in": "8.3.1",
+        "severity": "high"
+      }
+    ]
+  },
+  {
+    "name": "Jenkins",
+    "kind": "ci",
+    "probe_paths": ["/"],
+    "signature": "(?i)jenkins",
+    "version_header": "x-jenkins",
+    "version_pattern": "([0-9]+\\.[0-9]+(?:\\.[0-9]+)?)",
+    "advisories": []
+  },
+  {
+    "name": "Kibana",
+    "kind": "management",
+    "probe_paths": ["/api/status", "/app/kibana"],
+    "signature": "(?i)kibana",
+    "version_paths": ["/api/status"],
+    "version_pattern": "\"number\"\\s*:\\s*\"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
+    "advisories": []
+  },
+  {
+    "name": "Jupyter",
+    "kind": "notebook",
+    "probe_paths": ["/api/", "/tree"],
+    "signature": "(?i)jupyter",
+    "version_paths": ["/api/"],
+    "version_pattern": "\"version\"\\s*:\\s*\"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
+    "advisories": []
+  }
+]

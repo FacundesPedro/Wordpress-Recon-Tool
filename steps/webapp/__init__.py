@@ -15,6 +15,7 @@ from steps.webapp.host_header_step import HostHeaderStep
 from steps.webapp.http_methods_step import HttpMethodsStep
 from steps.webapp.js_library_step import JsLibraryStep
 from steps.webapp.jwt_audit_step import JwtAuditStep
+from steps.webapp.management_console_step import ManagementConsoleStep
 from steps.webapp.open_redirect_step import OpenRedirectStep
 from steps.webapp.sensitive_files_step import SensitiveFilesStep
 from steps.webapp.source_review_step import SourceReviewStep
@@ -45,4 +46,5 @@ __all__ = [
     "CacheAnalysisStep",
     "FormSecurityStep",
     "TechFingerprintStep",
+    "ManagementConsoleStep",
 ]

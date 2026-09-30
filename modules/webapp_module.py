@@ -20,7 +20,7 @@ security assessments (e.g. internal clients that are not WordPress sites).
 #        CspAuditStep, ApiSurfaceStep, AdminSurfaceStep, OpenRedirectStep,
 #        HostHeaderStep, JwtAuditStep, ClientSideAuditStep, WebSocketStep,
 #        JsLibraryStep, SensitiveFilesStep, CacheAnalysisStep,
-#        FormSecurityStep, TechFingerprintStep
+#        FormSecurityStep, TechFingerprintStep, ManagementConsoleStep
 
 from modules.module import Module
 from steps.webapp import (
@@ -38,6 +38,7 @@ from steps.webapp import (
     HttpMethodsStep,
     JsLibraryStep,
     JwtAuditStep,
+    ManagementConsoleStep,
     OpenRedirectStep,
     SensitiveFilesStep,
     SourcemapStep,
@@ -79,3 +80,4 @@ class WebappModule(Module):
         self.add_step(CacheAnalysisStep)
         self.add_step(FormSecurityStep)
         self.add_step(TechFingerprintStep)
+        self.add_step(ManagementConsoleStep)

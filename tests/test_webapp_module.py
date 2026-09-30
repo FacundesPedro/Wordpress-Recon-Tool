@@ -33,6 +33,7 @@ EXPECTED_WEBAPP_STEPS = [
     "CacheAnalysisStep",
     "FormSecurityStep",
     "TechFingerprintStep",
+    "ManagementConsoleStep",
 ]
 
 

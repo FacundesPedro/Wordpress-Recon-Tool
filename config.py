@@ -79,6 +79,24 @@ class ScanConfig(BaseSettings):
         ),
     )
     quiet: bool = Field(default=False, description="Suppress console output")
+    raw_list_cap: int = Field(
+        default=200, ge=0, le=100000,
+        description=(
+            "Max entries stored in a finding's list raw field and evidence "
+            "(0 = unlimited); prevents report-size explosions"
+        ),
+    )
+    report_render_limit: int = Field(
+        default=500, ge=0, le=100000,
+        description=(
+            "Max findings rendered per report format (markdown/html/pdf); "
+            "0 = unlimited. Guards against the PDF renderer OOMing on huge scans"
+        ),
+    )
+    report_render_timeout: int = Field(
+        default=120, ge=0, le=3600,
+        description="Wall-clock timeout (seconds) for PDF rendering (0 = no limit)",
+    )
 
     wpscan_api_token: str = Field(default="", description="WPScan API token")
     wpscan_timeout: int = Field(
@@ -373,6 +391,13 @@ class ScanConfig(BaseSettings):
     webapp_websocket_probe: bool = Field(
         default=True,
         description="Probe WebSocket endpoints for cross-origin handshakes (websocket step)",
+    )
+    webapp_mgmt_console_probe: bool = Field(
+        default=True,
+        description=(
+            "Probe for exposed management consoles and match versions to "
+            "advisories (management_console step)"
+        ),
     )
     takeover_max_subdomains: int = Field(
         default=25, ge=1, le=200,
