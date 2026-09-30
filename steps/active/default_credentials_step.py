@@ -125,9 +125,7 @@ class DefaultCredentialsStep(ActiveHttpStep):
                         "Change default credentials immediately; enforce "
                         "strong passwords and MFA",
                         raw={"path": path, "url": url, "user": user,
-                             "final_url": str(
-                                 getattr(response, "url", None) or url
-                             )},
+                             "final_url": self.public_url(response, url)},
                     )
                     break  # stop probing this endpoint on success
 

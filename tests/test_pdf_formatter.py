@@ -96,3 +96,43 @@ class TestPdfFormatWithXhtml2pdf:
         with patch.dict("sys.modules", {"xhtml2pdf": module}):
             PdfFormatter.save(report, out_path)
         assert out_path.read_bytes() == b"%PDF-1.4 mock"
+
+    def test_render_timeout_raises(self):
+        """A wedged renderer must not hang the batch run."""
+        import time
+
+        report = make_report()
+        pisa = fake_pisa()
+        real_create = pisa.CreatePDF.side_effect
+
+        def _slow(src=None, dest=None, encoding=None):
+            time.sleep(2.0)
+            return real_create(src=src, dest=dest, encoding=encoding)
+
+        pisa.CreatePDF.side_effect = _slow
+        module = fake_xhtml2pdf(pisa)
+        with patch.dict("sys.modules", {"xhtml2pdf": module}), pytest.raises(
+            RuntimeError, match="timed out|exceeded"
+        ):
+            PdfFormatter.format(report, timeout=1)
+
+    def test_render_limit_adds_omission_note(self):
+        report = make_report()
+        for i in range(10):
+            report.findings.append(
+                Finding(
+                    module="test",
+                    step="check",
+                    severity="info",
+                    title=f"Info {i}",
+                    description="d",
+                    evidence="e",
+                    recommendation="r",
+                )
+            )
+        pisa = fake_pisa()
+        module = fake_xhtml2pdf(pisa)
+        with patch.dict("sys.modules", {"xhtml2pdf": module}):
+            PdfFormatter.format(report, max_findings=2)
+        src = pisa.CreatePDF.call_args.kwargs["src"]
+        assert "omitted from this report" in src

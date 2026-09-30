@@ -132,7 +132,7 @@ class RateLimitStep(ActiveHttpStep):
                 if response is None:
                     continue
                 statuses.append(response.status_code)
-                last_url = str(getattr(response, "url", "") or self.urljoin(path))
+                last_url = self.public_url(response, self.urljoin(path))
                 last_ct = (
                     (response.headers.get("content-type") or "")
                     if getattr(response, "headers", None)

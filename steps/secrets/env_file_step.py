@@ -77,9 +77,7 @@ class EnvFileStep(BaseHttpStep, WordlistDependencyMixin):
                             {
                                 "path": path,
                                 "url": url,
-                                "final_url": str(
-                                    getattr(response, "url", None) or url
-                                ),
+                                "final_url": self.public_url(response, url),
                             }
                         )
                         self.logger.info(f"Found .env file: {path}")

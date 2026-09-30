@@ -352,6 +352,20 @@ def main(
             help="Do not redact secrets from persisted raw output (debug only)",
         ),
     ] = False,
+    report_render_limit: Annotated[
+        int,
+        typer.Option(
+            "--report-render-limit",
+            help="Max findings rendered in markdown/html/pdf (0 = unlimited)",
+        ),
+    ] = 500,
+    report_timeout: Annotated[
+        int,
+        typer.Option(
+            "--report-timeout",
+            help="Wall-clock timeout (seconds) for PDF rendering (0 = no limit)",
+        ),
+    ] = 120,
     skip_reachability_check: Annotated[
         bool,
         typer.Option(
@@ -482,6 +496,8 @@ def main(
         config.raw_output_dir = raw_output
     config.raw_max_bytes = raw_max_bytes
     config.raw_no_redact = raw_no_redact
+    config.report_render_limit = report_render_limit
+    config.report_render_timeout = report_timeout
 
     main_logger = Logger("Main", config.log_level)
 
@@ -854,6 +870,9 @@ def _save_report(
     filename_base = report_file or generate_report_filename(
         report.domain, timestamp
     )
+    # Cap the rendered findings so a huge scan cannot OOM the PDF/HTML output.
+    render_limit = getattr(config, "report_render_limit", 0) or 0
+    render_timeout = getattr(config, "report_render_timeout", 0) or 0
 
     if "json" in formats:
         try:
@@ -866,7 +885,7 @@ def _save_report(
     if "markdown" in formats:
         try:
             md_path = output / f"{filename_base}.md"
-            MarkdownFormatter.save(report, md_path)
+            MarkdownFormatter.save(report, md_path, max_findings=render_limit)
             console.print(f"[green]Markdown report: {md_path}[/green]")
         except Exception as exc:
             console.print(f"[yellow]Warning: Markdown report failed ({exc})[/yellow]")
@@ -882,7 +901,7 @@ def _save_report(
     if "html" in formats:
         try:
             html_path = output / f"{filename_base}.html"
-            HtmlFormatter.save(report, html_path)
+            HtmlFormatter.save(report, html_path, max_findings=render_limit)
             console.print(f"[green]HTML report: {html_path}[/green]")
         except Exception as exc:
             console.print(f"[yellow]Warning: HTML report failed ({exc})[/yellow]")
@@ -890,7 +909,10 @@ def _save_report(
     if "pdf" in formats:
         try:
             pdf_path = output / f"{filename_base}.pdf"
-            PdfFormatter.save(report, pdf_path)
+            PdfFormatter.save(
+                report, pdf_path,
+                max_findings=render_limit, timeout=render_timeout,
+            )
             console.print(f"[green]PDF report: {pdf_path}[/green]")
         except ImportError:
             console.print(

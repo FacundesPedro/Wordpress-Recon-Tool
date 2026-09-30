@@ -54,7 +54,7 @@ class LicenseStep(BaseHttpStep):
                         recommendation="Remove license.txt from production servers",
                         raw={
                             "url": url,
-                            "final_url": str(getattr(response, "url", None) or url),
+                            "final_url": self.public_url(response, url),
                             "version": version,
                         },
                     )

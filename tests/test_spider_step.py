@@ -302,6 +302,20 @@ class TestRun:
 
         assert len(findings) >= 1
 
+    async def test_no_pages_emits_diagnostic(self, mock_http, mock_target, mock_config):
+        """A blocked start URL must be visible, not a silent '0 pages'."""
+        findings, _ = await self._run_with_mocks(
+            mock_http,
+            mock_target,
+            mock_config,
+            [MagicMock(**{"status_code": 403, "text": "blocked"})],
+        )
+
+        diag = [f for f in findings if "could not crawl" in f.title]
+        assert len(diag) == 1
+        assert diag[0].raw["operational"] is True
+        assert "403" in diag[0].evidence
+
     async def test_dedupes_visited_urls(self, mock_http, mock_target, mock_config):
         mock_config.spider_max_pages = 50
         mock_config.spider_max_depth = 2

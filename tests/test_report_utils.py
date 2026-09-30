@@ -175,6 +175,20 @@ class TestMarkdownFormatter:
         assert "Medium & Low" not in output
         assert "Informational" not in output
 
+    def test_render_limit_caps_and_notes(self):
+        findings = [
+            make_sample_finding("info", title=f"Info {i}") for i in range(5)
+        ] + [make_sample_finding("critical", title="Crit 0")]
+        report = make_report(findings=findings)
+
+        output = MarkdownFormatter.format(report, max_findings=2)
+
+        # Total in the summary still reflects all findings.
+        assert "Total Findings:** 6" in output
+        # The most severe survive; the rest are noted as omitted.
+        assert "Crit 0" in output
+        assert "4 finding(s) omitted" in output
+
     def test_format_finding(self):
         finding = make_sample_finding("high", title="XSS", recommendation="sanitize")
         output = MarkdownFormatter._format_finding(finding)

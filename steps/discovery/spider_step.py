@@ -3,6 +3,7 @@
 # WHY: Discovers hidden pages, exposed paths, and unintended information disclosure
 
 import re
+from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 from base.http_step import BaseHttpStep
@@ -65,6 +66,8 @@ class SpiderStep(BaseHttpStep):
         discovered_admin: list[str] = []
         seen_admin: set[str] = set()
         has_comments = False
+        start_error: Optional[str] = None
+        start_status: object = None
 
         while to_visit and len(visited) < max_pages:
             url, depth = to_visit.pop(0)
@@ -80,13 +83,18 @@ class SpiderStep(BaseHttpStep):
             try:
                 resp = await self.http.get(url, follow_redirects=True)
             except Exception as e:
+                if url == start_url:
+                    start_error = f"{type(e).__name__}: {e}"
                 self.logger.debug(f"Error fetching {url}: {e}")
                 continue
 
             if resp.status_code != 200:
+                if url == start_url:
+                    start_status = resp.status_code
+                self.logger.debug(f"Skipping {url}: HTTP {resp.status_code}")
                 continue
 
-            fetched.add(str(getattr(resp, "url", None) or url))
+            fetched.add(self.public_url(resp, url))
             body = resp.text
 
             for match in self.FORM_PATTERN.finditer(body):
@@ -127,6 +135,42 @@ class SpiderStep(BaseHttpStep):
             f"Spider completed: {len(fetched)} pages fetched, "
             f"{len(discovered_forms)} forms, {len(discovered_uploads)} upload dirs"
         )
+
+        if not fetched:
+            # Do not let "0 pages" look like a clean crawl: record why the
+            # start URL could not be retrieved (WAF block, non-200, error).
+            if start_error:
+                reason = f"request error ({start_error})"
+            elif start_status is not None:
+                reason = f"HTTP {start_status}"
+            else:
+                reason = "no pages processed"
+            self.logger.warning(
+                f"Spider could not crawl {start_url}: {reason}"
+            )
+            self._add_finding(
+                module=self.MODULE,
+                severity="info",
+                title="Content spider could not crawl the target",
+                description=(
+                    "The start URL did not yield any crawlable page ("
+                    f"{reason}), so crawl-based coverage is missing for this "
+                    "scan. This is an execution note, not a target result."
+                ),
+                evidence=f"GET {start_url} -> {reason}",
+                recommendation=(
+                    "Verify the target is reachable and the start URL returns "
+                    "200; if a prior step flooded the target, a WAF/rate-limit "
+                    "may be blocking requests."
+                ),
+                raw={
+                    "operational": True,
+                    "start_url": start_url,
+                    "status": start_status,
+                    "error": start_error,
+                    "pages_visited": 0,
+                },
+            )
 
         if discovered_forms:
             self._add_finding(

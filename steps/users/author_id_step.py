@@ -59,7 +59,7 @@ class AuthorIdStep(BaseHttpStep):
                         found_ids.append(author_id)
                         found_urls.append(url)
                         final_urls.append(
-                            str(getattr(response, "url", None) or url)
+                            self.public_url(response, url)
                         )
                         self.logger.debug(f"Found valid author ID: {author_id}")
 

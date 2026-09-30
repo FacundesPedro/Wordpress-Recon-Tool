@@ -73,3 +73,15 @@ class BaseHttpStep(BaseStep):
     def urljoin(self, path: str) -> str:
         """Join a path to the target URL."""
         return self.target.url.rstrip("/") + "/" + path.lstrip("/")
+
+    def public_url(self, response=None, fallback: str = "") -> str:
+        """Return a response's final URL with any pinned internal IP hidden.
+
+        With ``--resolve``/``--target-ip`` the transport connects to the pinned
+        IP and ``response.url`` reflects it; reports must keep the public
+        hostname instead.
+        """
+        from utils.target_net import restore_public_host
+
+        value = str(getattr(response, "url", None) or fallback or "")
+        return restore_public_host(value, self.target)

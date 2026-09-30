@@ -132,7 +132,7 @@ class SourcemapStep(BaseHttpStep):
                         f"(likely an SPA/soft-404 shell) - skipped"
                     )
                     continue
-                final_url = str(getattr(response, "url", None) or map_url)
+                final_url = self.public_url(response, map_url)
                 found_maps.append((map_url, len(text.splitlines()), origin, final_url))
                 self.logger.info(f"Exposed sourcemap: {map_url}")
 

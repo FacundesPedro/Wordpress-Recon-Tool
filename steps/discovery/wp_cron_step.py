@@ -60,7 +60,7 @@ class WpCronStep(BaseHttpStep):
                     recommendation="Disable wp-cron and create a real cronjob instead",
                     raw={
                         "url": url,
-                        "final_url": str(getattr(response, "url", None) or url),
+                        "final_url": self.public_url(response, url),
                         "status": status,
                     },
                 )
