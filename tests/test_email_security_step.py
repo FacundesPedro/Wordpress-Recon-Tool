@@ -1,6 +1,6 @@
 """Tests for EmailSecurityStep."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from steps.passive.email_security_step import (
     EmailSecurityStep,
@@ -66,18 +66,76 @@ class TestEmailSecurityStep:
         assert findings == []
 
     def test_weak_spf_and_dmarc_reported(self, mock_target, mock_config):
+        from utils.dns_query import DigResult
+
         mock_target.domain = "example.com"
         step = self.make_step(mock_target, mock_config)
         step.check_binary = MagicMock(return_value=(True, ""))
-        step._query_txt = MagicMock(
-            side_effect=lambda q, rt="TXT": (
-                ["v=spf1 +all"]
-                if q == "example.com"
-                else (["v=DMARC1; p=none"] if "_dmarc" in q else [])
-            )
-        )
+        step._check_dkim = AsyncMock()
+
+        async def fake_query(name, record_type="TXT"):
+            if name == "example.com" and record_type == "TXT":
+                return DigResult(
+                    status="NOERROR", answer_count=1, records=["v=spf1 +all"]
+                )
+            if name == "_dmarc.example.com":
+                return DigResult(
+                    status="NOERROR", answer_count=1, records=["v=DMARC1; p=none"]
+                )
+            return DigResult(status="NOERROR", answer_count=0)
+
+        step._query_with_fallback = AsyncMock(side_effect=fake_query)
         import asyncio
         findings = asyncio.run(step.run())
         titles = [f.title for f in findings]
         assert any("+all" in t for t in titles)
         assert any("p=none" in t for t in titles)
+
+    def test_lookup_failure_not_reported_as_no_record(self, mock_target, mock_config):
+        """SERVFAIL must not be reported as 'No SPF record found'."""
+        from utils.dns_query import DigResult
+
+        mock_target.domain = "example.com"
+        step = self.make_step(mock_target, mock_config)
+        step.check_binary = MagicMock(return_value=(True, ""))
+        step._check_dkim = AsyncMock()
+        step._query_with_fallback = AsyncMock(
+            side_effect=lambda name, record_type="TXT": DigResult(
+                status="SERVFAIL", error=True
+            )
+        )
+        import asyncio
+        findings = asyncio.run(step.run())
+        titles = [f.title for f in findings]
+        assert not any("No SPF" in t for t in titles)
+        assert not any("No DMARC" in t for t in titles)
+        assert any(f.raw.get("operational") for f in findings)
+
+    def test_dmarc_inherited_from_org_domain(self, mock_target, mock_config):
+        from utils.dns_query import DigResult
+
+        mock_target.domain = "sub.example.com"
+        step = self.make_step(mock_target, mock_config)
+        step.check_binary = MagicMock(return_value=(True, ""))
+        step._check_dkim = AsyncMock()
+
+        async def fake_query(name, record_type="TXT"):
+            if name == "_dmarc.sub.example.com":
+                return DigResult(status="NOERROR", answer_count=0)  # no record
+            if name == "_dmarc.example.com":
+                return DigResult(
+                    status="NOERROR",
+                    answer_count=1,
+                    records=["v=DMARC1; p=reject; sp=none"],
+                )
+            return DigResult(status="NOERROR", answer_count=0)
+
+        step._query_with_fallback = AsyncMock(side_effect=fake_query)
+        import asyncio
+        findings = asyncio.run(step.run())
+        dmarc = [f for f in findings if "DMARC" in f.title]
+        assert dmarc
+        # sp=none applies to the subdomain -> weak policy reported.
+        assert dmarc[0].severity == "medium"
+        assert dmarc[0].raw.get("scope") == "sp"
+        assert "inherited" in dmarc[0].evidence.lower()

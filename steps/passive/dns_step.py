@@ -10,13 +10,14 @@ Analyzes SPF, hosting provider, and email infrastructure.
 # WHY: DNS reveals infrastructure, hosting, and email security config
 
 import re
-from typing import Literal, Optional
+from typing import Optional
 
 from base.step import BaseToolStep
 from base.tool import ToolResult
 from config import Config
 from core.finding import Finding
 from core.target import Target
+from utils.dns_query import build_dig_command, parse_dig_output
 
 HOSTING_PROVIDER_PATTERNS = {
     "Locaweb": ["locaweb.com.br", "locaweb.com"],
@@ -80,14 +81,7 @@ class DnsStep(BaseToolStep):
     def build_command(self, record_type: str = "A") -> list[str]:
         if not self.target or not self.target.domain:
             return [self._tool_binary]
-        return [
-            self._tool_binary,
-            self.target.domain,
-            record_type,
-            "+short",
-            "+time=5",
-            "+tries=2",
-        ]
+        return build_dig_command(self.target.domain, record_type, timeout=5)
 
     async def run(self) -> list[Finding]:
         self.logger.debug("Starting DNS enumeration...")
@@ -132,18 +126,27 @@ class DnsStep(BaseToolStep):
         if not result or not result.success:
             return findings
 
-        output = result.stdout.strip()
+        output = (result.stdout or "").strip()
         if not output:
             return findings
 
-        lines = [line.strip() for line in output.split("\n") if line.strip()]
-        if not lines:
-            return findings
-
-        valid_results = []
-        for line in lines:
-            if self._is_valid_result(line):
-                valid_results.append(line)
+        # Full `dig` output (status header + answers) lets us tell a proven
+        # absence from a resolver failure; plain `+short` output still works.
+        parsed = parse_dig_output(output)
+        if parsed.status or parsed.answer_count:
+            if parsed.indeterminate:
+                self.logger.debug(
+                    f"{record_type} lookup indeterminate ({parsed.evidence})"
+                )
+                return findings
+            valid_results = parsed.records
+            status_note = f"\n{parsed.evidence}" if parsed.status else ""
+        else:
+            valid_results = []
+            for line in (line.strip() for line in output.split("\n")):
+                if line and self._is_valid_result(line):
+                    valid_results.append(line)
+            status_note = ""
 
         if valid_results:
             unique_results = list(dict.fromkeys(valid_results))
@@ -152,6 +155,7 @@ class DnsStep(BaseToolStep):
             evidence = f"Type: {record_type}\n" + "\n".join(unique_results[:10])
             if len(unique_results) > 10:
                 evidence += f"\n... and {len(unique_results) - 10} more"
+            evidence += status_note
 
             findings.append(
                 Finding(
@@ -166,6 +170,8 @@ class DnsStep(BaseToolStep):
                         "record_type": record_type,
                         "records": unique_results,
                         "count": len(unique_results),
+                        "dns_status": parsed.status,
+                        "answer_count": parsed.answer_count,
                     },
                 )
             )
@@ -174,66 +180,15 @@ class DnsStep(BaseToolStep):
         return findings
 
     def _analyze_intelligence(self, domain: str, findings: list[Finding]) -> None:
-        """Analyze DNS records for intelligence."""
-        from utils.domain_utils import is_non_public_domain
+        """Analyze DNS records for infrastructure intelligence.
 
-        if not is_non_public_domain(domain):
-            self._analyze_spf(domain)
+        SPF/DMARC/DKIM/CAA quality is owned by ``email_security``; this step
+        only reports raw records and hosting/e-mail-provider intel so the two
+        steps do not emit duplicate e-mail findings (e.g. "No SPF Record").
+        """
         self._analyze_google_verification(domain)
         self._analyze_hosting_provider(domain)
         self._analyze_email_provider(domain)
-
-    def _analyze_spf(self, domain: str) -> None:
-        """Analyze SPF records for email security configuration."""
-        txt_records = self._dns_records.get("TXT", [])
-        spf_records = [t for t in txt_records if t.lower().startswith("v=spf1")]
-
-        if not spf_records:
-            self._add_finding(
-                module=self.MODULE,
-                severity="medium",
-                title="No SPF Record Found",
-                description="Domain lacks SPF record, making it vulnerable to email spoofing",
-                evidence=f"Domain: {domain}",
-                recommendation="Add an SPF record to prevent email spoofing attacks",
-                raw={"domain": domain},
-            )
-            return
-
-        spf_text = " ".join(spf_records)
-        all_records = " ".join(txt_records)
-
-        severity: Literal["info", "low", "medium", "high", "critical"] = "low"
-
-        if "~all" in spf_text.lower():
-            severity = "low"
-            severity_note = "Softfail (~all) - emails may be rejected"
-        elif "-all" in spf_text.lower():
-            severity = "info"
-            severity_note = "Hard fail (-all) - strict SPF policy"
-        else:
-            severity = "medium"
-            severity_note = "No fail mechanism configured"
-
-        # Lookup-count pressure is a deliverability/robustness concern, not an
-        # email-spoofing risk, and must not overwrite the spoofing severity.
-        include_count = len(re.findall(r"include:", spf_text, re.IGNORECASE))
-
-        self._add_finding(
-            module=self.MODULE,
-            severity=severity,
-            title="SPF Configuration Detected",
-            description=f"SPF record found. {severity_note}",
-            evidence=spf_text[:500],
-            recommendation="Ensure SPF policy is correctly configured to prevent spoofing",
-            raw={
-                "domain": domain,
-                "spf_record": spf_records[0] if spf_records else None,
-                "include_count": include_count,
-                "has_hard_fail": "-all" in spf_text.lower(),
-                "has_soft_fail": "~all" in spf_text.lower(),
-            },
-        )
 
     def _analyze_google_verification(self, domain: str) -> None:
         """Detect Google site verification records."""

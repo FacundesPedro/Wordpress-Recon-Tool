@@ -6,10 +6,17 @@ Complements the DNS step by evaluating the *quality* of email-related DNS
 records: `_dmarc` policy strength (p=none is weak), SPF existence and
 strictness (~all vs -all vs +all), common DKIM selectors, and CAA records
 restricting certificate issuance. Uses the system `dig` binary.
+
+Evidence rigor (UPDATE.md C6): a full `dig` response is parsed so "absent"
+(NOERROR + 0 answers, or NXDOMAIN) is distinguished from a lookup failure
+(SERVFAIL/REFUSED/timeout). A failed lookup is never reported as "no record";
+it becomes an operational note. Queries fall back to the zone's authoritative
+nameservers, and DMARC is evaluated for the organizational domain (subdomains
+inherit it via `sp=`), while SPF is not inherited.
 """
 
 # WHAT: Audits email-security DNS records (SPF/DMARC/DKIM) and CAA
-# HOW: dig TXT/CNAME queries; policy-strength analysis
+# HOW: full dig TXT/CNAME/CAA queries; status/ANSWER-aware; authoritative NS
 # WHY: Weak SPF/DMARC enables direct domain spoofing (phishing)
 
 import re
@@ -20,6 +27,7 @@ from base.tool import ToolResult
 from config import Config
 from core.finding import Finding
 from core.target import Target
+from utils.dns_query import DigResult, build_dig_command, organizational_domain, parse_dig_output
 
 DKIM_SELECTORS = [
     "default", "google", "selector1", "selector2", "s1", "s2",
@@ -69,8 +77,12 @@ def analyze_spf(records: list[str]) -> Optional[dict]:
     return None
 
 
-def analyze_dmarc(records: list[str]) -> Optional[dict]:
-    """Analyze DMARC record; return issue dict or None when strong/absent."""
+def analyze_dmarc(records: list[str], is_subdomain: bool = False) -> Optional[dict]:
+    """Analyze DMARC record; return issue dict or None when strong/absent.
+
+    For a subdomain inheriting the organizational DMARC record, the subdomain
+    policy (`sp=`) takes precedence over `p=`.
+    """
     dmarc = next(
         (r for r in records if r.lower().startswith("v=dmarc1")), None
     )
@@ -85,18 +97,28 @@ def analyze_dmarc(records: list[str]) -> Optional[dict]:
             "recommendation": "Publish a DMARC record (start at p=quarantine, move to p=reject)",
             "raw": {},
         }
-    policy = re.search(r"\bp=(\w+)", dmarc, re.I)
-    value = (policy.group(1).lower() if policy else "none")
+
+    value = None
+    scope = "p"
+    if is_subdomain:
+        sub = re.search(r"\bsp=(\w+)", dmarc, re.I)
+        if sub:
+            value = sub.group(1).lower()
+            scope = "sp"
+    if value is None:
+        policy = re.search(r"\bp=(\w+)", dmarc, re.I)
+        value = policy.group(1).lower() if policy else "none"
+
     if value == "none":
         return {
             "severity": "medium",
-            "title": "DMARC policy is p=none (monitor only)",
+            "title": f"DMARC policy is {scope}=none (monitor only)",
             "description": (
                 f"DMARC record does not instruct receivers to quarantine or "
                 f"reject spoofed mail: {dmarc[:120]}"
             ),
             "recommendation": "Move to p=quarantine then p=reject once reports look clean",
-            "raw": {"dmarc": dmarc, "policy": value},
+            "raw": {"dmarc": dmarc, "policy": value, "scope": scope},
         }
     return None
 
@@ -121,12 +143,10 @@ class EmailSecurityStep(BaseToolStep):
             target=target, config=config,
             name=self.name, description=self.description,
         )
+        self._ns_cache: Optional[list[str]] = None
 
     def build_command(self, query: str = "", record_type: str = "TXT") -> list[str]:
-        return [
-            self._tool_binary, query or "", record_type,
-            "+short", "+time=5", "+tries=2",
-        ]
+        return build_dig_command(query or "", record_type, timeout=5)
 
     async def run(self) -> list[Finding]:
         self.logger.info("Auditing email security DNS records...")
@@ -149,45 +169,48 @@ class EmailSecurityStep(BaseToolStep):
             )
             return self.findings
 
-        # 1. SPF + DMARC via TXT
-        txt_records = self._query_txt(domain)
-        txt_sub = self._query_txt(f"_dmarc.{domain}")
+        # 1. SPF (never inherited by subdomains)
+        txt = await self._query_with_fallback(domain, "TXT")
+        if txt.indeterminate:
+            self._add_lookup_failure(domain, "TXT", txt)
+        else:
+            spf_issue = analyze_spf(txt.records)
+            if spf_issue:
+                self._add_issue(spf_issue, f"TXT {domain} ({txt.evidence})")
 
-        spf_issue = analyze_spf(txt_records)
-        if spf_issue:
-            self._add_issue(spf_issue, f"TXT {domain}")
+        # 2. DMARC, with organizational-domain inheritance (subdomains inherit;
+        #    `sp=` overrides `p=` for the subdomain).
+        dmarc_name = f"_dmarc.{domain}"
+        dmarc = await self._query_with_fallback(dmarc_name, "TXT")
+        if dmarc.indeterminate:
+            self._add_lookup_failure(dmarc_name, "TXT", dmarc)
+        else:
+            dmarc_records = dmarc.records
+            is_subdomain = False
+            evidence = f"TXT {dmarc_name} ({dmarc.evidence})"
+            if dmarc.no_record:
+                org = organizational_domain(domain)
+                if org and org != domain:
+                    org_res = await self._query_with_fallback(f"_dmarc.{org}", "TXT")
+                    if not org_res.indeterminate and org_res.records:
+                        dmarc_records = org_res.records
+                        is_subdomain = True
+                        evidence = (
+                            f"DMARC inherited from _dmarc.{org} "
+                            f"({org_res.evidence})"
+                        )
+            dmarc_issue = analyze_dmarc(dmarc_records, is_subdomain=is_subdomain)
+            if dmarc_issue:
+                self._add_issue(dmarc_issue, evidence)
 
-        # DMARC: check apex TXT then _dmarc subdomain
-        all_txt = txt_records + txt_sub
-        dmarc_issue = analyze_dmarc(all_txt)
-        if dmarc_issue:
-            self._add_issue(dmarc_issue, f"TXT _dmarc.{domain}")
+        # 3. DKIM selector probes
+        await self._check_dkim(domain)
 
-        # 2. DKIM selector probes
-        dkim_found = False
-        for selector in DKIM_SELECTORS[:5]:
-            records = self._query_txt(f"{selector}._domainkey.{domain}", "TXT")
-            if any("v=dkim1" in r.lower() or "p=" in r.lower() for r in records):
-                dkim_found = True
-                break
-        if not dkim_found:
-            self._add_issue(
-                {
-                    "severity": "low",
-                    "title": "No DKIM record found on common selectors",
-                    "description": (
-                        "Probed common DKIM selectors and found none. "
-                        "Unsigned mail is more likely to be flagged/spoofed."
-                    ),
-                    "recommendation": "Publish DKIM keys for your mail senders",
-                    "raw": {"selectors_probed": DKIM_SELECTORS[:5]},
-                },
-                f"TXT <selector>._domainkey.{domain}",
-            )
-
-        # 3. CAA
-        caa = self._query_txt(domain, "CAA")
-        if not caa:
+        # 4. CAA
+        caa = await self._query_with_fallback(domain, "CAA")
+        if caa.indeterminate:
+            self._add_lookup_failure(domain, "CAA", caa)
+        elif caa.no_record:
             self._add_issue(
                 {
                     "severity": "low",
@@ -199,31 +222,98 @@ class EmailSecurityStep(BaseToolStep):
                     "recommendation": "Publish CAA records listing your CAs",
                     "raw": {},
                 },
-                f"CAA {domain}",
+                f"CAA {domain} ({caa.evidence})",
             )
 
         self.logger.info(f"Email security audit: {len(self.findings)} finding(s)")
         return self.findings
 
-    # -- helpers ----------------------------------------------------------
+    # -- DKIM --------------------------------------------------------------
 
-    def _query_txt(self, query: str, record_type: str = "TXT") -> list[str]:
-        """Run a dig query and return non-empty answer lines."""
-        try:
-            result = self._tool_runner.run(
-                self.build_command(query, record_type),
-                timeout=self.DNS_TIMEOUT,
+    async def _check_dkim(self, domain: str) -> None:
+        selectors = DKIM_SELECTORS[:5]
+        indeterminate: list[str] = []
+        for selector in selectors:
+            result = await self._dig(f"{selector}._domainkey.{domain}", "TXT")
+            if result.indeterminate:
+                indeterminate.append(selector)
+                continue
+            if any(
+                r.lower().startswith("v=dkim1") or "p=" in r.lower()
+                for r in result.records
+            ):
+                return
+        if indeterminate and len(indeterminate) == len(selectors):
+            # Every selector lookup failed - do not claim "no DKIM".
+            self._add_lookup_failure(
+                f"<selector>._domainkey.{domain}", "TXT", None
             )
+            return
+        self._add_issue(
+            {
+                "severity": "low",
+                "title": "No DKIM record found on common selectors",
+                "description": (
+                    "Probed common DKIM selectors and found none. "
+                    "Unsigned mail is more likely to be flagged/spoofed."
+                ),
+                "recommendation": "Publish DKIM keys for your mail senders",
+                "raw": {"selectors_probed": selectors},
+            },
+            f"TXT <selector>._domainkey.{domain}",
+        )
+
+    # -- helpers -----------------------------------------------------------
+
+    async def _authoritative_ns(self) -> list[str]:
+        """Nameservers for the target zone (cached), or [] on failure."""
+        if self._ns_cache is not None:
+            return self._ns_cache
+        self._ns_cache = []
+        domain = self.target.domain if self.target else ""
+        if not domain:
+            return self._ns_cache
+        result = await self._dig(domain, "NS")
+        if result.no_error:
+            self._ns_cache = [
+                r.rstrip(".") for r in result.records if r.strip()
+            ]
+        return self._ns_cache
+
+    async def _query_with_fallback(
+        self, name: str, record_type: str = "TXT"
+    ) -> DigResult:
+        """Run a query, retrying against authoritative NS on failure."""
+        result = await self._dig(name, record_type)
+        if not result.indeterminate:
+            return result
+        for ns in await self._authoritative_ns():
+            alt = await self._dig(name, record_type, nameserver=ns)
+            if not alt.indeterminate:
+                return alt
+        return result
+
+    async def _dig(
+        self, name: str, record_type: str = "TXT", nameserver: Optional[str] = None
+    ) -> DigResult:
+        """Run ``dig`` and parse the full response (status + answers)."""
+        cmd = build_dig_command(
+            name, record_type, nameserver=nameserver, timeout=5
+        )
+        try:
+            result = self._tool_runner.run(cmd, timeout=self.DNS_TIMEOUT)
         except Exception as e:
-            self.logger.debug(f"dig {record_type} {query} failed: {e}")
-            return []
-        if not result or not result.success:
-            return []
-        return [
-            line.strip().strip('"')
-            for line in (result.stdout or "").splitlines()
-            if line.strip()
-        ]
+            self.logger.debug(f"dig {record_type} {name} failed: {e}")
+            return DigResult(error=True, raw=str(e), nameserver=nameserver or "")
+        parsed = parse_dig_output(getattr(result, "stdout", "") or "")
+        parsed.nameserver = nameserver or ""
+        if (
+            not getattr(result, "success", False)
+            and not parsed.records
+            and not parsed.status
+        ):
+            parsed.error = True
+        return parsed
 
     def _add_issue(self, issue: dict, evidence: str) -> None:
         self._add_finding(
@@ -234,6 +324,27 @@ class EmailSecurityStep(BaseToolStep):
             evidence=evidence,
             recommendation=issue["recommendation"],
             raw=issue.get("raw", {}),
+        )
+
+    def _add_lookup_failure(
+        self, name: str, record_type: str, result: Optional[DigResult]
+    ) -> None:
+        detail = result.evidence if result is not None else "no response"
+        self._add_finding(
+            module=self.MODULE,
+            severity="info",
+            title=f"DNS lookup failed: {record_type} {name}",
+            description=(
+                "A DNS lookup for email-security records could not be "
+                "completed, so the absence of a finding here is not evidence "
+                "of absence. This is an execution note."
+            ),
+            evidence=detail,
+            recommendation=(
+                "Re-run when DNS resolution is healthy, or query the zone's "
+                "authoritative nameserver directly."
+            ),
+            raw={"operational": True, "query": name, "type": record_type},
         )
 
     # BaseToolStep abstract methods (direct execution path)

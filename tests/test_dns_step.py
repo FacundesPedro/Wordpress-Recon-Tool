@@ -218,10 +218,10 @@ class TestIsValidResult:
         assert not step._is_valid_result("; <<>> DiG 9.10.6 <<>>")
 
 
-class TestSpfAnalysis:
-    """Tests for SPF record analysis."""
+class TestSpfOwnership:
+    """SPF/DMARC findings are owned by email_security, not the DNS step."""
 
-    async def test_no_spf_record_found(self):
+    async def test_dns_step_does_not_emit_spf_findings(self):
         mock_target = MagicMock()
         mock_target.domain = "example.com"
         mock_config = MagicMock()
@@ -230,62 +230,11 @@ class TestSpfAnalysis:
 
         step = DnsStep(target=mock_target, config=mock_config)
         step._dns_records["TXT"] = ["google-site-verification=abc"]
+        step._analyze_intelligence("example.com", [])
 
-        with patch.object(DnsStep, "check_binary", return_value=(True, "")):
-            step._analyze_spf("example.com")
-
-        spf_finding = [f for f in step.findings if f.title == "No SPF Record Found"]
-        assert len(spf_finding) == 1
-        assert spf_finding[0].severity == "medium"
-
-    async def test_spf_with_hard_fail_is_info(self):
-        mock_target = MagicMock()
-        mock_target.domain = "example.com"
-        mock_config = MagicMock()
-
-        from steps.passive.dns_step import DnsStep
-
-        step = DnsStep(target=mock_target, config=mock_config)
-        step._dns_records["TXT"] = ["v=spf1 include:_spf.google.com -all"]
-
-        step._analyze_spf("example.com")
-
-        spf_finding = [f for f in step.findings if f.title == "SPF Configuration Detected"]
-        assert len(spf_finding) == 1
-        assert spf_finding[0].severity == "info"
-        assert "Hard fail" in spf_finding[0].description
-
-    async def test_spf_with_soft_fail_is_low(self):
-        mock_target = MagicMock()
-        mock_target.domain = "example.com"
-        mock_config = MagicMock()
-
-        from steps.passive.dns_step import DnsStep
-
-        step = DnsStep(target=mock_target, config=mock_config)
-        step._dns_records["TXT"] = ["v=spf1 include:_spf.google.com ~all"]
-
-        step._analyze_spf("example.com")
-
-        spf_finding = [f for f in step.findings if f.title == "SPF Configuration Detected"]
-        assert len(spf_finding) == 1
-        assert spf_finding[0].severity == "low"
-        assert "Softfail" in spf_finding[0].description
-
-    async def test_spf_with_no_fail_mechanism_is_medium(self):
-        mock_target = MagicMock()
-        mock_target.domain = "example.com"
-        mock_config = MagicMock()
-
-        from steps.passive.dns_step import DnsStep
-
-        step = DnsStep(target=mock_target, config=mock_config)
-        step._dns_records["TXT"] = ["v=spf1 include:_spf.google.com include:_spf.yahoo.com include:_spf.zoho.com include:spf.mailgun.org include:mail.zendesk.com include:spf.mandrillapp.com"]
-
-        step._analyze_spf("example.com")
-
-        spf_finding = [f for f in step.findings if f.title == "SPF Configuration Detected"]
-        assert spf_finding[0].severity == "medium"
+        titles = [f.title for f in step.findings]
+        assert "No SPF Record Found" not in titles
+        assert "SPF Configuration Detected" not in titles
 
 
 class TestIntelAnalysis:
