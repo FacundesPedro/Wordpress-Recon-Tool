@@ -1,10 +1,61 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-29
+## Last Updated: 2026-09-30
 
 ---
 
 ## Recent Changes
+
+### S26 - Field-report update `mundosenaiba.senaibahia.com.br`: status-code FP class, tool fixes, management-console CVE, DNS rigor (2026-09-30)
+
+Engagement over `reports/mundosenaiba.senaibahia.com.br/UPDATE.md` (49 findings,
+0 critical/high, 5 medium; openresty + Wordfence returning a blanket 403 for
+unknown paths). Implemented in four phases.
+
+**Phase 0 — small real bugs**
+
+| Item | Change |
+|------|--------|
+| B1 `ServiceInventoryStep` crash | `__init__` now accepts `http=None` (the Runner always passes it), fixing `unexpected keyword argument 'http'`. |
+| A5 plugin slug junk | New `utils/slugs.py` (`is_valid_slug`); `plugin`/`theme` fingerprint steps drop HTML-parse tokens like `*","`. |
+| A7 cache FP | Removed `x-served-by` (custom origin header) and `x-fastly-request-id` from `CACHE_INDICATOR_HEADERS`; added `via`/`x-fastcgi-cache`. |
+| A8 lockout cookie | `cookie_flags` ignores WAF lockout/consent/analytics/CDN cookies (`wpdef_lockout_*`, `_ga`, `cookieyes`, `cf_clearance`, ...); only session/auth cookies are flagged. |
+| B2 WPScan 403 abort | `WpscanStep` retries once with `--force` when the run aborts (`scan_aborted` / rc 4). |
+| B10 silent vuln-DB failure | `VulnDB` tracks `unavailable`/`last_error` (network/5xx); the three `steps/vuln/*_vuln_step.py` emit an operational `info` finding instead of a false "No CVEs". New `steps/vuln/vuln_common.py`. |
+| C2 duplicate SPF | `dns_step` no longer emits SPF findings (owned by `email_security`). |
+| A6 REST route index | `rest_hardening` skips namespace route-index 200s (`/wp-json/<ns>/v1/`), which are not unauthenticated data. |
+
+**Phase 1 — status-code false positives**
+
+| Item | Change |
+|------|--------|
+| A1/A2 double prefix | `normalize_wp_slugs()` strips `wp-content/<dir>/`, `<dir>/`, query/fragment and trailing slashes from every wordlist entry (SecLists lists are already full paths) in both brute-force steps. |
+| A3/A4/A10 catch-all | `Soft404Detector` gains `scope_prefix` (canaries inside e.g. `wp-content/plugins/`) and **status-level suppression**: when a scope canary returns 401/403, every 401/403 at that scope is treated as a blanket denial and never reported as "exists/protected" (Wordfence returns dynamic 403 bodies that defeat content matching). Wired into plugin/theme brute-force, `admin_surface`, `uploads_listing`; `ScanContext.soft404_detector(scope_prefix=...)`. |
+| C3 report size | `utils/limits.py` (`cap_list`/`cap_lines`) + `WP_RAW_LIST_CAP` truncate list findings; Markdown/HTML/PDF gained a `max_findings` render cap (severity-prioritized, with an omission note); `PdfFormatter` runs `pisa.CreatePDF` on a daemon thread with a wall-clock timeout. CLI `--report-render-limit`/`--report-timeout`; JSON/SARIF stay complete. |
+
+**Phase 2 — tool-execution gaps**
+
+| Item | Change |
+|------|--------|
+| B4 ffuf SNI | `sni_hostname()` + `-sni <host>` when pinned (ffuf derives SNI from the URL host = the IP). A 0-result run with `Errors: N` now emits a loud "FFUF requests failed" finding. |
+| B3 OpenDoor TTY | `AsyncToolRunner.run(..., use_pty=True)` allocates a PTY (local + async paths); `OpenDoorStep` uses it, fixing the `stty: Inappropriate ioctl` crash. |
+| B7 spider 0 pages | `spider` records why the start URL was not retrievable (HTTP status / exception) and emits an operational finding instead of a silent "0 pages". |
+| A9/C5 jQuery FP | `js_library` only scans the first 4 KB for a banner and only trusts it when the asset URL matches the library's file pattern (a bundled jQuery banner in an unrelated script no longer reports). |
+| C1 internal-IP leak | `restore_public_host()` + `BaseHttpStep.public_url()` rewrite pinned IPs back to the public hostname across all `final_url` call sites (`wp_cron`, `readme`, `license`, secrets steps, sourcemap, author_id, rate_limit, default_credentials, spider). |
+
+**Phase 3 — management-console discovery (B11)**
+
+New `steps/webapp/management_console_step.py` + `wordlists/webapp/management_consoles.json` (Nginx Proxy Manager, Portainer, Grafana, Jenkins, Kibana, Jupyter). Probes signatures, extracts versions (body/header), and matches advisories via `utils.version.cve_applies` (e.g. NPM ≤ 2.15.1 → CVE-2026-40519 / CVE-2026-93964, `high`). Also probes HTTP ports discovered by nmap (`ctx["services"]`), so a console on port 81 is found. Registered in `WebappModule`; `WP_MGMT_CONSOLE_PROBE`.
+
+**Phase 4 — DNS evidence rigor (C6)**
+
+New `utils/dns_query.py` (`build_dig_command`, `parse_dig_output`, `organizational_domain`). `dig` is run without `+short` so the status/ANSWER header is parsed: "absent" (NOERROR + 0 answers, or NXDOMAIN) is distinguished from a lookup failure (SERVFAIL/REFUSED/timeout). `email_security` falls back to the zone's authoritative nameservers and only reports "No SPF/DMARC" for a proven absence; a failed lookup becomes an operational note. DMARC is evaluated at the organizational domain (subdomains inherit via `sp=`), while SPF is not inherited. `dns_step` records `dns_status`/`answer_count` in each record finding.
+
+Tests: new `test_slugs.py`, `test_limits.py`, `test_dns_query.py`,
+`test_management_console.py` plus cases across soft-404, brute-force, cookies,
+cache, WPScan, VulnDB, REST, admin-surface, service-inventory, report/PDF, DNS,
+email-security, spider, JS-library, target-net, FFUF and tool-runner. Suite
+**1992 passing**; ruff clean on all new/changed lines.
 
 ### S25 - Field-report follow-up: dig in image, OSINT timeout, breaker resume, rate-limit FP, HTTP evidence, Keycloak, SPA param discovery (2026-09-29)
 

@@ -1,10 +1,26 @@
 # Next Steps — WordPress Reconnaissance Tool
 
-**Last Updated:** 2026-09-28
+**Last Updated:** 2026-09-30
 **Current Branch:** `main`
-**HEAD:** `7297f39` — feat: shared ScanContext + dependency-aware parallel step execution
+**HEAD:** `4a62a5f` — (see `CHANGELOG.md` S26)
 
 ---
+
+## Field-report hardening `mundosenaiba.senaibahia.com.br` (implemented 2026-09-30, status: ✅ complete)
+
+Four phases over `reports/mundosenaiba.senaibahia.com.br/UPDATE.md` (status-code
+false positives behind a blanket-403 WAF, tool-execution gaps, report size, and
+DNS-evidence rigor). See AGENTS.md "Latest feature" and CHANGELOG S26.
+
+- **Phase 0:** `ServiceInventoryStep` `http=` kwarg; `utils/slugs.py`; cache
+  header fix; cookie exclusion list; WPScan `--force` retry; `VulnDB.unavailable`
+  operational finding; `dns_step` SPF de-dup; REST route-index skip.
+- **Phase 1:** wordlist slug normalization (kills the double-prefix 13k FPs);
+  `Soft404Detector` scope + status-level 401/403 suppression; list/report caps.
+- **Phase 2:** ffuf `-sni` + loud failure; OpenDoor PTY; spider diagnostics;
+  `js_library` banner corroboration; pinned-IP redaction.
+- **Phase 3:** management-console discovery + version→CVE step.
+- **Phase 4:** `utils/dns_query.py`; authoritative-NS fallback; DMARC inheritance.
 
 ## Step Relations (implemented 2026-09-28, status: ✅ complete)
 

@@ -377,6 +377,25 @@ overrides the same way as `assets.txt`.
 
 ---
 
+## Management Consoles Database
+
+Used by `ManagementConsoleStep` to fingerprint well-known management/config
+UIs and match the running version against advisories.
+
+**Built-in file**: `wordlists/webapp/management_consoles.json`
+
+Each entry provides `probe_paths`, a `signature` regex, version extraction
+(`version_paths` + `version_pattern`, or a `version_header` for Jenkins), and
+`advisories` (`cve`, `title`, `fixed_in`, `severity`). Shipped entries: Nginx
+Proxy Manager, Portainer, Grafana, Jenkins, Kibana, Jupyter. The NPM entry maps
+<= 2.15.1 to CVE-2026-40519 / CVE-2026-93964 (`high`).
+
+Override by placing a same-named JSON file at
+`~/.config/recon-wp/wordlists/webapp/management_consoles.json`. Disable the
+step entirely with `WP_MGMT_CONSOLE_PROBE=false`.
+
+---
+
 ## External Wordlist Directory (Persistent Overrides)
 
 Place files at `~/.config/recon-wp/wordlists/<path>` to override both

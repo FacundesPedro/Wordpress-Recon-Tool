@@ -2,9 +2,24 @@
 
 **Purpose:** Index of external APIs, tools, wordlists, and documentation that this project depends on or integrates with. Keep this up to date as dependencies change.
 
-**Last Updated:** 2026-09-11
+**Last Updated:** 2026-09-30
 
 ---
+
+## Management Consoles / Version→CVE (2026-09-30)
+
+Local advisory database: `wordlists/webapp/management_consoles.json`
+(probe paths, signature, version path/regex/header, advisory ranges). Consumed
+by `steps/webapp/management_console_step.py`.
+
+| URL | Why It Matters |
+|-----|----------------|
+| [Nginx Proxy Manager](https://github.com/NginxProxyManager/nginx-proxy-manager) | Exposed admin console; v2.15.1 and earlier are affected by CVE-2026-40519 (authenticated RCE) and CVE-2026-93964. Version is exposed via `/api/`. |
+| [Portainer API](https://docs.portainer.io/api/access) | `/api/status` and `/api/system/status` return the running version; a common exposed container-management console. |
+| [Grafana HTTP API](https://grafana.com/docs/grafana/latest/developers/http_api/) | `/api/health` returns the version; CVE-2021-43798 (directory traversal) affects < 8.3.1. |
+| [Jenkins Remote Access API](https://www.jenkins.io/doc/book/using/remote-access-api/) | Version is advertised in the `X-Jenkins` response header. |
+| [Kibana API](https://www.elastic.co/guide/en/kibana/current/api.html) | `/api/status` returns the version. |
+| [Jupyter Server API](https://jupyter-server.readthedocs.io/en/latest/developers/rest-api.html) | `/api/` exposes server metadata; unauthenticated notebooks are a common exposure. |
 
 ## Vulnerability Databases
 
