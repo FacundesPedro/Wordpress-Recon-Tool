@@ -226,3 +226,47 @@ class TestNonAngularSoft404s:
                    "<body><h1>Index of /backup/</h1><hr><pre>"
                    "<a href=\"db.sql\">db.sql</a></pre><hr></body></html>")
         assert not detector.is_soft404(resp(200, listing))
+
+
+class TestScopedCatchAll:
+    """Scope-narrowed calibration and blanket 401/403 suppression."""
+
+    async def test_scope_prefix_places_canaries_in_directory(self, mock_http):
+        mock_http.request = AsyncMock(return_value=resp(404, "Not Found"))
+        logger = MagicMock()
+        detector = Soft404Detector(
+            mock_http, "http://t.example", logger,
+            scope_prefix="wp-content/plugins",
+        )
+        await detector.calibrate()
+        urls = [c.args[1] for c in mock_http.request.call_args_list]
+        assert urls and all("/wp-content/plugins/" in u for u in urls)
+
+    async def test_blanket_403_suppresses_any_403(self, mock_http):
+        # Unknown paths anywhere in scope are denied with a dynamic WAF page.
+        mock_http.request = AsyncMock(
+            return_value=resp(403, "<html><title>Blocked</title></html>")
+        )
+        detector, _ = make_detector(mock_http)
+        await detector.calibrate()
+        assert detector.denial_is_catchall
+        # A different, larger denial body is still catch-all at this scope.
+        other = resp(403, "<html><title>Blocked</title>" + "x" * 5000 + "</html>")
+        assert detector.is_soft404(other)
+
+    async def test_real_404_scope_keeps_403_detection(self, mock_http):
+        # Canaries return 404 -> 403 is a genuine existence/protection signal.
+        mock_http.request = AsyncMock(return_value=resp(404, "Not Found"))
+        detector, _ = make_detector(mock_http)
+        await detector.calibrate()
+        assert not detector.denial_is_catchall
+        assert not detector.is_soft404(resp(403, "Forbidden"))
+        assert not detector.is_catchall_status(403)
+
+    async def test_401_catchall_suppresses(self, mock_http):
+        mock_http.request = AsyncMock(return_value=resp(401, "Auth required"))
+        detector, _ = make_detector(mock_http)
+        await detector.calibrate()
+        assert detector.is_catchall_status(401)
+        assert detector.is_soft404(resp(401, "Auth required"))
+

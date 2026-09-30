@@ -34,6 +34,11 @@ LENGTH_ABSOLUTE_FLOOR = 64
 # Non-200 statuses that catch-all servers return for unknown paths.
 _CATCHALL_STATUSES = frozenset({301, 302, 303, 307, 308, 401, 403})
 
+# Denial statuses: when a scope canary returns one of these, the server is
+# answering it for *anything* unknown at that scope (blanket WAF denial), so
+# the status alone can no longer prove existence.
+_DENIAL_STATUSES = frozenset({401, 403})
+
 
 def extract_title(text: str) -> str:
     """Extract a cleaned <title> from HTML, or "" if absent."""
@@ -105,13 +110,19 @@ class Soft404Detector:
             continue  # SPA shell / soft-404 - skip
     """
 
-    def __init__(self, http, base_url: str, logger, probes: int = 2):
+    def __init__(self, http, base_url: str, logger, probes: int = 2,
+                 scope_prefix: str = ""):
         self.http = http
         self.base_url = base_url.rstrip("/")
         self.logger = logger
         self.probes = max(1, probes)
+        # Optional path scope for the canaries (e.g. "wp-content/plugins").
+        # When set, unknown-path probes live inside that directory so a
+        # path-scoped catch-all/denial is calibrated where it actually occurs.
+        self.scope_prefix = (scope_prefix or "").strip("/")
         self.baseline = ResponseFingerprint()
         self._catchall_baselines: dict[int, ResponseFingerprint] = {}
+        self._denial_statuses: set[int] = set()
         self._token = secrets.token_hex(6)
 
     async def calibrate(self) -> ResponseFingerprint:
@@ -119,11 +130,14 @@ class Soft404Detector:
 
         A 200 response becomes the primary baseline. Other catch-all
         statuses (301/302/303/307/308/401/403) are recorded per status so
-        blanket redirects and blanket denials are also suppressed.
+        blanket redirects and blanket denials are also suppressed. A 401/403
+        canary additionally marks that status as a blanket denial at this
+        scope (see ``is_soft404``).
         """
+        scope = f"/{self.scope_prefix}" if self.scope_prefix else ""
         canaries = [
-            f"/recon-baseline-{self._token}",
-            f"/recon-{self._token}.no-such-ext",
+            f"{scope}/recon-baseline-{self._token}",
+            f"{scope}/recon-{self._token}.no-such-ext",
         ][: self.probes]
         for path in canaries:
             try:
@@ -153,6 +167,8 @@ class Soft404Detector:
                     f"len={fingerprint.length} "
                     f"title='{fingerprint.title[:40]}'"
                 )
+            if status in _DENIAL_STATUSES:
+                self._denial_statuses.add(status)
         return self.baseline
 
     @property
@@ -160,11 +176,22 @@ class Soft404Detector:
         """True when a 200-shell baseline was learned."""
         return not self.baseline.empty
 
+    @property
+    def denial_is_catchall(self) -> bool:
+        """True when a scope canary returned a blanket 401/403."""
+        return bool(self._denial_statuses)
+
+    def is_catchall_status(self, status: int) -> bool:
+        """True when ``status`` is a calibrated blanket denial at this scope."""
+        return status in self._denial_statuses
+
     def is_soft404(self, response) -> bool:
         """Classify a response against the calibrated baseline.
 
         A response is a soft-404/catch-all when it matches the baseline for
         its status code on any of (in order of confidence):
+        0. a blanket denial (401/403) was observed on a scope canary, so the
+           status alone proves nothing here;
         1. byte-identical body head
         2. same HTML title AND body length within tolerance
         3. same content-type AND body length within tolerance
@@ -174,6 +201,8 @@ class Soft404Detector:
         recorded during calibration.
         """
         fingerprint = ResponseFingerprint.from_response(response)
+        if fingerprint.status in self._denial_statuses:
+            return True
         if self.calibrated and fingerprint.status == self.baseline.status:
             baseline = self.baseline
         else:

@@ -7,9 +7,11 @@ import re
 import time
 from typing import Optional
 
-from base.dependencies import WordlistDependencyMixin
+from base.dependencies import WordlistDependencyMixin, config_int
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.limits import cap_lines, cap_list
+from utils.slugs import normalize_wp_slugs
 from utils.soft404 import Soft404Detector
 
 
@@ -25,15 +27,7 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
 
     def _config_int(self, key: str, default: int) -> int:
         """Read an integer config value, falling back to default on missing/invalid."""
-        if self.config is None:
-            return default
-        value = getattr(self.config, key, None)
-        if value is None:
-            return default
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return default
+        return config_int(self.config, key, default)
 
     async def run(self) -> list[Finding]:
         from utils.wordpress_detect import is_wordpress
@@ -55,11 +49,21 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         if not slugs:
             return self.findings
 
+        # Wordlists such as SecLists' `wp-plugins.fuzz.txt` already contain
+        # full paths (`wp-content/plugins/<slug>/`); reduce every entry to a
+        # bare slug so the request path is not built twice.
+        slugs = normalize_wp_slugs(slugs, "plugins")
+        if not slugs:
+            return self.findings
+
         if self.http.unreachable:
             self.logger.warning("Target unreachable — aborting plugin brute-force")
             return self.findings
 
-        detector = Soft404Detector(self.http, self.target.url, self.logger)
+        detector = Soft404Detector(
+            self.http, self.target.url, self.logger,
+            scope_prefix="wp-content/plugins",
+        )
         await detector.calibrate()
 
         concurrency = self._config_int(
@@ -68,12 +72,6 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         max_probes = self._config_int("bruteforce_max_probes", 0)
         if max_probes > 0:
             slugs = slugs[:max_probes]
-
-        slugs = [
-            s.strip()
-            for s in slugs
-            if s and s.strip() and not s.startswith("#")
-        ]
 
         if len(slugs) <= 30:
             self.logger.warning(
@@ -139,17 +137,18 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                 f"  {p['slug']}{v} [{p['status']}] {p['url']}"
             )
 
+        list_cap = self._config_int("raw_list_cap", 200)
         self._add_finding(
             module=self.MODULE,
             severity=self.severity,
             title="Plugins discovered via brute-force",
             description=f"Found {len(found)} plugin(s) via response-code oracle",
-            evidence="\n".join(evidence_lines),
+            evidence="\n".join(cap_lines(evidence_lines, list_cap)),
             recommendation=(
                 "Review all discovered plugins for known vulnerabilities. "
                 "Remove unused plugins entirely."
             ),
-            raw={"plugins": found, "total": len(found)},
+            raw={"plugins": cap_list(found, list_cap), "total": len(found)},
         )
 
         return self.findings

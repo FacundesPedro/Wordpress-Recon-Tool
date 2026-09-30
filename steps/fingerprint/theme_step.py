@@ -13,6 +13,7 @@ import re
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.slugs import is_valid_slug
 
 
 class ThemeStep(BaseHttpStep):
@@ -39,7 +40,7 @@ class ThemeStep(BaseHttpStep):
                 content = response.text
 
                 theme_matches = re.findall(r"/wp-content/themes/([^/]+)/", content)
-                themes.update(theme_matches)
+                themes.update(m for m in theme_matches if is_valid_slug(m))
 
                 if themes:
                     self._add_finding(

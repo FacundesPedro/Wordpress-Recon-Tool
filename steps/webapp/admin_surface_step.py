@@ -207,6 +207,12 @@ class AdminSurfaceStep(BaseHttpStep, WordlistDependencyMixin):
                          "title": title},
                 )
             elif status in (401, 403):
+                if detector.is_soft404(response):
+                    skipped_baseline += 1
+                    self.logger.debug(
+                        f"Admin path {path}: blanket {status} denial - skipped"
+                    )
+                    continue
                 protected.append(path)
             # 404 and other codes: not interesting, skip
 

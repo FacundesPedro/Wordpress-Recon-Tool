@@ -28,6 +28,12 @@ class UploadsListingStep(BaseHttpStep):
         try:
             response = await self.http.get(url)
             if response.status_code == 200:
+                detector = await self._soft404_detector()
+                if detector is not None and detector.is_soft404(response):
+                    self.logger.debug(
+                        "Uploads path matched the catch-all baseline - skipped"
+                    )
+                    return self.findings
                 content = response.text.lower()
                 if "index of" in content or "<title>index" in content:
                     self._add_finding(
@@ -50,3 +56,17 @@ class UploadsListingStep(BaseHttpStep):
             self.logger.error(f"Error checking uploads directory: {e}")
 
         return self.findings
+
+    async def _soft404_detector(self):
+        """Best-effort catch-all detector; None when no shared context exists."""
+        try:
+            ctx = self.ctx
+        except Exception:
+            return None
+        if ctx is None:
+            return None
+        try:
+            return await ctx.soft404_detector()
+        except Exception as exc:  # calibration must never fail the step
+            self.logger.debug(f"Soft-404 calibration skipped: {exc}")
+            return None

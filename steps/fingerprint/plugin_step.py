@@ -13,6 +13,7 @@ import re
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.slugs import is_valid_slug
 
 
 class PluginStep(BaseHttpStep):
@@ -39,7 +40,7 @@ class PluginStep(BaseHttpStep):
                 content = response.text
 
                 plugin_matches = re.findall(r"/wp-content/plugins/([^/]+)/", content)
-                plugins.update(plugin_matches)
+                plugins.update(m for m in plugin_matches if is_valid_slug(m))
 
                 if plugins:
                     self._add_finding(

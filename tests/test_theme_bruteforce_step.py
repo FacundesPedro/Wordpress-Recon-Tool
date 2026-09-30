@@ -180,9 +180,32 @@ class TestThemeBruteforceStep:
         assert findings == []
         probe_calls = [
             call for call in mock_http.request.call_args_list
-            if "/wp-content/themes/" in call.args[1]
+            if call.args[1].endswith("/a/")
+            or call.args[1].endswith("/b/")
+            or call.args[1].endswith("/c/")
         ]
         assert len(probe_calls) == 2
+
+    async def test_full_path_wordlist_entry_not_double_prefixed(
+        self, mock_target, mock_config
+    ):
+        mock_http = make_http({
+            "/wp-content/themes/astra/": MagicMock(status_code=200),
+        })
+
+        from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
+
+        with patch.object(
+            ThemeBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["wp-content/themes/astra/"],
+        ):
+            step = ThemeBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+            findings = await step.run()
+
+        assert len(findings) == 1
+        urls = [c.args[1] for c in mock_http.request.call_args_list]
+        assert any(u.endswith("/wp-content/themes/astra/") for u in urls)
+        assert not any("wp-content/themes/wp-content" in u for u in urls)
 
     async def test_soft404_shell_not_reported(self, mock_target, mock_config):
         shell = "<html><title>Home</title><body>homepage shell</body></html>"

@@ -202,9 +202,53 @@ class TestPluginBruteforceStep:
         assert findings == []
         probe_calls = [
             call for call in mock_http.request.call_args_list
-            if "/wp-content/plugins/" in call.args[1]
+            if call.args[1].endswith("/a/")
+            or call.args[1].endswith("/b/")
+            or call.args[1].endswith("/c/")
         ]
         assert len(probe_calls) == 2
+
+    async def test_full_path_wordlist_entry_not_double_prefixed(
+        self, mock_target, mock_config
+    ):
+        mock_http = make_http({
+            "/wp-content/plugins/akismet/": MagicMock(status_code=200),
+        })
+
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["wp-content/plugins/akismet/"],
+        ):
+            step = PluginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+            findings = await step.run()
+
+        assert len(findings) == 1
+        urls = [c.args[1] for c in mock_http.request.call_args_list]
+        assert any(u.endswith("/wp-content/plugins/akismet/") for u in urls)
+        assert not any("wp-content/plugins/wp-content" in u for u in urls)
+
+    async def test_blanket_403_catchall_yields_no_findings(
+        self, mock_target, mock_config
+    ):
+        async def fake_request(method, url, **kwargs):
+            return MagicMock(status_code=403, text="<html><title>Blocked</title></html>")
+
+        mock_http = MagicMock()
+        mock_http.unreachable = False
+        mock_http.request = AsyncMock(side_effect=fake_request)
+
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["akismet", "jetpack", "elementor"],
+        ):
+            step = PluginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
+            findings = await step.run()
+
+        assert findings == []
 
     async def test_soft404_shell_not_reported(self, mock_target, mock_config):
         shell = "<html><title>Home</title><body>homepage shell</body></html>"

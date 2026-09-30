@@ -121,3 +121,16 @@ class TestAdminSurfaceStep:
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert findings == []
+
+    async def test_blanket_403_not_reported_as_protected(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A catch-all 403 for unknown paths proves nothing (WAF)."""
+
+        async def blanket(method, url, **kwargs):
+            return response(403, "<html><title>Blocked</title></html>")
+
+        mock_http.request = AsyncMock(side_effect=blanket)
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings == []

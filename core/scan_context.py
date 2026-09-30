@@ -257,21 +257,28 @@ class ScanContext:
 
     # ── soft-404 / catch-all capability ─────────────────────────────
     async def soft404_detector(
-        self, base_url: str | None = None
+        self, base_url: str | None = None, scope_prefix: str = ""
     ) -> Soft404Detector:
         """Return a calibrated soft-404 detector for ``base_url``.
 
-        The detector is memoized per base URL and calibrated once, so multiple
-        discovery steps share the canary probes. When a 200 catch-all shell is
-        found, ``enumeration_unreliable`` is set so callers can annotate the
-        report (path enumeration by status code is meaningless there).
+        ``scope_prefix`` narrows the calibration canaries to a directory
+        (e.g. ``wp-content/plugins``) so a path-scoped catch-all/denial is
+        detected where it actually occurs. The detector is memoized per
+        (base URL, scope) and calibrated once, so multiple discovery steps
+        share the canary probes. When a 200 catch-all shell is found,
+        ``enumeration_unreliable`` is set so callers can annotate the report
+        (path enumeration by status code is meaningless there).
         """
-        key = (base_url or self.target_url or "").rstrip("/")
+        base = (base_url or self.target_url or "").rstrip("/")
+        scope = (scope_prefix or "").strip("/")
+        key = f"{base}#{scope}" if scope else base
         detector = self._soft404.get(key)
         if detector is not None:
             return detector
 
-        detector = Soft404Detector(self.http, key, self._logger)
+        detector = Soft404Detector(
+            self.http, base, self._logger, scope_prefix=scope
+        )
         try:
             await detector.calibrate()
         except Exception as exc:  # never fail a step on calibration
