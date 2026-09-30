@@ -13,6 +13,7 @@ from base.http_step import BaseHttpStep
 from core.auth import get_wp_auth_header
 from core.finding import Finding
 from core.vulndb import VulnDB, cve_finding_severity
+from steps.vuln.vuln_common import add_db_unavailable_finding
 
 
 class PluginVulnStep(BaseHttpStep):
@@ -57,16 +58,21 @@ class PluginVulnStep(BaseHttpStep):
         finally:
             await db.close()
 
+        db_unavailable = getattr(db, "unavailable", False) is True
+        if db_unavailable:
+            add_db_unavailable_finding(self, db)
+
         if not all_vulns:
-            self._add_finding(
-                module=self.MODULE,
-                severity="info",
-                title="No plugin CVEs found",
-                description=f"Checked {len(plugins)} plugin(s) — no known CVEs detected",
-                evidence=f"Plugins checked: {', '.join(s for s, _ in plugins)}",
-                recommendation="Keep all plugins updated to their latest versions",
-                raw={"plugins_checked": len(plugins), "vulnerable": 0},
-            )
+            if not db_unavailable:
+                self._add_finding(
+                    module=self.MODULE,
+                    severity="info",
+                    title="No plugin CVEs found",
+                    description=f"Checked {len(plugins)} plugin(s) — no known CVEs detected",
+                    evidence=f"Plugins checked: {', '.join(s for s, _ in plugins)}",
+                    recommendation="Keep all plugins updated to their latest versions",
+                    raw={"plugins_checked": len(plugins), "vulnerable": 0},
+                )
             return self.findings
 
         reported = 0

@@ -529,3 +529,51 @@ class TestToFindingSeverity:
     def test_unknown_defaults_to_info(self):
         assert to_finding_severity("unknown") == "info"
         assert to_finding_severity("") == "info"
+
+
+# ---------------------------------------------------------------------------
+# availability tracking (B10)
+# ---------------------------------------------------------------------------
+def _offline_wpvuln_client():
+    client = WPVulnerabilityClient.__new__(WPVulnerabilityClient)
+    CacheMixin.__init__(client, cache_ttl=300)
+    client._http = MagicMock()
+    return client
+
+
+class TestAvailabilityTracking:
+    def test_starts_available(self):
+        client = _offline_wpvuln_client()
+        assert client.unavailable is False
+        assert client.last_error is None
+
+    @pytest.mark.asyncio
+    async def test_network_error_marks_unavailable(self):
+        client = _offline_wpvuln_client()
+        client._http.get = AsyncMock(side_effect=ConnectionError("dns down"))
+        result = await client._get_wpvuln("plugin/akismet/", "plugin:akismet")
+        assert result == []
+        assert client.unavailable is True
+        assert "dns down" in client.last_error
+
+    @pytest.mark.asyncio
+    async def test_5xx_marks_unavailable(self):
+        client = _offline_wpvuln_client()
+        client._http.get = AsyncMock(return_value=MagicMock(status_code=503))
+        await client._get_wpvuln("plugin/akismet/", "plugin:akismet")
+        assert client.unavailable is True
+
+    @pytest.mark.asyncio
+    async def test_404_is_data_absence_not_unavailable(self):
+        client = _offline_wpvuln_client()
+        client._http.get = AsyncMock(return_value=MagicMock(status_code=404))
+        await client._get_wpvuln("plugin/nope/", "plugin:nope")
+        assert client.unavailable is False
+
+    def test_vulndb_aggregates_availability(self):
+        db = VulnDB(cache_ttl=300)
+        assert db.unavailable is False
+        db._primary.unavailable = True
+        db._primary.last_error = "HTTP 503 from WPVulnerability"
+        assert db.unavailable is True
+        assert db.error_message == "HTTP 503 from WPVulnerability"

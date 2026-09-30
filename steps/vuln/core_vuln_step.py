@@ -12,6 +12,7 @@ from typing import Optional
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 from core.vulndb import VulnDB, cve_finding_severity
+from steps.vuln.vuln_common import add_db_unavailable_finding
 
 
 class CoreVulnStep(BaseHttpStep):
@@ -37,19 +38,24 @@ class CoreVulnStep(BaseHttpStep):
         finally:
             await db.close()
 
+        db_unavailable = getattr(db, "unavailable", False) is True
+        if db_unavailable:
+            add_db_unavailable_finding(self, db)
+
         if not vulns:
-            self._add_finding(
-                module=self.MODULE,
-                severity="info",
-                title="No known CVEs for WordPress core",
-                description=(
-                    f"WordPress {version} has no known vulnerabilities "
-                    "in the vulnerability database"
-                ),
-                evidence=f"Version: {version}",
-                recommendation="Keep WordPress updated to the latest version",
-                raw={"version": version, "total_cves": 0},
-            )
+            if not db_unavailable:
+                self._add_finding(
+                    module=self.MODULE,
+                    severity="info",
+                    title="No known CVEs for WordPress core",
+                    description=(
+                        f"WordPress {version} has no known vulnerabilities "
+                        "in the vulnerability database"
+                    ),
+                    evidence=f"Version: {version}",
+                    recommendation="Keep WordPress updated to the latest version",
+                    raw={"version": version, "total_cves": 0},
+                )
             return self.findings
 
         by_severity: dict[str, dict] = {}

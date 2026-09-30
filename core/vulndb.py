@@ -61,6 +61,17 @@ class CacheMixin:
     def __init__(self, cache_ttl: int = 300):
         self._cache: dict[str, tuple[float, list[CveFinding]]] = {}
         self._cache_ttl = cache_ttl
+        # Set when a lookup fails in a way that says nothing about the
+        # target (network error / 5xx), so callers can distinguish "no
+        # vulnerabilities" from "database unreachable".
+        self.unavailable = False
+        self.last_error: Optional[str] = None
+
+    def _mark_unavailable(self, error: str) -> None:
+        self.unavailable = True
+        # Keep the first error; it is the most representative.
+        if not self.last_error:
+            self.last_error = error[:200]
 
     def _cache_get(self, key: str) -> Optional[list[CveFinding]]:
         """Get cached vulnerability results if within TTL."""
@@ -150,11 +161,16 @@ class WPVulnerabilityClient(CacheMixin):
             return cached
         try:
             resp = await self._http.get(f"{BASE_WPVULN}/{endpoint}")
+            if resp.status_code >= 500:
+                self._mark_unavailable(f"HTTP {resp.status_code} from WPVulnerability")
+                self._cache_set(cache_key, [])
+                return []
             if resp.status_code != 200:
                 self._cache_set(cache_key, [])
                 return []
             data = resp.json()
-        except Exception:
+        except Exception as e:
+            self._mark_unavailable(f"{type(e).__name__}: {e}")
             return []
         raw = (data.get("data") or {}) if isinstance(data.get("data"), dict) else {}
         vulns_data = raw.get("vulnerabilities", [])
@@ -241,11 +257,16 @@ class WPScanClient(CacheMixin):
             return cached
         try:
             resp = await self._http.get(url)
+            if resp.status_code >= 500:
+                self._mark_unavailable(f"HTTP {resp.status_code} from WPScan API")
+                self._cache_set(cache_key, [])
+                return []
             if resp.status_code != 200:
                 self._cache_set(cache_key, [])
                 return []
             data = resp.json()
-        except Exception:
+        except Exception as e:
+            self._mark_unavailable(f"{type(e).__name__}: {e}")
             return []
         vulns = self._get_vulns_list(data)
         results = []
@@ -301,6 +322,20 @@ class VulnDB:
         await self._primary.close()
         if self._secondary:
             await self._secondary.close()
+
+    @property
+    def unavailable(self) -> bool:
+        """True when a lookup failed for infrastructure reasons (network/5xx)."""
+        if self._primary.unavailable:
+            return True
+        return self._secondary is not None and self._secondary.unavailable
+
+    @property
+    def error_message(self) -> str:
+        """First recorded failure reason, if any."""
+        return self._primary.last_error or (
+            self._secondary.last_error if self._secondary else ""
+        ) or ""
 
     async def _merge_results(
         self,
