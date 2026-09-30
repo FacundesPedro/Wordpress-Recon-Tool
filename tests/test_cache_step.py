@@ -28,6 +28,10 @@ class TestHelpers:
         assert not cacheable(HeaderDict({"Cache-Control": "private, no-store"}))
         assert not cacheable(HeaderDict({}))
 
+    def test_x_served_by_is_not_a_cache_signal(self):
+        # Custom origin header, not a caching layer.
+        assert cache_layer(HeaderDict({"X-Served-By": "cache-iad-01"})) is None
+
 
 class TestCacheAnalysisStep:
     async def test_cache_layer_info_finding(self, mock_http, mock_target, mock_config):

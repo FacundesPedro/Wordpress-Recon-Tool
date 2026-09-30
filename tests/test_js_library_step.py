@@ -79,3 +79,48 @@ class TestJsLibraryStep:
         )
         step = self.make_step(mock_http, mock_target, mock_config)
         assert await step.run() == []
+
+    async def test_banner_in_unrelated_asset_is_skipped(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A jQuery banner inside an unrelated bundle is not a jQuery finding."""
+        home = '<script src="https://example.com/plugin-bundle.js"></script>'
+        asset = "/*! jQuery JavaScript Library v1.9.1 */\nvar x = 1;"
+
+        async def requestor(method, url, **kwargs):
+            if url.endswith("plugin-bundle.js"):
+                return MagicMock(
+                    status_code=200,
+                    text=asset,
+                    headers={"content-type": "application/javascript"},
+                )
+            return MagicMock(
+                status_code=200, text=home, headers={"content-type": "text/html"}
+            )
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not any("Vulnerable JS library" in f.title for f in findings)
+
+    async def test_banner_corroborated_by_asset_url_is_reported(
+        self, mock_http, mock_target, mock_config
+    ):
+        home = '<script src="https://example.com/jquery.min.js"></script>'
+        asset = "/*! jQuery JavaScript Library v1.9.1 */\nvar x = 1;"
+
+        async def requestor(method, url, **kwargs):
+            if url.endswith("jquery.min.js"):
+                return MagicMock(
+                    status_code=200,
+                    text=asset,
+                    headers={"content-type": "application/javascript"},
+                )
+            return MagicMock(
+                status_code=200, text=home, headers={"content-type": "text/html"}
+            )
+
+        mock_http.request = AsyncMock(side_effect=requestor)
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert any("Vulnerable JS library" in f.title for f in findings)

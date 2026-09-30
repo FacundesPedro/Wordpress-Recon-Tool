@@ -353,6 +353,27 @@ class TestCheckPluginEndpoints:
 
         assert len(step.findings) == 0
 
+    async def test_namespace_route_index_not_accessible(self, mock_http, mock_target, mock_config):
+        """`/wp-json/<ns>/v1/` returns a route index, not unauthenticated data."""
+        from steps.access.rest_hardening_step import RestHardeningStep
+        step = RestHardeningStep(target=mock_target, config=mock_config, http=mock_http)
+
+        namespace_index = json.dumps(
+            {
+                "/yoast/v1/": {"namespace": "yoast/v1", "methods": ["GET"]},
+                "/yoast/v1/foo": {"namespace": "yoast/v1", "methods": ["GET"]},
+            }
+        )
+        mock_http.get.return_value = MagicMock(
+            status_code=200,
+            headers={"content-type": "application/json"},
+            text=namespace_index,
+        )
+
+        await step._check_plugin_endpoints()
+
+        assert step.findings == []
+
 
 class TestRun:
     """Tests for the full run method."""

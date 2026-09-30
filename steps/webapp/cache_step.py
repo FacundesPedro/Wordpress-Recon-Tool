@@ -22,9 +22,9 @@ from core.finding import Finding
 from utils.soft404 import Soft404Detector
 
 CACHE_INDICATOR_HEADERS = [
-    "age", "x-cache", "cf-cache-status", "x-varnish", "x-served-by",
-    "x-drupal-cache", "x-proxy-cache", "x-fastly-request-id",
-    "x-vercel-cache", "x-cache-hits",
+    "age", "x-cache", "cf-cache-status", "x-varnish", "x-fastcgi-cache",
+    "via", "x-drupal-cache", "x-proxy-cache", "x-vercel-cache",
+    "x-cache-hits",
 ]
 
 SUFFIXES = [".css", ".js", ".html"]

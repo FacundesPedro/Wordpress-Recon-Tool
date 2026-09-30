@@ -7,6 +7,22 @@ from core.finding import Finding
 from utils.http_validation import is_json_body, json_body, rest_route_fallbacks
 
 
+def is_rest_route_index(data) -> bool:
+    """True when a REST response is a route index, not a data endpoint.
+
+    WordPress serves ``/wp-json/<ns>/v1/`` with a dictionary keyed by route
+    paths (and/or ``namespace``/``routes`` keys). A 200 from such an index
+    only proves the namespace is registered - it is not unauthenticated data
+    access, so it must not be reported as an accessible endpoint.
+    """
+    if not isinstance(data, dict) or not data:
+        return False
+    if "namespace" in data and "routes" in data:
+        return True
+    keys = [k for k in data if isinstance(k, str)]
+    return bool(keys) and all(k.startswith("/") for k in keys)
+
+
 class RestHardeningStep(BaseHttpStep):
     name = "rest_hardening"
     description = "Audit REST API for CORS, auth bypass, and route leakage"
@@ -207,6 +223,13 @@ class RestHardeningStep(BaseHttpStep):
                 except Exception:
                     continue
                 if resp.status_code == 200 and is_json_body(resp):
+                    # A namespace route index (e.g. /wp-json/yoast/v1/) is not
+                    # an unauthenticated data endpoint; skip it.
+                    if is_rest_route_index(json_body(resp)):
+                        self.logger.debug(
+                            f"{route}: namespace route index - not a data endpoint"
+                        )
+                        break
                     accessible.append((route, url))
                     break
                 if is_json_body(resp):

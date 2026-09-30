@@ -215,3 +215,49 @@ class TestCookieFlagsStep:
         step = make_step(mock_http, mock_target, mock_config)
         findings = await step.run()
         assert not any("Secure" in f.title for f in findings)
+
+    async def test_lockout_cookie_ignored(self, mock_http, mock_target, mock_config):
+        """WAF lockout / consent / analytics cookies are not flagged."""
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(
+                        200,
+                        {
+                            "set-cookie": [
+                                "wpdef_lockout_192_168_124_19=1; Path=/",
+                                "_ga=GA1.1.123; Path=/",
+                                "cookieyes-consent=yes; Path=/",
+                            ]
+                        },
+                    )
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings == []
+
+    async def test_real_session_cookie_still_flagged_alongside_lockout(
+        self, mock_http, mock_target, mock_config
+    ):
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(
+                        200,
+                        {
+                            "set-cookie": [
+                                "wpdef_lockout_10_0_0_1=1; Path=/",
+                                "wordpress_logged_in_abc=xyz; Path=/",
+                            ]
+                        },
+                    )
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        evidence = " ".join(f.evidence for f in findings)
+        assert "wordpress_logged_in_abc" in evidence
+        assert "wpdef_lockout" not in evidence

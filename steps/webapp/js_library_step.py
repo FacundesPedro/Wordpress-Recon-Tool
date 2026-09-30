@@ -41,6 +41,9 @@ _BANNER_RES: list[tuple[str, re.Pattern]] = [
 
 _VERSION_IN_URL_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 _MAX_FINDINGS = 8
+# A real library banner is at the top of its file; ignore matches deeper in a
+# concatenated bundle.
+_BANNER_HEAD_BYTES = 4096
 
 # Libraries whose CVEs are server-side (template/upload RCE/SSTI). A client-side
 # `<script src>` match does not prove the vulnerable server path is reachable.
@@ -76,9 +79,14 @@ def detect_from_url(url: str, libraries: list[dict]) -> Optional[dict]:
 
 
 def detect_from_banner(content: str) -> Optional[tuple[str, str]]:
-    """Detect (library, version) from a banner comment in JS content."""
+    """Detect (library, version) from a banner comment in JS content.
+
+    Only the first few KB are scanned: real library banners sit at the top of
+    their file, so a match deep inside a concatenated bundle is not trusted.
+    """
+    head = (content or "")[:_BANNER_HEAD_BYTES]
     for name, regex in _BANNER_RES:
-        match = regex.search(content or "")
+        match = regex.search(head)
         if match:
             return name, match.group(1)
     return None
@@ -167,7 +175,20 @@ class JsLibraryStep(BaseHttpStep):
                     (l for l in libraries
                      if l.get("name", "").lower() == name.lower()), None
                 )
-                if lib and is_vulnerable(version, lib.get("vulnerable_below", "")):
+                if not lib:
+                    continue
+                # Corroborate the banner against the asset identity. A banner
+                # found in a file whose URL does not look like the library
+                # (e.g. an old bundled copy inside an unrelated script) is a
+                # false positive - only trust it when the asset matches.
+                pattern = lib.get("file_pattern", "")
+                if not pattern or not re.search(pattern, url, re.I):
+                    self.logger.debug(
+                        f"JS banner {name} {version} in {url} not corroborated "
+                        "by the asset URL - skipped"
+                    )
+                    continue
+                if is_vulnerable(version, lib.get("vulnerable_below", "")):
                     self._report_version(lib, version, url, source="banner")
                     reported.add(name)
         except Exception as e:

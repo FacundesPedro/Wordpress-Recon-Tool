@@ -26,10 +26,29 @@ _SESSION_COOKIE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Cookies that are not session/credential cookies: WAF lockout counters,
+# consent managers, analytics IDs and CDN clearance tokens. Reporting these
+# as "missing SameSite/HttpOnly" is noise (and a WAF lockout name can even
+# leak the client's internal IP).
+_EXCLUDED_COOKIE_RE = re.compile(
+    r"(_lockout_|lockout|wfwaf|wordfence|wfvt|wpdef|"
+    r"cf_clearance|__cf|incap_ses|visid_incap|"
+    r"^_ga|^_gid|^_gat|^_gcl|^_fbp|^_hjid|^intercom|^amplitude|^mp_|^ajs_|"
+    r"consent|gdpr|cookieyes|cookie_notice|cookielawinfo|moove|complianz|"
+    r"^wp-settings|^woocommerce_|^wc_|^edd_|^mailpoet|^pmpro|"
+    r"^stripe|^__stripe)",
+    re.IGNORECASE,
+)
+
 
 def is_session_cookie(name: str) -> bool:
     """Return True when a cookie name looks credential/session related."""
     return bool(_SESSION_COOKIE_RE.search(name or ""))
+
+
+def is_excluded_cookie(name: str) -> bool:
+    """Return True for non-session cookies that should not be flagged."""
+    return bool(_EXCLUDED_COOKIE_RE.search(name or ""))
 
 
 def parse_set_cookie(header: str) -> dict:
@@ -99,6 +118,11 @@ class CookieFlagsStep(BaseHttpStep):
                 continue
             for header in collect_set_cookies(response):
                 cookie = parse_set_cookie(header)
+                if is_excluded_cookie(cookie["name"]):
+                    self.logger.debug(
+                        f"Ignoring non-session cookie: {cookie['name']}"
+                    )
+                    continue
                 cookie["source_url"] = self.urljoin(path)
                 key = f"{cookie['source_url']}:{cookie['name']}"
                 if cookie["name"] and key not in seen:
