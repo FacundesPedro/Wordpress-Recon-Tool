@@ -58,20 +58,42 @@ def _is_sensitive_path(url: str, mode: str) -> bool:
     return bool(_SENSITIVE_PATH_RE.search(url or ""))
 
 
-def _operational_finding(step_name: str, title: str, evidence: str) -> Finding:
+def _operational_finding(
+    step_name: str,
+    title: str,
+    evidence: str,
+    description: Optional[str] = None,
+    raw: Optional[dict] = None,
+) -> Finding:
     return Finding(
         module="tools",
         step=step_name,
-        severity="low",
+        severity="info",
         title=title,
-        description=(
+        description=description
+        or (
             "OpenDoor did not produce a usable report - the scan may not have "
             "run correctly"
         ),
-        evidence=(evidence or "")[:300],
+        evidence=(evidence or "")[:500],
         recommendation="Verify the OpenDoor version/CLI and re-run the scan",
-        raw={"operational": True},
+        raw={"operational": True, **(raw or {})},
     )
+
+
+def _last_error_line(*streams: str) -> str:
+    """Return the last non-empty, ANSI-free line from stdout/stderr."""
+    from utils.text_sanitize import strip_ansi
+
+    for stream in streams:
+        lines = [
+            strip_ansi(line).strip()
+            for line in (stream or "").splitlines()
+            if line.strip()
+        ]
+        if lines:
+            return lines[-1][:300]
+    return ""
 
 
 class OpenDoorStep(BaseToolStep):
@@ -135,7 +157,7 @@ class OpenDoorStep(BaseToolStep):
         )
         self._reports_dir: Optional[str] = None
 
-    def _host_and_port(self) -> tuple[str, Optional[int]]:
+    def _host_and_port(self, pinned: bool = True) -> tuple[str, Optional[int]]:
         """Split an explicit port out of the target URL.
 
         OpenDoor validates ``--host`` strictly and rejects a host:port
@@ -144,11 +166,15 @@ class OpenDoorStep(BaseToolStep):
         The scheme is parsed by OpenDoor from the ``--host`` URL itself
         (``--scheme`` only applies to ``--raw-request``), so the full URL is
         passed here and the scheme is retained.
+
+        ``pinned=False`` uses the public hostname instead of the pinned IP,
+        as a second strategy when a 421 Misdirected Request is returned.
         """
         url = str(self.target.url) if self.target else ""
-        from utils.target_net import pinned_url
+        if pinned and self.target is not None:
+            from utils.target_net import pinned_url
 
-        url = pinned_url(self.target) if self.target else url
+            url = pinned_url(self.target)
         try:
             parsed = urlsplit(url)
             port = parsed.port
@@ -178,9 +204,13 @@ class OpenDoorStep(BaseToolStep):
         )
         return False
 
-    def build_command(self) -> list[str]:
-        """Build the OpenDoor directory discovery command."""
-        host, port = self._host_and_port()
+    def build_command(self, use_pinned: bool = True) -> list[str]:
+        """Build the OpenDoor directory discovery command.
+
+        ``use_pinned=False`` retries against the public hostname without the
+        ``Host:`` override, the fallback strategy for HTTP 421.
+        """
+        host, port = self._host_and_port(pinned=use_pinned)
         cmd = [
             self._tool_binary,
             "--host",
@@ -208,9 +238,10 @@ class OpenDoorStep(BaseToolStep):
         # Split-horizon: scan the pinned IP but keep the real Host header.
         from utils.target_net import host_header
 
-        host_header_value = host_header(self.target)
-        if host_header_value:
-            cmd.extend(["--header", f"Host: {host_header_value}"])
+        if use_pinned:
+            host_header_value = host_header(self.target)
+            if host_header_value:
+                cmd.extend(["--header", f"Host: {host_header_value}"])
 
         if self.delay and self.delay > 0:
             cmd.extend(["--delay", str(self.delay)])
@@ -225,6 +256,16 @@ class OpenDoorStep(BaseToolStep):
         """Locate the JSON report emitted by OpenDoor."""
         candidates = sorted(Path(reports_dir).rglob("*.json"))
         return candidates[0] if candidates else None
+
+    @staticmethod
+    def _is_421_error(result: ToolResult) -> bool:
+        """True when OpenDoor aborted on HTTP 421 Misdirected Request."""
+        text = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
+        return "421" in text and (
+            "unknown response status" in text
+            or "misdirected" in text
+            or "responseerror" in text
+        )
 
     @staticmethod
     def _word_from_url(url: str) -> str:
@@ -387,17 +428,57 @@ class OpenDoorStep(BaseToolStep):
                 cmd, timeout=self.timeout, use_pty=True
             )
 
+            # A front tier can answer 421 Misdirected Request when the scan
+            # targets a pinned IP with a Host override. Retry once against the
+            # public hostname (no Host header) before reporting failure.
+            if self._find_report(reports_dir) is None and self._is_421_error(result):
+                self.logger.warning(
+                    "OpenDoor hit HTTP 421 with the pinned host - retrying "
+                    "once against the public hostname"
+                )
+                cmd = self.build_command(use_pinned=False)
+                self.logger.debug(f"Retry command: {' '.join(cmd)}")
+                result = await self._async_tool_runner.run(
+                    cmd, timeout=self.timeout, use_pty=True
+                )
+
             report_file = self._find_report(reports_dir)
             if report_file is None:
                 if result.stderr:
                     self.logger.debug(f"OpenDoor stderr: {result.stderr[:500]}")
                 self._persist_raw(cmd, result, started_at, datetime.now(timezone.utc))
                 self.logger.info("OpenDoor completed without a JSON report")
+                last_error = _last_error_line(result.stderr, result.stdout)
+                is_421 = self._is_421_error(result)
+                evidence = (
+                    f"returncode: {getattr(result, 'returncode', 'unknown')}\n"
+                    f"last error: {last_error or 'no stderr/stdout output'}"
+                )
                 self.findings.append(
                     _operational_finding(
                         self.name,
-                        "OpenDoor Report Missing",
-                        result.stderr or result.stdout or "no report file produced",
+                        (
+                            "OpenDoor Report Missing (HTTP 421 Misdirected "
+                            "Request)"
+                            if is_421
+                            else "OpenDoor Report Missing"
+                        ),
+                        evidence,
+                        description=(
+                            "OpenDoor aborted on 421 Misdirected Request: the "
+                            "front tier rejected the pinned-IP/Host combination. "
+                            "The public-hostname retry also produced no report."
+                            if is_421
+                            else (
+                                "OpenDoor ran but produced no JSON report; the "
+                                "last tool error is shown as evidence."
+                            )
+                        ),
+                        raw={
+                            "returncode": getattr(result, "returncode", None),
+                            "last_error": last_error,
+                            "http_421": is_421,
+                        },
                     )
                 )
                 return self.findings

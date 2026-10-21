@@ -109,6 +109,31 @@ class ScanConfig(BaseSettings):
     enable_wpscan: bool = Field(
         default=False, description="Enable WPScan vulnerability scanner"
     )
+    plugin_fingerprint_enabled: bool = Field(
+        default=True,
+        description=(
+            "Resolve undetermined plugin versions by hashing static assets "
+            "against plugins.svn.wordpress.org tags "
+            "(env WP_PLUGIN_FINGERPRINT_ENABLED)"
+        ),
+    )
+    plugin_fingerprint_max_tags: int = Field(
+        default=30,
+        ge=1,
+        le=200,
+        description=(
+            "Max recent numeric SVN tags compared per plugin "
+            "(env WP_PLUGIN_FINGERPRINT_MAX_TAGS)"
+        ),
+    )
+    plugin_fingerprint_timeout: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Per-request timeout for plugin fingerprint lookups, in seconds "
+            "(env WP_PLUGIN_FINGERPRINT_TIMEOUT)"
+        ),
+    )
 
     enable_nuclei: bool = Field(
         default=False, description="Enable Nuclei vulnerability scanner"
@@ -130,6 +155,13 @@ class ScanConfig(BaseSettings):
     )
     nuclei_timeout: int = Field(
         default=300, ge=60, description="Nuclei timeout in seconds"
+    )
+    nuclei_stats: bool = Field(
+        default=True,
+        description=(
+            "Pass -stats to nuclei and record templates/requests coverage in "
+            "the summary finding (env WP_NUCLEI_STATS)"
+        ),
     )
 
     shodan_api_key: str = Field(default="", description="Shodan API key")
@@ -191,6 +223,31 @@ class ScanConfig(BaseSettings):
     ffuf_filter_status: str = Field(
         default="404", description="FFUF filter status codes"
     )
+    ffuf_auto_timeout: bool = Field(
+        default=True,
+        description=(
+            "Size the ffuf timeout from the wordlist and rate "
+            "(env WP_FFUF_AUTO_TIMEOUT)"
+        ),
+    )
+    ffuf_timeout_factor: float = Field(
+        default=3.0,
+        ge=1.0,
+        le=50.0,
+        description=(
+            "Safety multiplier for the auto-sized ffuf timeout "
+            "(env WP_FFUF_TIMEOUT_FACTOR)"
+        ),
+    )
+    ffuf_timeout_max: int = Field(
+        default=3600,
+        ge=60,
+        description=(
+            "Upper bound for the auto-sized ffuf timeout; larger wordlists "
+            "are trimmed with explicit partial coverage "
+            "(env WP_FFUF_TIMEOUT_MAX)"
+        ),
+    )
 
     # OpenDoor settings
     enable_opendoor: bool = Field(
@@ -242,6 +299,22 @@ class ScanConfig(BaseSettings):
     )
     security_headers: str = Field(
         default="", description="Security header wordlist"
+    )
+    headers_multi_node: bool = Field(
+        default=True,
+        description=(
+            "Probe every A-record backend for the security-headers step and "
+            "report per-node variance (env WP_HEADERS_MULTI_NODE)"
+        ),
+    )
+    headers_max_nodes: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        description=(
+            "Max backend nodes probed by the security-headers step "
+            "(env WP_HEADERS_MAX_NODES)"
+        ),
     )
     common_ports: str = Field(
         default="", description="Common port wordlist"
@@ -336,6 +409,13 @@ class ScanConfig(BaseSettings):
     raw_no_redact: bool = Field(
         default=False,
         description="Do not redact secrets from persisted raw output (debug only)",
+    )
+    evidence_bundle: bool = Field(
+        default=True,
+        description=(
+            "Write EVIDENCIAS.md (per-finding command + output excerpt + "
+            "artifact path) next to the reports (env WP_EVIDENCE_BUNDLE)"
+        ),
     )
     raw_history: bool = Field(
         default=True,

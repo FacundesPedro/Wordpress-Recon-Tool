@@ -288,7 +288,7 @@ class TestOpenDoorStep:
         result = ToolResult(stdout="not json", stderr="", returncode=0, success=True)
         findings = opendoor_step.parse_output(result)
         assert len(findings) == 1
-        assert findings[0].severity == "low"
+        assert findings[0].severity == "info"
         assert findings[0].title == "OpenDoor Output Unparseable"
         assert findings[0].raw["operational"] is True
 
@@ -332,6 +332,64 @@ class TestOpenDoorStep:
         opendoor_step._async_tool_runner.run = fake_run
         await opendoor_step.run()
         assert captured.get("use_pty") is True
+
+    async def test_run_surfaces_returncode_and_last_error(self, opendoor_step):
+        opendoor_step.check_binary = lambda binary: (True, "")
+
+        async def fake_run(cmd, timeout=None, **kwargs):
+            return ToolResult(
+                stdout="banner\n",
+                stderr="\x1b[91merror: ResponseError: boom\x1b[0m\n",
+                returncode=1,
+                success=False,
+            )
+
+        opendoor_step._async_tool_runner.run = fake_run
+        findings = await opendoor_step.run()
+        missing = next(f for f in findings if "Report Missing" in f.title)
+        assert missing.severity == "info"
+        assert "returncode: 1" in missing.evidence
+        assert "ResponseError: boom" in missing.evidence
+        assert "\x1b" not in missing.evidence
+        assert missing.raw["last_error"].endswith("ResponseError: boom")
+
+    async def test_run_retries_421_against_public_host(self, opendoor_step):
+        opendoor_step.target = Target(
+            url="https://example.com",
+            domain="example.com",
+            connect_ip="10.0.0.1",
+        )
+        opendoor_step.check_binary = lambda binary: (True, "")
+        calls = []
+
+        async def fake_run(cmd, timeout=None, **kwargs):
+            calls.append(list(cmd))
+            if len(calls) == 1:
+                return ToolResult(
+                    stdout="error: ResponseError: Unknown response status : `421`",
+                    stderr="",
+                    returncode=1,
+                    success=False,
+                )
+            reports_dir = cmd[cmd.index("--reports-dir") + 1]
+            target_dir = Path(reports_dir) / "example.com"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / "example.com.json").write_text(
+                json.dumps({"report_items": {"success": []}, "total": {}}),
+                encoding="utf-8",
+            )
+            return ToolResult(stdout="", stderr="", returncode=0, success=True)
+
+        opendoor_step._async_tool_runner.run = fake_run
+        await opendoor_step.run()
+
+        assert len(calls) == 2
+        first_host = calls[0][calls[0].index("--host") + 1]
+        second_host = calls[1][calls[1].index("--host") + 1]
+        assert first_host == "https://10.0.0.1"
+        assert "--header" in calls[0]
+        assert second_host == "https://example.com"
+        assert "--header" not in calls[1]
 
 
 class TestFfufCommandAndFailure:

@@ -9,10 +9,9 @@ Extracts WordPress version from generator meta tag, CSS, and JS.
 # HOW: Regex search for generator meta, style.css?ver=, wp-util.js?ver=
 # WHY: Version is critical for vulnerability research
 
-import re
-
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.core_version import detect_core_version
 
 
 class WpVersionStep(BaseHttpStep):
@@ -32,40 +31,7 @@ class WpVersionStep(BaseHttpStep):
         try:
             response = await self.ctx.web.homepage()
             if response.status_code == 200:
-                content = response.text.lower()
-
-                meta_match = re.search(
-                    r'<meta\s+name="generator"\s+content="wordpress\s+([0-9.]+)"',
-                    content,
-                    re.IGNORECASE,
-                )
-                if meta_match:
-                    version = meta_match.group(1)
-                    source = "meta generator tag"
-
-                if not version:
-                    css_match = re.search(
-                        r"/wp-content/themes/[^/]+/style\.css\?ver=([0-9.]+)", content
-                    )
-                    if css_match:
-                        version = css_match.group(1)
-                        source = "theme CSS version"
-
-                if not version:
-                    js_match = re.search(
-                        r"/wp-includes/js/wp-util\.js\?ver=([0-9.]+)", content
-                    )
-                    if js_match:
-                        version = js_match.group(1)
-                        source = "core JS version"
-
-                if not version:
-                    generator_match = re.search(
-                        r'content="WordPress\s+([0-9.]+)"', content
-                    )
-                    if generator_match:
-                        version = generator_match.group(1)
-                        source = "generator meta"
+                version, source = detect_core_version(response.text)
 
         except Exception as e:
             self.logger.error(f"Error detecting WordPress version: {e}")

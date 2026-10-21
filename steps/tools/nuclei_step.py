@@ -19,6 +19,33 @@ from core.finding import Finding
 from core.target import Target
 
 
+def parse_nuclei_stats(stderr: str) -> dict:
+    """Extract coverage counters from nuclei ``-stats``/``-stats-json`` output.
+
+    Accepts both the JSONL stats blocks and the human ``Templates: N`` lines,
+    returning the last block seen (nuclei repeats it every interval).
+    """
+    stats: dict = {}
+    for line in (stderr or "").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        block = {
+            key: data[key]
+            for key in ("templates", "requests", "matched", "errors", "total", "hosts", "percent")
+            if key in data
+        }
+        if block:
+            stats = block
+    return stats
+
+
 class NucleiStep(BaseToolStep):
     """Nuclei vulnerability scanner wrapper.
 
@@ -71,6 +98,7 @@ class NucleiStep(BaseToolStep):
         self.timeout = (
             timeout if timeout is not None else config_int(config, "nuclei_timeout", 300)
         )
+        self._last_stats: dict = {}
 
     def _target_url(self) -> str:
         if self.target is None:
@@ -95,12 +123,21 @@ class NucleiStep(BaseToolStep):
             "-silent",
         ]
 
-        # Split-horizon: scan the pinned IP but keep the real Host header.
-        from utils.target_net import host_header
+        # Split-horizon: scan the pinned IP but keep the real Host header and
+        # TLS SNI so vhost routing and certificate selection match the hostname.
+        from utils.target_net import host_header, sni_hostname
 
         host = host_header(self.target)
         if host:
             cmd.extend(["-H", f"Host: {host}"])
+        sni = sni_hostname(self.target)
+        if sni:
+            cmd.extend(["-sni", sni])
+
+        # Coverage counters: repeated on stderr, parsed into the summary
+        # finding so "0 results" is auditable.
+        if getattr(self.config, "nuclei_stats", True) is True:
+            cmd.extend(["-stats", "-si", "15"])
 
         # Nuclei disables TLS certificate validation by default, so there is
         # no insecure flag to pass (and no --insecure warning to emit).
@@ -182,16 +219,35 @@ class NucleiStep(BaseToolStep):
                     )
                 )
             else:
+                stats = getattr(self, "_last_stats", {}) or {}
+                coverage = (
+                    f"templates={stats.get('templates')}, "
+                    f"requests={stats.get('requests')}, "
+                    f"matched={stats.get('matched', 0)}"
+                    if stats
+                    else "coverage stats unavailable (nuclei printed none)"
+                )
                 findings.append(
                     Finding(
                         module=self.MODULE,
                         step=self.name,
                         severity="info",
                         title="Nuclei Completed",
-                        description="Nuclei scan completed without notable findings",
+                        description=(
+                            f"Nuclei scan completed without notable findings "
+                            f"({coverage})"
+                        ),
                         evidence=f"Target: {self._target_url()}",
-                        recommendation="Manual review may reveal additional details",
-                        raw={"scan_type": "nuclei", "parsed": parsed_count},
+                        recommendation=(
+                            "Manual review may reveal additional details; "
+                            "verify the scan covered templates (stats above)"
+                        ),
+                        raw={
+                            "scan_type": "nuclei",
+                            "parsed": parsed_count,
+                            "stats": stats,
+                            "coverage_verified": bool(stats),
+                        },
                     )
                 )
 
@@ -247,6 +303,37 @@ class NucleiStep(BaseToolStep):
             if recommendation
             else "Review and remediate",
             raw=raw,
+        )
+
+    def _zero_match_finding(self) -> Finding:
+        """Summary for a successful scan that produced zero matches."""
+        stats = getattr(self, "_last_stats", {}) or {}
+        coverage = (
+            f"templates={stats.get('templates')}, "
+            f"requests={stats.get('requests')}, "
+            f"matched={stats.get('matched', 0)}"
+            if stats
+            else "coverage stats unavailable (nuclei printed none)"
+        )
+        return Finding(
+            module=self.MODULE,
+            step=self.name,
+            severity="info",
+            title="Nuclei Completed",
+            description=(
+                f"Nuclei scan completed with zero matches ({coverage})"
+            ),
+            evidence=f"Target: {self._target_url()}",
+            recommendation=(
+                "A zero-match result is only meaningful when coverage stats "
+                "are present; verify templates are installed (nuclei -ut)"
+            ),
+            raw={
+                "scan_type": "nuclei",
+                "parsed": 0,
+                "stats": stats,
+                "coverage_verified": bool(stats),
+            },
         )
 
     def _detect_nuclei_error(
@@ -358,8 +445,21 @@ class NucleiStep(BaseToolStep):
                 self.findings.append(error_finding)
                 return self.findings
 
+            self._last_stats = parse_nuclei_stats(result.stderr or "")
+            if self._last_stats:
+                self.logger.info(
+                    "Nuclei coverage: "
+                    + ", ".join(
+                        f"{k}={v}" for k, v in self._last_stats.items()
+                    )
+                )
+
             if result.success or result.stdout:
                 self.findings = self.parse_output(result)
+                if result.success and not (result.stdout or "").strip():
+                    # Zero-result scans must be auditable: record the coverage
+                    # counters instead of silently producing nothing.
+                    self.findings.append(self._zero_match_finding())
                 self.logger.info(f"Nuclei completed: {len(self.findings)} findings")
             else:
                 self.logger.error(

@@ -23,6 +23,7 @@ from config import ScanConfig
 from core.exceptions import ToolTimeoutError
 from core.finding import Finding
 from core.target import Target
+from utils.version import cve_applies
 
 _SEVERITY_ORDER = ("info", "low", "medium", "high", "critical")
 
@@ -114,6 +115,62 @@ def _apply_confidence(severity: str, confidence_value: object) -> tuple[str, str
     return severity, "high"
 
 
+def _is_known_version(version: object) -> bool:
+    return bool(version) and str(version).strip().lower() not in {
+        "unknown",
+        "none",
+        "null",
+    }
+
+
+def _cap_severity(severity: str, cap: str) -> str:
+    """Lower ``severity`` to ``cap`` when it exceeds it."""
+    if _SEVERITY_ORDER.index(severity) > _SEVERITY_ORDER.index(cap):
+        return cap
+    return severity
+
+
+def resolve_wpscan_vulnerabilities(
+    vulnerabilities: list, installed: object
+) -> tuple[Optional[str], str, list[dict]]:
+    """Return ``(severity, confidence, applicable)`` for a component.
+
+    WPScan reports a plugin's/theme's vulnerability list even when it cannot
+    determine the installed version. Claiming ``high`` from a null version is
+    the retest #2 false-positive pattern, so:
+
+    - unknown version -> at most ``low`` with ``confidence="low"`` (a lead),
+      never a confirmed high/medium impact;
+    - known version -> vulnerabilities already fixed in it are dropped, and
+      the type-driven severity is kept for the remainder;
+    - everything patched -> ``(None, "high", [])`` so the caller can emit a
+      plain "detected" finding instead.
+    """
+    known = _is_known_version(installed)
+    applicable: list[dict] = []
+    severity: Optional[str] = None
+
+    for vuln in vulnerabilities or []:
+        if not isinstance(vuln, dict):
+            continue
+        if known:
+            applies = cve_applies(str(installed), vuln.get("fixed_in"))
+            if applies is False:
+                continue
+        applicable.append(vuln)
+        mapped = severity_from_vuln_type(vuln.get("type", ""), default="medium")
+        if severity is None or _SEVERITY_ORDER.index(mapped) > _SEVERITY_ORDER.index(
+            severity
+        ):
+            severity = mapped
+
+    if not applicable:
+        return None, "high", []
+    if not known:
+        return _cap_severity(severity or "low", "low"), "low", applicable
+    return severity, "high", applicable
+
+
 class WpscanStep(BaseToolStep):
     """
     WPScan wrapper for WordPress vulnerability enumeration.
@@ -195,20 +252,88 @@ class WpscanStep(BaseToolStep):
 
         return cmd
 
+    async def _enrich_plugin_versions(self, data: dict) -> None:
+        """Fill undetermined plugin versions via asset-hash fingerprinting.
+
+        WPScan reports ``version: null`` when it cannot read a plugin's
+        readme (WAF 403). The fingerprint keeps severity honest: a version
+        known to be patched suppresses the finding (retest #2/#3).
+        """
+        if getattr(self.config, "plugin_fingerprint_enabled", True) is not True:
+            return
+        plugins = data.get("plugins")
+        if not isinstance(plugins, dict):
+            return
+        unknown = [
+            name
+            for name, info in plugins.items()
+            if isinstance(info, dict) and not _is_known_version(info.get("version"))
+        ]
+        if not unknown:
+            return
+
+        from utils.plugin_fingerprint import PluginFingerprinter
+
+        max_tags = getattr(self.config, "plugin_fingerprint_max_tags", 30)
+        timeout = getattr(self.config, "plugin_fingerprint_timeout", 10)
+        try:
+            async with PluginFingerprinter(
+                target_url=self._target_url(),
+                timeout=float(timeout or 10),
+                max_tags=int(max_tags or 30),
+            ) as fingerprinter:
+                for slug in unknown[:10]:
+                    result = await fingerprinter.fingerprint(
+                        slug,
+                        fetch_target=lambda asset, _slug=slug: self._fetch_plugin_asset(
+                            _slug, asset
+                        ),
+                    )
+                    if not result.found:
+                        continue
+                    info = plugins[slug]
+                    info["version"] = result.version
+                    info["version_source"] = result.method
+                    info["version_confidence"] = result.confidence
+                    info["version_candidates"] = result.candidates[:10]
+                    self.logger.info(
+                        f"Fingerprinted {slug} -> {result.version} "
+                        f"({result.confidence})"
+                    )
+        except Exception as exc:  # never fail the scan on enrichment
+            self.logger.debug(f"Plugin version fingerprinting failed: {exc}")
+
+    async def _fetch_plugin_asset(self, slug: str, asset: str):
+        """Fetch a plugin asset through the scan's (pinned) HTTP client."""
+        ctx = self.ctx
+        if ctx is None:
+            return None
+        try:
+            response = await ctx.web.get(f"wp-content/plugins/{slug}/{asset}")
+            if getattr(response, "status_code", 0) != 200:
+                return None
+            return response.content
+        except Exception:
+            return None
+
     def parse_output(self, result: ToolResult) -> list[Finding]:
         """Parse WPScan JSON output into findings."""
-        findings = []
+        data, findings = self._load_json(result)
+        if data is None:
+            return findings
+        return findings + self.parse_data(data)
 
+    def _load_json(self, result: ToolResult) -> tuple[Optional[dict], list[Finding]]:
+        """Parse the tool stdout, returning (data, parse-error findings)."""
         if not result.stdout:
             if result.stderr:
                 self.logger.debug(f"WPScan stderr: {result.stderr[:500]}")
-            return findings
-
+            return None, []
         try:
-            data = json.loads(result.stdout)
+            return json.loads(result.stdout), []
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse WPScan JSON: {e}")
-            findings.append(
+            return None, [
                 Finding(
                     module=self.MODULE,
                     step=self.name,
@@ -219,9 +344,11 @@ class WpscanStep(BaseToolStep):
                     recommendation="Check WPScan installation and output format",
                     raw={"stderr": result.stderr[:500] if result.stderr else ""},
                 )
-            )
-            return findings
+            ]
 
+    def parse_data(self, data: dict) -> list[Finding]:
+        """Build findings from an already-parsed WPScan JSON document."""
+        findings: list[Finding] = []
         findings.extend(self._parse_version(data))
         findings.extend(self._parse_plugins(data))
         findings.extend(self._parse_themes(data))
@@ -277,20 +404,35 @@ class WpscanStep(BaseToolStep):
 
         version = version_data.get("number", "unknown")
         vulnerabilites = version_data.get("vulnerabilities", [])
+        known_version = _is_known_version(version)
 
         if version != "unknown":
-            if vulnerabilites:
-                vuln_titles = ', '.join(v.get('title', '') for v in vulnerabilites[:3])
-                severity = severity_from_vulnerabilities(vulnerabilites, default="high")
+            severity, finding_confidence, applicable = (
+                resolve_wpscan_vulnerabilities(vulnerabilites, version)
+                if vulnerabilites
+                else (None, "high", [])
+            )
+            if applicable and severity is not None:
+                vuln_titles = ', '.join(
+                    v.get('title', '') for v in applicable[:3]
+                )
                 finding = Finding(
                     module=self.MODULE,
                     step=self.name,
                     severity=severity,  # type: ignore[arg-type]
+                    confidence=finding_confidence,  # type: ignore[arg-type]
                     title=f"WordPress {version} - Vulnerable",
-                    description=f"WordPress {version} has {len(vulnerabilites)} known vulnerabilities",
+                    description=(
+                        f"WordPress {version} has {len(applicable)} known "
+                        f"vulnerabilit{'y' if len(applicable) == 1 else 'ies'}"
+                    ),
                     evidence=f"Version: {version}",
                     recommendation=f"Upgrade WordPress immediately. Vulnerabilities: {vuln_titles}",
-                    raw={"version": version, "vulnerabilities": vulnerabilites},
+                    raw={
+                        "version": version,
+                        "version_unknown": not known_version,
+                        "vulnerabilities": applicable,
+                    },
                 )
             else:
                 finding = Finding(
@@ -301,7 +443,13 @@ class WpscanStep(BaseToolStep):
                     description="WordPress version identified via fingerprinting",
                     evidence=f"Version: {version}",
                     recommendation="Ensure WordPress is updated to latest version",
-                    raw={"version": version, "vulnerabilities": vulnerabilites},
+                    raw={
+                        "version": version,
+                        "version_unknown": not known_version,
+                        "vulnerabilities": vulnerabilites,
+                        "all_reported_vulns_patched": bool(vulnerabilites)
+                        and not applicable,
+                    },
                 )
 
             findings.append(finding)
@@ -321,33 +469,72 @@ class WpscanStep(BaseToolStep):
             vulnerabilites = plugin_data.get("vulnerabilities", [])
             location = plugin_data.get("location", "")
             confidence = plugin_data.get("confidence", "")
+            known_version = _is_known_version(version)
 
-            if vulnerabilites:
+            severity, finding_confidence, applicable = (
+                resolve_wpscan_vulnerabilities(vulnerabilites, version)
+                if vulnerabilites
+                else (None, "high", [])
+            )
+
+            if applicable and severity is not None:
                 vuln_list = []
-                for v in vulnerabilites:
+                for v in applicable:
                     vuln_title = v.get("title", "Unknown vulnerability")
                     vuln_type = v.get("type", "vulnerability")
-                    vuln_list.append(f"{vuln_title} ({vuln_type})")
+                    fixed_in = v.get("fixed_in")
+                    suffix = f", fixed in {fixed_in}" if fixed_in else ""
+                    vuln_list.append(f"{vuln_title} ({vuln_type}{suffix})")
 
-                severity, finding_confidence = _apply_confidence(
-                    severity_from_vulnerabilities(vulnerabilites, default="high"),
-                    confidence,
+                severity, detection_confidence = _apply_confidence(
+                    severity, confidence
+                )
+                # Never upgrade a low-confidence (unknown-version) verdict just
+                # because WPScan was sure the plugin exists.
+                if finding_confidence == "low":
+                    detection_confidence = "low"
+                finding_confidence = detection_confidence
+                title_prefix = (
+                    "Plugin Vulnerable"
+                    if known_version
+                    else "Plugin Vulnerability (version unknown)"
                 )
                 finding = Finding(
                     module=self.MODULE,
                     step=self.name,
                     severity=severity,  # type: ignore[arg-type]
                     confidence=finding_confidence,  # type: ignore[arg-type]
-                    title=f"Plugin Vulnerable: {plugin_name}",
-                    description=f"Plugin '{plugin_name}' has {len(vulnerabilites)} known vulnerabilities",
-                    evidence=f"Plugin: {plugin_name} | Version: {version} | Location: {location}",
-                    recommendation=f"UPDATE OR REMOVE this plugin immediately. Vulnerabilities: {'; '.join(vuln_list[:3])}",
+                    title=f"{title_prefix}: {plugin_name}",
+                    description=(
+                        f"Plugin '{plugin_name}' has {len(applicable)} known "
+                        f"vulnerabilit{'y' if len(applicable) == 1 else 'ies'}"
+                        + (
+                            ""
+                            if known_version
+                            else " (installed version not determined)"
+                        )
+                    ),
+                    evidence=(
+                        f"Plugin: {plugin_name} | Version: {version} | "
+                        f"Location: {location}"
+                    ),
+                    recommendation=(
+                        f"UPDATE OR REMOVE this plugin. Vulnerabilities: "
+                        f"{'; '.join(vuln_list[:3])}"
+                        if known_version
+                        else (
+                            "Determine the installed plugin version (readme or "
+                            "asset-hash fingerprint) before treating this as "
+                            "an exploitable finding"
+                        )
+                    ),
                     raw={
                         "plugin": plugin_name,
                         "version": version,
+                        "version_unknown": not known_version,
                         "location": location,
                         "confidence": confidence,
-                        "vulnerabilities": vulnerabilites,
+                        "vulnerabilities": applicable,
                     },
                 )
             else:
@@ -356,15 +543,25 @@ class WpscanStep(BaseToolStep):
                     step=self.name,
                     severity="info",
                     title=f"Plugin Detected: {plugin_name}",
-                    description=f"Plugin found with confidence: {confidence}",
+                    description=(
+                        f"Plugin found with confidence: {confidence}"
+                        + (
+                            ""
+                            if known_version
+                            else " (version not determined)"
+                        )
+                    ),
                     evidence=f"Plugin: {plugin_name} | Version: {version} | Location: {location}",
                     recommendation="Ensure plugin is updated and monitored for vulnerabilities",
                     raw={
                         "plugin": plugin_name,
                         "version": version,
+                        "version_unknown": not known_version,
                         "location": location,
                         "confidence": confidence,
                         "vulnerabilities": vulnerabilites,
+                        "all_reported_vulns_patched": bool(vulnerabilites)
+                        and not applicable,
                     },
                 )
 
@@ -384,23 +581,52 @@ class WpscanStep(BaseToolStep):
             version = theme_data.get("version", "unknown")
             vulnerabilites = theme_data.get("vulnerabilities", [])
             location = theme_data.get("location", "")
+            known_version = _is_known_version(version)
 
-            if vulnerabilites:
-                vuln_titles = ', '.join(v.get('title', '') for v in vulnerabilites[:3])
-                severity = severity_from_vulnerabilities(vulnerabilites, default="high")
+            severity, finding_confidence, applicable = (
+                resolve_wpscan_vulnerabilities(vulnerabilites, version)
+                if vulnerabilites
+                else (None, "high", [])
+            )
+
+            if applicable and severity is not None:
+                vuln_titles = ', '.join(
+                    v.get('title', '') for v in applicable[:3]
+                )
                 finding = Finding(
                     module=self.MODULE,
                     step=self.name,
                     severity=severity,  # type: ignore[arg-type]
-                    title=f"Theme Vulnerable: {theme_name}",
-                    description=f"Theme '{theme_name}' has {len(vulnerabilites)} known vulnerabilities",
+                    confidence=finding_confidence,  # type: ignore[arg-type]
+                    title=(
+                        f"Theme Vulnerable: {theme_name}"
+                        if known_version
+                        else f"Theme Vulnerability (version unknown): {theme_name}"
+                    ),
+                    description=(
+                        f"Theme '{theme_name}' has {len(applicable)} known "
+                        f"vulnerabilit{'y' if len(applicable) == 1 else 'ies'}"
+                        + (
+                            ""
+                            if known_version
+                            else " (installed version not determined)"
+                        )
+                    ),
                     evidence=f"Theme: {theme_name} | Version: {version} | Location: {location}",
-                    recommendation=f"Update or replace theme immediately. Vulnerabilities: {vuln_titles}",
+                    recommendation=(
+                        f"Update or replace theme immediately. Vulnerabilities: {vuln_titles}"
+                        if known_version
+                        else (
+                            "Determine the installed theme version before "
+                            "treating this as an exploitable finding"
+                        )
+                    ),
                     raw={
                         "theme": theme_name,
                         "version": version,
+                        "version_unknown": not known_version,
                         "location": location,
-                        "vulnerabilities": vulnerabilites,
+                        "vulnerabilities": applicable,
                     },
                 )
             else:
@@ -415,8 +641,11 @@ class WpscanStep(BaseToolStep):
                     raw={
                         "theme": theme_name,
                         "version": version,
+                        "version_unknown": not known_version,
                         "location": location,
                         "vulnerabilities": vulnerabilites,
+                        "all_reported_vulns_patched": bool(vulnerabilites)
+                        and not applicable,
                     },
                 )
 
@@ -669,7 +898,12 @@ class WpscanStep(BaseToolStep):
                 return self.findings
 
             if result.success or result.stdout:
-                self.findings = self.parse_output(result)
+                data, parse_findings = self._load_json(result)
+                if data is None:
+                    self.findings = parse_findings
+                else:
+                    await self._enrich_plugin_versions(data)
+                    self.findings = parse_findings + self.parse_data(data)
                 self.logger.info(f"WPScan completed: {len(self.findings)} findings")
             else:
                 self.logger.error(

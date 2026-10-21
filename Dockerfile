@@ -118,7 +118,10 @@ RUN if [ "$INSTALL_RECOMMENDED_WORDLISTS" = "true" ]; then \
 
 # Writable default output dir + a stable HOME so external tools (ffuf, nuclei)
 # find their config under /home/recon even when started without a login shell.
-RUN mkdir -p /app/reports && chown -R recon:recon /app/wordlists /app/reports /home/recon
+# /app is chowned wholesale: COPY preserves the build context's directory modes,
+# and a restrictive umask on the host (e.g. 077) otherwise leaves package
+# directories unreadable to the unprivileged `recon` user.
+RUN mkdir -p /app/reports && chown -R recon:recon /app /home/recon
 ENV HOME=/home/recon
 USER recon
 

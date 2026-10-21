@@ -25,6 +25,24 @@ from utils.wordlist_loader import get_wordlist_path
 
 _SCRIPT_RE = re.compile(r"<script[^>]+src=[\"']([^\"']+)[\"']", re.I)
 _INTEGRITY_RE = re.compile(r"integrity\s*=", re.I)
+
+# Dynamically generated tags expose no stable content hash, so SRI is not
+# applicable and flagging them is noise (hml-kitsdidaticos A7).
+_DYNAMIC_SRI_EXEMPT = (
+    "googletagmanager.com/gtag/js",
+    "googletagmanager.com/gtm.js",
+    "google-analytics.com/analytics.js",
+    "google-analytics.com/ga.js",
+    "gstatic.com/recaptcha/",
+    "recaptcha.net/recaptcha/",
+    "cloudflareinsights.com/beacon.min.js",
+)
+
+
+def is_dynamic_sri_exempt(url: str) -> bool:
+    """True for tags whose content is generated per request (no stable hash)."""
+    lowered = (url or "").lower()
+    return any(fragment in lowered for fragment in _DYNAMIC_SRI_EXEMPT)
 _BANNER_RES: list[tuple[str, re.Pattern]] = [
     ("jQuery", re.compile(r"jQuery (?:JavaScript Library )?v?(\d+\.\d+(?:\.\d+)?)", re.I)),
     ("jQuery UI", re.compile(r"jQuery UI -? v?(\d+\.\d+(?:\.\d+)?)", re.I)),
@@ -253,6 +271,11 @@ class JsLibraryStep(BaseHttpStep):
         )
 
     def _report_sri(self, url: str) -> None:
+        if is_dynamic_sri_exempt(url):
+            # GTM/gtag, reCAPTCHA and the Cloudflare beacon are generated per
+            # request; no stable hash exists for integrity=.
+            self.logger.debug(f"SRI not applicable to dynamic tag: {url[:120]}")
+            return
         self._add_finding(
             module=self.MODULE,
             severity="low",

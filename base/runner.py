@@ -14,6 +14,7 @@ from core.scan_context import ScanContext
 from core.target import Target
 from modules import RISK_TIERS
 from modules.module import Module
+from utils.evidence_bundle import attach_commands
 from utils.report import Report
 
 
@@ -127,6 +128,11 @@ class Runner:
                         )
                     else:
                         skipped.append(step_class.__name__)
+                        provides = getattr(step_class, "provides", ())
+                        if self._ctx is not None and isinstance(
+                            provides, (tuple, list)
+                        ):
+                            self._ctx.mark_missing(*provides)
                         self.logger.warning(
                             f"Target unreachable — skipping step {step_class.__name__}"
                         )
@@ -137,9 +143,14 @@ class Runner:
                         config=self.config,
                         http=self._http,
                     )
+                    # The sequential path must share the per-target blackboard
+                    # too, otherwise `requires` consumers (e.g.
+                    # service_inventory ← nmap `services`) always see nothing.
+                    if self._ctx is not None:
+                        step._ctx = self._ctx
                     self.logger.debug(f"Running step: {step.name}")
                     step_findings = await step.run()
-                    findings.extend(step_findings)
+                    findings.extend(attach_commands(step_findings, self.config))
                     self.logger.debug(
                         f"Step {step.name} completed with {len(step_findings)} findings"
                     )
@@ -184,7 +195,9 @@ class Runner:
                     step._ctx = self._ctx
                 self.logger.debug(f"Running step: {step.name}")
                 step_findings = await step.run()
-                findings_list.extend(step_findings)
+                findings_list.extend(
+                    attach_commands(step_findings, self.config)
+                )
                 self.logger.debug(
                     f"Step {step.name} completed with {len(step_findings)} findings"
                 )

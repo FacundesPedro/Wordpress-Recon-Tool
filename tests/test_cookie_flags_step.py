@@ -238,6 +238,30 @@ class TestCookieFlagsStep:
         findings = await step.run()
         assert findings == []
 
+    async def test_wordpress_test_cookie_ignored(
+        self, mock_http, mock_target, mock_config
+    ):
+        """`wordpress_test_cookie` is a cookie-support probe, not session state
+        (hml-kitsdidaticos A8)."""
+        mock_http.request = AsyncMock(
+            side_effect=responder(
+                {
+                    "/": response(
+                        200,
+                        {
+                            "set-cookie": [
+                                "wordpress_test_cookie=WP%20Cookie%20check; Path=/",
+                                "wp_lang=en_US; Path=/",
+                            ]
+                        },
+                    )
+                }
+            )
+        )
+        step = make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert findings == []
+
     async def test_real_session_cookie_still_flagged_alongside_lockout(
         self, mock_http, mock_target, mock_config
     ):

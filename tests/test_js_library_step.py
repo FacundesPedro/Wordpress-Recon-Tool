@@ -73,6 +73,35 @@ class TestJsLibraryStep:
         findings = await step.run()
         assert not [f for f in findings if "integrity" in f.title.lower()]
 
+    async def test_dynamic_gtm_tag_exempt_from_sri(
+        self, mock_http, mock_target, mock_config
+    ):
+        """GTM/gtag is generated per request and exposes no stable hash (A7)."""
+        html = (
+            '<script src="https://www.googletagmanager.com/gtag/js?id=G-ABC">'
+            "</script>"
+        )
+        mock_http.request = AsyncMock(
+            return_value=MagicMock(status_code=200, text=html)
+        )
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not [f for f in findings if "integrity" in f.title.lower()]
+
+    async def test_recaptcha_exempt_from_sri(
+        self, mock_http, mock_target, mock_config
+    ):
+        html = (
+            '<script src="https://www.gstatic.com/recaptcha/releases/x/recaptcha.js">'
+            "</script>"
+        )
+        mock_http.request = AsyncMock(
+            return_value=MagicMock(status_code=200, text=html)
+        )
+        step = self.make_step(mock_http, mock_target, mock_config)
+        findings = await step.run()
+        assert not [f for f in findings if "integrity" in f.title.lower()]
+
     async def test_no_scripts(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
             return_value=MagicMock(status_code=200, text="<p>hi</p>")

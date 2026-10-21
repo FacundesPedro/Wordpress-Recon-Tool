@@ -1,9 +1,11 @@
 # recon_wp/core/finding.py
 """Finding dataclass - the core atom for all results."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Literal
+
+from utils.text_sanitize import strip_ansi, strip_ansi_and_box
 
 SARIF_LEVEL_MAP: dict[str, str] = {
     "critical": "error",
@@ -34,12 +36,27 @@ class Finding:
     confidence: Confidence = "high"
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw: dict[str, Any] = field(default_factory=dict)
+    # Exact tool command that produced the evidence (filled from the raw
+    # artifacts by the runner), for the per-finding evidence bundle.
+    command: str = ""
 
     # `confidence` is intentionally excluded: two otherwise-identical findings
     # should dedupe regardless of how certain each detection was.
     _DEDUP_FIELDS = (
         "module", "step", "severity", "title", "description", "evidence", "recommendation",
     )
+
+    def __post_init__(self) -> None:
+        # Terminal control codes and box-drawing banners break PDF rendering
+        # (xhtml2pdf has no glyphs for them) and add nothing to a report.
+        object.__setattr__(self, "evidence", strip_ansi_and_box(self.evidence or ""))
+        object.__setattr__(self, "description", strip_ansi(self.description or ""))
+
+    def with_command(self, command: str) -> "Finding":
+        """Return a copy carrying ``command`` (immutable-friendly helper)."""
+        if not command or command == self.command:
+            return self
+        return replace(self, command=command)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Finding):
@@ -64,6 +81,7 @@ class Finding:
             "recommendation": self.recommendation,
             "timestamp": self.timestamp.isoformat(),
             "raw": self.raw,
+            "command": self.command,
         }
 
     def to_sarif(self) -> dict[str, Any]:

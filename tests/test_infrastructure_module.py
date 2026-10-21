@@ -165,14 +165,80 @@ class TestTlsStep:
     async def test_classify_cert_error_high_vs_medium(self):
         from steps.infrastructure.tls_step import TlsStep
 
-        sev, _ = TlsStep._classify_cert_error(
+        sev, _, kind = TlsStep._classify_cert_error(
             Exception("certificate has expired")
         )
-        assert sev == "high"
-        sev, _ = TlsStep._classify_cert_error(
+        assert sev == "high" and kind == "expired"
+        sev, _, kind = TlsStep._classify_cert_error(
             Exception("self-signed certificate in certificate chain")
         )
-        assert sev == "medium"
+        assert sev == "medium" and kind == "self_signed"
+
+    async def test_classify_cert_error_distinguishes_cases(self):
+        from steps.infrastructure.tls_step import TlsStep
+
+        sev, desc, kind = TlsStep._classify_cert_error(
+            Exception("certificate verify failed: Hostname mismatch")
+        )
+        assert (sev, kind) == ("high", "hostname_mismatch")
+        assert "hostname" in desc.lower()
+
+        sev, desc, kind = TlsStep._classify_cert_error(
+            Exception("unable to get local issuer certificate")
+        )
+        assert (sev, kind) == ("medium", "chain_untrusted")
+        assert "chain" in desc.lower()
+
+    async def test_pinned_ip_reports_expired_default_cert(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A valid SNI cert must not hide an expired no-SNI cert on the IP."""
+        from steps.infrastructure.tls_step import TlsStep
+
+        mock_target.url = "https://example.com"
+        mock_target.domain = "example.com"
+        mock_target.connect_ip = "10.0.0.1"
+
+        sni_ssock = self._make_mock_ssock()
+        sni_ssock.getpeercert.return_value = b"sni-der"
+        default_ssock = self._make_mock_ssock()
+        default_ssock.getpeercert.return_value = b"default-der"
+
+        sni_context = MagicMock()
+        sni_context.wrap_socket.return_value = sni_ssock
+        default_context = MagicMock()
+        default_context.wrap_socket.return_value = default_ssock
+
+        expired_cert = {
+            "notAfter": "Jan  1 00:00:00 2020 GMT",
+            "subject": ((("commonName", "old.example.com"),),),
+        }
+
+        with (
+            patch(
+                "steps.infrastructure.tls_step.socket.create_connection",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "steps.infrastructure.tls_step.ssl.create_default_context",
+                return_value=sni_context,
+            ),
+            patch(
+                "steps.infrastructure.tls_step.ssl.SSLContext",
+                return_value=default_context,
+            ),
+            patch.object(TlsStep, "_decode_cert", return_value=expired_cert),
+        ):
+            step = TlsStep(
+                target=mock_target, config=mock_config, http=mock_http
+            )
+            findings = await step.run()
+
+        default = next(f for f in findings if "default" in f.title.lower())
+        assert default.severity == "high"
+        assert default.raw["classification"] == "expired"
+        assert default.raw["common_name"] == "old.example.com"
+        assert "10.0.0.1" in default.title
 
     async def test_cert_failure_emits_finding_with_real_context(
         self, mock_http, mock_target, mock_config

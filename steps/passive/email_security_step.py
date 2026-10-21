@@ -36,11 +36,54 @@ DKIM_SELECTORS = [
 
 CAA_TAGS = ("issue", "issuewild", "iodef")
 
+# Public resolvers used to corroborate a proven-absent record: an internal
+# split-horizon view can hide a record the public DNS publishes.
+PUBLIC_RESOLVERS = ("1.1.1.1", "8.8.8.8")
 
-def analyze_spf(records: list[str]) -> Optional[dict]:
-    """Analyze SPF records; return issue dict or None when healthy/absent."""
+
+def analyze_spf(
+    records: list[str],
+    is_subdomain: bool = False,
+    org_has_spf: bool = False,
+) -> Optional[dict]:
+    """Analyze SPF records; return issue dict or None when healthy/absent.
+
+    Scope matters: SPF is **not** inherited by subdomains, so a missing record
+    on a subdomain whose organizational domain publishes one is informational
+    (the subdomain simply sends no mail), not a medium spoofing risk. Only
+    report ``medium`` when neither scope publishes SPF.
+    """
     spf = next((r for r in records if r.lower().startswith("v=spf1")), None)
     if spf is None:
+        if is_subdomain:
+            if org_has_spf:
+                return {
+                    "severity": "info",
+                    "title": "No SPF record on the subdomain (not inherited)",
+                    "description": (
+                        "This subdomain publishes no SPF record of its own. "
+                        "The organizational domain does publish one, but SPF "
+                        "is not inherited: mail claiming to be from this "
+                        "subdomain is not covered by that policy."
+                    ),
+                    "recommendation": (
+                        "If this subdomain sends mail, publish its own SPF "
+                        "record; no action is otherwise required for the "
+                        "organizational domain."
+                    ),
+                    "raw": {"scope": "subdomain", "organizational_spf": True},
+                }
+            return {
+                "severity": "medium",
+                "title": "No SPF record found on the subdomain",
+                "description": (
+                    "Neither this subdomain nor the organizational domain "
+                    "publishes an SPF record. Any host can send email "
+                    "claiming to be from this subdomain."
+                ),
+                "recommendation": "Publish an SPF record listing authorized senders",
+                "raw": {"scope": "subdomain", "organizational_spf": False},
+            }
         return {
             "severity": "medium",
             "title": "No SPF record found",
@@ -49,7 +92,7 @@ def analyze_spf(records: list[str]) -> Optional[dict]:
                 "email claiming to be from this domain."
             ),
             "recommendation": "Publish an SPF record listing authorized senders",
-            "raw": {},
+            "raw": {"scope": "domain"},
         }
     lowered = spf.lower()
     tokens = lowered.split()
@@ -77,11 +120,15 @@ def analyze_spf(records: list[str]) -> Optional[dict]:
     return None
 
 
-def analyze_dmarc(records: list[str], is_subdomain: bool = False) -> Optional[dict]:
+def analyze_dmarc(
+    records: list[str], is_subdomain: bool = False, inherited: bool = False
+) -> Optional[dict]:
     """Analyze DMARC record; return issue dict or None when strong/absent.
 
-    For a subdomain inheriting the organizational DMARC record, the subdomain
-    policy (`sp=`) takes precedence over `p=`.
+    For a subdomain without its own record, the organizational DMARC record is
+    inherited (``sp=`` overrides ``p=``). That inheritance is normal, so it is
+    reported as ``info`` with the effective policy — never ``medium`` — unless
+    no DMARC exists at either scope.
     """
     dmarc = next(
         (r for r in records if r.lower().startswith("v=dmarc1")), None
@@ -95,7 +142,7 @@ def analyze_dmarc(records: list[str], is_subdomain: bool = False) -> Optional[di
                 "instruction on handling spoofed mail."
             ),
             "recommendation": "Publish a DMARC record (start at p=quarantine, move to p=reject)",
-            "raw": {},
+            "raw": {"scope": "subdomain" if is_subdomain else "domain"},
         }
 
     value = None
@@ -108,6 +155,26 @@ def analyze_dmarc(records: list[str], is_subdomain: bool = False) -> Optional[di
     if value is None:
         policy = re.search(r"\bp=(\w+)", dmarc, re.I)
         value = policy.group(1).lower() if policy else "none"
+
+    if inherited:
+        return {
+            "severity": "info",
+            "title": "DMARC inherited from the organizational domain",
+            "description": (
+                "The subdomain publishes no DMARC record of its own; the "
+                f"organizational policy applies ({scope}={value}): {dmarc[:120]}"
+            ),
+            "recommendation": (
+                "No action on the subdomain: DMARC inheritance is expected. "
+                "Review the organizational policy separately."
+            ),
+            "raw": {
+                "dmarc": dmarc,
+                "policy": value,
+                "scope": scope,
+                "inherited": True,
+            },
+        }
 
     if value == "none":
         return {
@@ -169,38 +236,83 @@ class EmailSecurityStep(BaseToolStep):
             )
             return self.findings
 
-        # 1. SPF (never inherited by subdomains)
+        # 1. SPF (never inherited by subdomains). A missing record on a
+        #    subdomain whose organizational domain publishes one is info, not
+        #    medium; absence is corroborated with public resolvers first.
+        org = organizational_domain(domain)
+        is_subdomain = bool(org and org != domain)
+
         txt = await self._query_with_fallback(domain, "TXT")
+        txt, spf_split = await self._corroborate_if_absent(domain, "TXT", txt)
         if txt.indeterminate:
             self._add_lookup_failure(domain, "TXT", txt)
         else:
-            spf_issue = analyze_spf(txt.records)
+            org_has_spf = False
+            if is_subdomain:
+                org_txt = await self._query_with_fallback(org, "TXT")
+                org_txt, _ = await self._corroborate_if_absent(
+                    org, "TXT", org_txt
+                )
+                org_has_spf = any(
+                    r.lower().startswith("v=spf1") for r in org_txt.records
+                )
+            spf_issue = analyze_spf(
+                txt.records,
+                is_subdomain=is_subdomain,
+                org_has_spf=org_has_spf,
+            )
             if spf_issue:
+                spf_issue.setdefault("raw", {}).update(
+                    {
+                        "query": domain,
+                        "dig_status": txt.status,
+                        "resolver": txt.nameserver or "system",
+                        "split_horizon": spf_split,
+                        "organizational_domain": org,
+                    }
+                )
                 self._add_issue(spf_issue, f"TXT {domain} ({txt.evidence})")
 
         # 2. DMARC, with organizational-domain inheritance (subdomains inherit;
-        #    `sp=` overrides `p=` for the subdomain).
+        #    `sp=` overrides `p=` for the subdomain). An inherited record is
+        #    informational; `medium` only when neither scope publishes.
         dmarc_name = f"_dmarc.{domain}"
         dmarc = await self._query_with_fallback(dmarc_name, "TXT")
+        dmarc, dmarc_split = await self._corroborate_if_absent(
+            dmarc_name, "TXT", dmarc
+        )
         if dmarc.indeterminate:
             self._add_lookup_failure(dmarc_name, "TXT", dmarc)
         else:
             dmarc_records = dmarc.records
-            is_subdomain = False
+            inherited = False
             evidence = f"TXT {dmarc_name} ({dmarc.evidence})"
-            if dmarc.no_record:
-                org = organizational_domain(domain)
-                if org and org != domain:
-                    org_res = await self._query_with_fallback(f"_dmarc.{org}", "TXT")
-                    if not org_res.indeterminate and org_res.records:
-                        dmarc_records = org_res.records
-                        is_subdomain = True
-                        evidence = (
-                            f"DMARC inherited from _dmarc.{org} "
-                            f"({org_res.evidence})"
-                        )
-            dmarc_issue = analyze_dmarc(dmarc_records, is_subdomain=is_subdomain)
+            if dmarc.no_record and is_subdomain:
+                org_name = f"_dmarc.{org}"
+                org_res = await self._query_with_fallback(org_name, "TXT")
+                org_res, _ = await self._corroborate_if_absent(
+                    org_name, "TXT", org_res
+                )
+                if not org_res.indeterminate and org_res.records:
+                    dmarc_records = org_res.records
+                    inherited = True
+                    evidence = (
+                        f"DMARC inherited from {org_name} "
+                        f"({org_res.evidence})"
+                    )
+            dmarc_issue = analyze_dmarc(
+                dmarc_records, is_subdomain=is_subdomain, inherited=inherited
+            )
             if dmarc_issue:
+                dmarc_issue.setdefault("raw", {}).update(
+                    {
+                        "query": dmarc_name,
+                        "dig_status": dmarc.status,
+                        "resolver": dmarc.nameserver or "system",
+                        "split_horizon": dmarc_split,
+                        "organizational_domain": org,
+                    }
+                )
                 self._add_issue(dmarc_issue, evidence)
 
         # 3. DKIM selector probes
@@ -292,6 +404,24 @@ class EmailSecurityStep(BaseToolStep):
             if not alt.indeterminate:
                 return alt
         return result
+
+    async def _corroborate_if_absent(
+        self, name: str, record_type: str, result: DigResult
+    ) -> tuple[DigResult, bool]:
+        """Cross-check a proven-absent record against public resolvers.
+
+        A split-horizon/internal view can hide a record the public DNS
+        publishes; treating NODATA/NXDOMAIN as proof of absence then yields a
+        false "No SPF/DMARC". Returns the public result when one disagrees and
+        a flag marking the split-horizon evidence.
+        """
+        if result.indeterminate or not result.no_record:
+            return result, False
+        for resolver in PUBLIC_RESOLVERS:
+            alt = await self._dig(name, record_type, nameserver=resolver)
+            if alt.records:
+                return alt, True
+        return result, False
 
     async def _dig(
         self, name: str, record_type: str = "TXT", nameserver: Optional[str] = None

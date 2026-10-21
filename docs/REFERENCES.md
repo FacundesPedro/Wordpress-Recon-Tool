@@ -211,6 +211,14 @@ by `steps/webapp/management_console_step.py`.
 | [CSP Evaluator](https://csp-evaluator.withgoogle.com/) | Google's CSP analysis tool. Helps evaluate Content-Security-Policy findings. |
 | [WPScan Vulnerability Statistics](https://wpscan.com/statistics) | Dashboard of WP vulnerability trends. Useful for understanding prevalence of plugin/theme vulns when prioritizing. |
 
+## WordPress Version Sources (S27)
+
+| URL | Why It Matters |
+|-----|----------------|
+| [WordPress core version-check API](https://api.wordpress.org/core/version-check/1.7/?version=7.1.2) | Tokenless, stable source for "is this core outdated?": `offers[0].current` / `response=upgrade`. Used by `steps/passive/core_currency_step.py`. |
+| [Plugin SVN tags](https://plugins.svn.wordpress.org/contact-form-7/tags/) | Directory listing of a plugin's release tags. `utils/plugin_fingerprint.py` hashes the same static asset across recent numeric tags to resolve a version when `readme.txt` is blocked. |
+| [Plugin information API 1.2](https://api.wordpress.org/plugins/info/1.2/?action=plugin_information&request%5Bslug%5D=contact-form-7) | Changelog with release dates, used to correlate asset hashes with the target file's `Last-Modified`. |
+
 ## Python Ecosystem
 
 | URL | Why It Matters |

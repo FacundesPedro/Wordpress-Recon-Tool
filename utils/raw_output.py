@@ -32,7 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from base.tool import ToolResult, _redact_sensitive_from_output
+from base.tool import ToolResult, _redact_sensitive_from_output, redact_argv
+from utils.text_sanitize import strip_ansi
 
 DEFAULT_MAX_BYTES = 5_000_000
 
@@ -41,14 +42,21 @@ DEFAULT_MAX_BYTES = 5_000_000
 CMD_WIDTH = 100
 
 
-def format_command(cmd: list[str] | None, width: int = CMD_WIDTH) -> str:
+def format_command(
+    cmd: list[str] | None, width: int = CMD_WIDTH, redact: bool = True
+) -> str:
     """Render argv as a shell command wrapped to ``width`` columns.
 
     Arguments are quoted with :func:`shlex.quote` and joined with spaces,
     inserting a trailing ``\\`` + newline when the next argument would exceed
     the width. The result is a single, pasteable shell command.
+
+    Secret flag values (``--api-token``, ``--password``, ...) are masked with
+    ``<REDACTED>`` unless ``redact`` is False (the ``--raw-no-redact`` escape
+    hatch).
     """
-    tokens = [shlex.quote(str(a)) for a in (cmd or [])]
+    argv = redact_argv(cmd) if redact else [str(a) for a in (cmd or [])]
+    tokens = [shlex.quote(a) for a in argv]
     if not tokens:
         return ""
     lines: list[str] = []
@@ -160,7 +168,9 @@ class RawArtifactWriter:
     def _redact(self, text: str) -> str:
         if getattr(self._config, "raw_no_redact", False):
             return text
-        return _redact_sensitive_from_output(text)
+        # Strip ANSI first so escape sequences never reach the artifacts or a
+        # report built from them; then mask credential-like values.
+        return _redact_sensitive_from_output(strip_ansi(text))
 
     def _cap(self, text: str) -> str:
         try:
@@ -191,6 +201,7 @@ class RawArtifactWriter:
         native: str,
         stdout: str,
         stderr: str,
+        redact: bool = True,
     ) -> str:
         """Render one combined, proof-of-execution record for a tool run."""
         rc = getattr(result, "returncode", None)
@@ -207,7 +218,7 @@ class RawArtifactWriter:
             "\n".join(header),
             "",
             "########## command ##########",
-            (format_command(cmd) or "(none)").rstrip("\n"),
+            (format_command(cmd, redact=redact) or "(none)").rstrip("\n"),
             "",
             "########## stdout ##########",
             stdout if stdout else "(empty)",
@@ -267,7 +278,9 @@ class RawArtifactWriter:
             self._write(base, f"{step}.stderr", self._redact(stderr))
             # Wrapped shell command: readable, no horizontal overflow, and
             # still pasteable as a single command (trailing `\` continuations).
-            self._write(base, f"{step}.cmd", format_command(cmd))
+            # Secret flag values are masked unless --raw-no-redact is set.
+            redact = not getattr(self._config, "raw_no_redact", False)
+            self._write(base, f"{step}.cmd", format_command(cmd, redact=redact))
             if native_name is not None:
                 self._write(base, native_name, self._redact(native))
 
@@ -305,6 +318,7 @@ class RawArtifactWriter:
                 native,
                 stdout,
                 stderr,
+                redact,
             )
             self._write(base, f"{step}.output", self._redact(combined))
 

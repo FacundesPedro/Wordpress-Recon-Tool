@@ -1,6 +1,11 @@
 """Tests for WordPress slug normalization / validation."""
 
-from utils.slugs import is_valid_slug, normalize_wp_slug, normalize_wp_slugs
+from utils.slugs import (
+    detect_plugins_from_html,
+    is_valid_slug,
+    normalize_wp_slug,
+    normalize_wp_slugs,
+)
 
 
 class TestIsValidSlug:
@@ -58,3 +63,32 @@ class TestNormalizeWpSlugs:
 
     def test_empty_input(self):
         assert normalize_wp_slugs([], "plugins") == []
+
+
+class TestDetectPluginsFromHtml:
+    def test_extracts_valid_slugs_in_page_order(self):
+        html = (
+            '<link href="/wp-content/plugins/contact-form-7/includes/css/styles.css">'
+            '<script src="/wp-content/plugins/advanced-custom-fields/assets/x.js"></script>'
+            '<link href="/wp-content/plugins/contact-form-7/extra.css">'
+        )
+        assert detect_plugins_from_html(html) == [
+            "contact-form-7",
+            "advanced-custom-fields",
+        ]
+
+    def test_rejects_parse_junk(self):
+        # Regression: a broken regex used to leak `*","` into the version and
+        # CVE steps (hml-kitsdidaticos A3 / retest #5).
+        html = '<a href="/wp-content/plugins/*","/x.css">'
+        assert detect_plugins_from_html(html) == []
+
+    def test_ignores_query_and_absolute_urls(self):
+        html = (
+            '<link href="https://example.com/wp-content/plugins/akismet/a.css?ver=1">'
+        )
+        assert detect_plugins_from_html(html) == ["akismet"]
+
+    def test_empty_and_none_safe(self):
+        assert detect_plugins_from_html("") == []
+        assert detect_plugins_from_html(None) == []

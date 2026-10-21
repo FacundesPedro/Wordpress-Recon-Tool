@@ -115,7 +115,75 @@ class TestRunModule:
         assert findings[0].title == "t"
 
     @pytest.mark.asyncio
-    async     def test_step_error_caught(self, mock_config, mock_target):
+    async def test_injects_scan_context_into_sequential_steps(
+        self, mock_config, mock_target
+    ):
+        """Sequential runs must share the blackboard (service_inventory ← nmap
+        ``services``); without this a requires-only step always sees nothing."""
+        from core.scan_context import ScanContext
+
+        ctx = ScanContext(target_url="https://example.com")
+        seen = []
+
+        class ProducerStep:
+            name = "producer"
+            provides = ("services",)
+
+            def __init__(self, **kwargs):
+                self._ctx = None
+
+            async def run(self):
+                self._ctx.set("services", [{"port": 80}])
+                return []
+
+        class ConsumerStep:
+            name = "consumer"
+            provides = ()
+
+            def __init__(self, **kwargs):
+                self._ctx = None
+
+            async def run(self):
+                seen.append(self._ctx.get("services") if self._ctx else None)
+                return []
+
+        mod = make_module("tools", [ProducerStep, ConsumerStep])
+        r = Runner([mod], mock_config, mock_target)
+        r._http = MagicMock()
+        r._ctx = ctx
+        await r.run_module(mod, MagicMock())
+        assert seen == [[{"port": 80}]]
+
+    @pytest.mark.asyncio
+    async def test_sequential_skip_marks_provides_missing(
+        self, mock_config, mock_target
+    ):
+        """A circuit-breaker skip must mark producers' artifacts missing."""
+        from core.scan_context import ScanContext
+
+        first = MagicMock()
+        first.__name__ = "FirstStep"
+        first.return_value.run = AsyncMock(return_value=[])
+        first.return_value.name = "first_step"
+        first.provides = ()
+        second = MagicMock()
+        second.__name__ = "SecondStep"
+        second.return_value.run = AsyncMock(return_value=[])
+        second.return_value.name = "second_step"
+        second.provides = ("services",)
+
+        ctx = ScanContext(target_url="https://example.com")
+        mod = make_module("tools", [first, second])
+        r = Runner([mod], mock_config, mock_target)
+        r._http = MagicMock()
+        r._http.unreachable = True
+        r._ctx = ctx
+        await r.run_module(mod, MagicMock())
+
+        assert ctx.is_missing("services")
+
+    @pytest.mark.asyncio
+    async def test_step_error_caught(self, mock_config, mock_target):
         step_cls = MagicMock()
         step_cls.__name__ = "FailingStep"
         step_instance = MagicMock()

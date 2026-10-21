@@ -6,7 +6,6 @@ Correlate installed plugin versions against CVEs from vulnerability databases.
 # HOW: Detects plugins via REST API (auth) or passive HTML scraping, queries VulnDB
 # WHY: Vulnerable plugins are the most common WordPress compromise vector
 
-import re
 from typing import Optional
 
 from base.http_step import BaseHttpStep
@@ -14,6 +13,7 @@ from core.auth import get_wp_auth_header
 from core.finding import Finding
 from core.vulndb import VulnDB, cve_finding_severity
 from steps.vuln.vuln_common import add_db_unavailable_finding
+from utils.slugs import detect_plugins_from_html, is_valid_slug
 
 
 class PluginVulnStep(BaseHttpStep):
@@ -151,7 +151,7 @@ class PluginVulnStep(BaseHttpStep):
             if "/" in slug:
                 slug = slug.split("/")[0]
             version = p.get("version", "") or None
-            if slug:
+            if slug and is_valid_slug(slug):
                 results.append((slug, version))
         return results
 
@@ -162,7 +162,7 @@ class PluginVulnStep(BaseHttpStep):
             resp = await self.http.get(self.target.url)
             if resp.status_code != 200:
                 return []
-            slugs = set(re.findall(r"/wp-content/plugins/([^/]+)/", resp.text))
+            slugs = detect_plugins_from_html(resp.text)
             return [(s, None) for s in slugs]
         except Exception:
             return []

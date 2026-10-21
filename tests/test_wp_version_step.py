@@ -23,16 +23,16 @@ class TestWpVersionStep:
 
         assert len(findings) == 1
         assert "6.4.2" in findings[0].title
-        assert findings[0].raw["source"] == "meta generator tag"
+        assert findings[0].raw["source"] == "meta generator"
         assert findings[0].module == "fingerprint"
 
-    async def test_detects_via_theme_css(self, mock_http, mock_target, mock_config):
+    async def test_detects_via_core_asset(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
             return_value=MagicMock(
                 status_code=200,
                 text=(
-                    '<link href="/wp-content/themes/twentytwentyfour/style.css?ver=6.4.2" '
-                    'rel="stylesheet" />'
+                    '<script src="/wp-includes/js/wp-emoji-release.min.js?ver=6.4.2">'
+                    "</script>"
                 ),
             )
         )
@@ -44,7 +44,28 @@ class TestWpVersionStep:
 
         assert len(findings) == 1
         assert "6.4.2" in findings[0].title
-        assert "theme CSS" in findings[0].raw["source"]
+        assert "core asset" in findings[0].raw["source"]
+
+    async def test_theme_css_version_is_not_used_as_core(
+        self, mock_http, mock_target, mock_config
+    ):
+        """A theme asset's ?ver= is the theme version, not WordPress core."""
+        mock_http.request = AsyncMock(
+            return_value=MagicMock(
+                status_code=200,
+                text=(
+                    '<link href="/wp-content/themes/twentytwentyfour/style.css?ver=1.2" '
+                    'rel="stylesheet" />'
+                ),
+            )
+        )
+
+        from steps.fingerprint.wp_version_step import WpVersionStep
+
+        step = WpVersionStep(target=mock_target, config=mock_config, http=mock_http)
+        findings = await step.run()
+
+        assert findings == []
 
     async def test_detects_via_core_js(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(
@@ -63,7 +84,7 @@ class TestWpVersionStep:
 
         assert len(findings) == 1
         assert "6.4.2" in findings[0].title
-        assert "core JS" in findings[0].raw["source"]
+        assert "core asset" in findings[0].raw["source"]
 
     async def test_detects_via_meta_generator_different_ordering(self, mock_http, mock_target, mock_config):
         mock_http.request = AsyncMock(

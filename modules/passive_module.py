@@ -12,6 +12,7 @@ Gathers external intelligence without direct interaction with target.
 
 from modules.module import Module
 from steps.passive import (
+    CoreCurrencyStep,
     CrtShStep,
     DnsStep,
     EmailSecurityStep,
@@ -35,3 +36,4 @@ class PassiveModule(Module):
         self.add_step(WaymachineStep)
         self.add_step(SubdomainTakeoverStep)
         self.add_step(EmailSecurityStep)
+        self.add_step(CoreCurrencyStep)

@@ -1,10 +1,62 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-09-30
+## Last Updated: 2026-10-21
 
 ---
 
 ## Recent Changes
+
+### S27 - Field-report update `hml-kitsdidaticos`: secret redaction, WPScan/version accuracy, brute-force oracle, tool/report gaps (2026-10-21)
+
+Engagement over `reports/hml-kitsdidaticos.senaicimatec.com.br/UPDATE.md` and
+its `retest-20261021/UPDATE.md` (53 raw findings, 2 admitted after triage;
+two backends `.202` Apache / `.204` nginx, Wordfence, split-horizon DNS).
+Implemented in four phases.
+
+**Phase 0 — P0 security + quick correctness**
+
+| Item | Change |
+|------|--------|
+| P0 token leak | `base/tool.py` gains `SENSITIVE_FLAGS`/`redact_argv()` and `Authorization: Token/Bearer` redaction; `utils/raw_output.py` masks flag values in `.cmd`/`.output` (`--api-token`, `--password`, `--token`, `--secret`, ...). Short flags such as `-p` are deliberately not masked (nmap ports/ffuf proxy). `--raw-no-redact` still bypasses. |
+| A3/retest#5 junk slug | `plugin_version` and `plugin_vuln` now use `utils.slugs.detect_plugins_from_html()`; the `*","` parser artifact can no longer reach version/CVE correlation. |
+| retest#11 `service_inventory` | Root cause: the **sequential** `run_module()` never injected `ScanContext` into steps (only the parallel path did), so `ctx.get("services")` was always empty. `base/runner.py` now injects `_ctx` in both paths and marks producers missing on breaker skips. |
+| A4/retest#7 e-mail scope | `email_security` corroborates NODATA/NXDOMAIN with public resolvers (`1.1.1.1`, `8.8.8.8`) before asserting absence; a subdomain without its own SPF/DMARC reports `info` when the organizational domain publishes one (SPF not inherited; DMARC inherited), `medium` only when neither scope has it. Resolver/status/query recorded in `raw`. |
+| retest#13 image | `Dockerfile` `chown -R recon:recon /app /home/recon` (umask-077 build contexts). |
+
+**Phase 1 — WPScan/version accuracy**
+
+| Item | Change |
+|------|--------|
+| retest#3 fingerprint | New `utils/plugin_fingerprint.py`: hashes a stable CSS/JS asset, compares it against recent numeric `plugins.svn.wordpress.org` tags, intersects multiple assets, optionally correlates changelog release dates with the target file's `Last-Modified`; returns `version`, `confidence` (`high` single-version intersection / `medium` range / `low`), `candidates`, `method="asset-hash"`, with a per-day cache and request cap. Wired into `plugin_version` (readme blocked) and `wpscan` (`version: null` enrichment). |
+| retest#2 WPScan severity | `resolve_wpscan_vulnerabilities()`: unknown version → at most `low` with `confidence=low` (never a confirmed high/medium CVE); known version → vulns already fixed in it are dropped via `utils.version.cve_applies`; all patched → plain "detected" info. |
+| retest#4 core currency | New `steps/passive/core_currency_step.py` queries `api.wordpress.org/core/version-check/1.7/` and reports `medium` "core outdated (installed → current)" with a 1h cache; `utils/core_version.py` detects the version from the generator meta or core `?ver=` assets (`wp-emoji-release.min.js`, `wp-util.js`, block-library CSS) and no longer mistakes a theme's `style.css?ver=` for the core version. |
+
+**Phase 2 — brute-force oracle + tool execution**
+
+| Item | Change |
+|------|--------|
+| A2/retest#6 oracle | Two-stage brute-force in `plugin_bruteforce`/`theme_bruteforce`: stage 1 status + scoped `Soft404Detector`; stage 2 confirms 200/301/302/403 candidates via `<slug>.php`/`index.php` (plugins) or `style.css` with `Theme Name:`/`index.php` (themes). `404` everywhere → catch-all (e.g. `pa`), `403` only → `confidence=low`. Slugs must match `^[a-z0-9][a-z0-9-]*$` and length ≥ 2. |
+| B1/retest#8 ffuf | Auto-sized timeout (`lines / rate * factor`, capped by `WP_FFUF_TIMEOUT_MAX`, factor `WP_FFUF_TIMEOUT_FACTOR`); when even the cap cannot cover the wordlist it is trimmed to the feasible prefix and an explicit partial-coverage `info` finding is emitted; timeouts now report estimated attempted/total entries. |
+| B2/retest#9 OpenDoor | Failures surface `returncode` + the last ANSI-free stdout/stderr line; HTTP 421 Misdirected Request triggers one retry against the public hostname without the `Host:` override; the missing-report finding records `http_421`/`last_error`. Operational findings are `info` + `raw.operational`. |
+
+**Phase 3 — precision, coverage and report hygiene**
+
+| Item | Change |
+|------|--------|
+| A5 headers | `headers` resolves all A records (pinned IP wins) and probes every backend with `PinnedTransport` (Host/SNI preserved), up to `WP_HEADERS_MAX_NODES`; reports "missing on all nodes" separately from "differs between nodes" (the `.202`/`.204` case). |
+| A6 TLS | `_classify_cert_error` separates `expired` / `hostname_mismatch` (high) from `self_signed` / `chain_untrusted` (medium); when pinned to an IP, a second no-SNI probe records the default certificate and flags an expired one (the RNP ICPEdu vs expired `CN=senaicimatec.com.br` case). Connections now use the pinned IP while keeping SNI. |
+| A7 SRI | `js_library` exempts dynamically generated tags (GTM/gtag, GA, reCAPTCHA, Cloudflare beacon) from the SRI finding. |
+| A8 cookie | `cookie_flags` ignores `wordpress_test_cookie` and `wp_lang` (cookie-support probe / locale preference). |
+| B4 nuclei | `-sni <host>` when pinned; `-stats` coverage counters parsed from stderr into the summary finding (`templates`, `requests`, `matched`, `coverage_verified`). A zero-result successful run now emits the summary (previously silent). |
+| C1 ANSI | New `utils/text_sanitize.py` (`strip_ansi`, `strip_ansi_and_box`); raw artifacts strip ANSI, and `Finding.__post_init__` strips ANSI/box glyphs from `evidence`/`description`, so terminal banners cannot break PDF rendering. |
+| retest#12 evidence | `Finding.command` + `utils/evidence_bundle.py`: the Runner fills each finding's command from `raw/<step>.cmd`; `EVIDENCIAS.md` is written next to the reports (finding → command → output excerpt → artifact path, `WP_EVIDENCE_BUNDLE`), and Markdown/HTML/PDF gain an "Evidence Index" table. |
+
+Tests: new `test_plugin_fingerprint.py`, `test_core_currency_step.py`,
+`test_headers_step.py`, `test_ffuf_timeout.py`, `test_evidence_bundle.py` plus
+cases across redaction, slugs, email-security, runner ctx, WPScan, plugin
+version/vuln, brute-force, OpenDoor, nuclei, TLS, cookies and JS-library.
+Suite **2086 passing**; `ruff check` clean on all new/changed lines (remaining
+warnings are pre-existing E501/B904/B007/E741).
 
 ### S26 - Field-report update `mundosenaiba.senaibahia.com.br`: status-code FP class, tool fixes, management-console CVE, DNS rigor (2026-09-30)
 

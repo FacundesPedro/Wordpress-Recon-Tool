@@ -32,6 +32,7 @@ _SESSION_COOKIE_RE = re.compile(
 # leak the client's internal IP).
 _EXCLUDED_COOKIE_RE = re.compile(
     r"(_lockout_|lockout|wfwaf|wordfence|wfvt|wpdef|"
+    r"wordpress_test_cookie|^wp_lang$|"
     r"cf_clearance|__cf|incap_ses|visid_incap|"
     r"^_ga|^_gid|^_gat|^_gcl|^_fbp|^_hjid|^intercom|^amplitude|^mp_|^ajs_|"
     r"consent|gdpr|cookieyes|cookie_notice|cookielawinfo|moove|complianz|"

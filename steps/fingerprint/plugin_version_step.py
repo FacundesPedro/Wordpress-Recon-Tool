@@ -15,6 +15,8 @@ from typing import Optional
 
 from base.http_step import BaseHttpStep
 from core.finding import Finding
+from utils.plugin_fingerprint import PluginFingerprinter, assets_from_html
+from utils.slugs import detect_plugins_from_html
 
 
 class PluginVersionStep(BaseHttpStep):
@@ -41,6 +43,7 @@ class PluginVersionStep(BaseHttpStep):
     async def run(self) -> list[Finding]:
         self.logger.info("Detecting plugin versions...")
 
+        self._homepage_html = ""
         plugin_names = await self._detect_plugins()
         if not plugin_names:
             self.logger.warning("No plugins detected - cannot enumerate versions")
@@ -51,6 +54,10 @@ class PluginVersionStep(BaseHttpStep):
         plugin_versions = {}
         for plugin in plugin_names:
             version_info = await self._get_plugin_version(plugin)
+            if version_info["version"] == "unknown":
+                fingerprint = await self._fingerprint_plugin(plugin)
+                if fingerprint:
+                    version_info.update(fingerprint)
             plugin_versions[plugin] = version_info
 
         known_versions = {
@@ -113,12 +120,64 @@ class PluginVersionStep(BaseHttpStep):
                 return []
 
             content = response.text
-            plugin_matches = re.findall(r"/wp-content/plugins/([^/]+)/", content)
-            return list(set(plugin_matches))
+            self._homepage_html = content
+            return detect_plugins_from_html(content)
 
         except Exception as e:
             self.logger.error(f"Error detecting plugins: {e}")
             return []
+
+    def _fingerprint_enabled(self) -> bool:
+        # Strict identity: MagicMock test configs must not trigger network I/O.
+        return getattr(self.config, "plugin_fingerprint_enabled", True) is True
+
+    async def _fingerprint_plugin(self, plugin: str) -> Optional[dict]:
+        """Resolve a blocked readme via asset hashes against upstream tags."""
+        if not self._fingerprint_enabled():
+            return None
+        assets = assets_from_html(self._homepage_html, plugin)
+        timeout = getattr(self.config, "plugin_fingerprint_timeout", 10)
+        max_tags = getattr(self.config, "plugin_fingerprint_max_tags", 30)
+        try:
+            async with PluginFingerprinter(
+                target_url=self.public_url(fallback=str(self.target.url)),
+                timeout=float(timeout or 10),
+                max_tags=int(max_tags or 30),
+            ) as fingerprinter:
+                result = await fingerprinter.fingerprint(
+                    plugin,
+                    asset_paths=assets or None,
+                    fetch_target=lambda asset: self._fetch_asset(plugin, asset),
+                )
+        except Exception as e:  # never fail version enumeration
+            self.logger.debug(f"Fingerprint failed for {plugin}: {e}")
+            return None
+        if not result.found:
+            self.logger.debug(
+                f"No asset-hash match for {plugin}: {result.error or 'no candidates'}"
+            )
+            return None
+        self.logger.info(
+            f"Fingerprinted {plugin} -> {result.version} ({result.confidence})"
+        )
+        return {
+            "version": result.version or "unknown",
+            "source": "asset-hash",
+            "confidence": result.confidence,
+            "method": result.method,
+            "candidates": result.candidates[:10],
+        }
+
+    async def _fetch_asset(self, plugin: str, asset: str) -> Optional[bytes]:
+        try:
+            response = await self.ctx.web.get(
+                f"wp-content/plugins/{plugin}/{asset}"
+            )
+            if response.status_code != 200:
+                return None
+            return response.content
+        except Exception:
+            return None
 
     async def _get_plugin_version(self, plugin: str) -> dict:
         """Attempt to get version from multiple sources."""

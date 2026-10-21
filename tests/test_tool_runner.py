@@ -14,6 +14,7 @@ from base.tool import (
     ToolRunner,
     _redact_sensitive_from_output,
     _sanitize_arg,
+    redact_argv,
 )
 from core.exceptions import ToolNotFoundError, ToolTimeoutError
 
@@ -116,6 +117,56 @@ class TestRedactSensitive:
         result = _redact_sensitive_from_output("credential=x123")
         assert "x123" not in result
         assert "credential=[REDACTED]" in result
+
+    def test_authorization_token_header(self):
+        result = _redact_sensitive_from_output(
+            "Authorization: Token token=abcdef123456"
+        )
+        assert "abcdef123456" not in result
+        assert "Authorization: Token [REDACTED]" in result
+
+    def test_authorization_bearer_header(self):
+        result = _redact_sensitive_from_output("authorization: bearer eyJhbGciOi")
+        assert "eyJhbGciOi" not in result
+        assert "bearer [REDACTED]" in result
+
+
+# ---------------------------------------------------------------------------
+# redact_argv
+# ---------------------------------------------------------------------------
+class TestRedactArgv:
+    def test_api_token_value_form(self):
+        argv = redact_argv(["wpscan", "--url", "https://x", "--api-token", "secret123"])
+        assert argv == [
+            "wpscan",
+            "--url",
+            "https://x",
+            "--api-token",
+            "<REDACTED>",
+        ]
+
+    def test_api_token_equals_form(self):
+        argv = redact_argv(["tool", "--api-token=secret123", "--flag"])
+        assert argv == ["tool", "--api-token=<REDACTED>", "--flag"]
+
+    def test_password_and_secret_flags(self):
+        argv = redact_argv(["tool", "--password", "pw", "--secret", "shh"])
+        assert "pw" not in argv and "shh" not in argv
+        assert argv.count("<REDACTED>") == 2
+
+    def test_non_sensitive_flags_untouched(self):
+        # `-p` is deliberately not treated as a secret flag (nmap ports, ffuf
+        # proxy); ordinary flags must stay readable in the evidence.
+        argv = redact_argv(["nmap", "-p", "80,443", "--top-ports", "100"])
+        assert argv == ["nmap", "-p", "80,443", "--top-ports", "100"]
+
+    def test_key_value_token_inside_argument(self):
+        argv = redact_argv(["tool", "token=abc123"])
+        assert argv == ["tool", "token=[REDACTED]"]
+
+    def test_none_and_empty(self):
+        assert redact_argv(None) == []
+        assert redact_argv([]) == []
 
 
 # ---------------------------------------------------------------------------

@@ -922,6 +922,28 @@ def _save_report(
         except Exception as exc:
             console.print(f"[yellow]Warning: PDF report failed ({exc})[/yellow]")
 
+    # Per-finding evidence bundle (command + output excerpt + artifact path),
+    # written next to the reports whenever raw artifacts exist.
+    if (
+        getattr(config, "save_raw", False) is True
+        and getattr(config, "evidence_bundle", True) is True
+    ):
+        try:
+            from utils.evidence_bundle import write_evidence_bundle
+
+            bundle_path = write_evidence_bundle(
+                report.findings,
+                config,
+                output / "EVIDENCIAS.md",
+                target=report.domain or report.target,
+            )
+            if bundle_path is not None:
+                console.print(f"[green]Evidence bundle: {bundle_path}[/green]")
+        except Exception as exc:
+            console.print(
+                f"[yellow]Warning: evidence bundle failed ({exc})[/yellow]"
+            )
+
 
 if __name__ == "__main__":
     app()

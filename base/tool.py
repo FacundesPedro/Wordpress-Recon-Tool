@@ -18,6 +18,31 @@ SENSITIVE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Flags whose *following* argv token is a secret (e.g. `wpscan --api-token X`).
+# Long forms only: short flags such as `-p` are ambiguous (nmap ports, ffuf
+# proxy) and masking them would destroy otherwise useful evidence.
+SENSITIVE_FLAGS = frozenset(
+    {
+        "--api-token",
+        "--token",
+        "--password",
+        "--pass",
+        "--secret",
+        "--api-key",
+        "--apikey",
+        "--auth",
+        "--auth-token",
+        "--credentials",
+        "--wpscan-api-token",
+    }
+)
+
+# Credential-carrying headers ("Authorization: Token abc", "Bearer x", ...).
+AUTH_HEADER_PATTERN = re.compile(
+    r"(authorization\s*:\s*(?:token|bearer|basic|digest)\s+)([^\s]+)",
+    re.IGNORECASE,
+)
+
 
 def _sanitize_arg(arg: str) -> str:
     """Sanitize a command argument to prevent injection.
@@ -42,6 +67,9 @@ def _sanitize_arg(arg: str) -> str:
 def _redact_sensitive_from_output(output: str) -> str:
     """Redact sensitive data from command output for logging.
 
+    Handles both ``key=value`` forms (``api_key=abc``) and credential-carrying
+    HTTP headers (``Authorization: Token abc``).
+
     Args:
         output: Raw command output
 
@@ -51,7 +79,33 @@ def _redact_sensitive_from_output(output: str) -> str:
     if not output:
         return output
 
-    return SENSITIVE_PATTERN.sub(r"\1=[REDACTED]", output)
+    redacted = SENSITIVE_PATTERN.sub(r"\1=[REDACTED]", output)
+    return AUTH_HEADER_PATTERN.sub(r"\1[REDACTED]", redacted)
+
+
+def redact_argv(argv: list[str] | None) -> list[str]:
+    """Return a copy of ``argv`` with secret flag values replaced.
+
+    Covers ``--flag value``, ``--flag=value`` and ``key=value`` tokens. Values
+    are replaced with ``<REDACTED>`` so a persisted ``.cmd`` file leaks neither
+    the WPScan API token nor any other session secret.
+    """
+    redacted: list[str] = []
+    mask_next = False
+    for token in argv or []:
+        value = str(token)
+        if mask_next:
+            redacted.append("<REDACTED>")
+            mask_next = False
+            continue
+        name, sep, _ = value.partition("=")
+        if sep and name.lower() in SENSITIVE_FLAGS:
+            redacted.append(f"{name}=<REDACTED>")
+            continue
+        redacted.append(_redact_sensitive_from_output(value))
+        if value.lower() in SENSITIVE_FLAGS:
+            mask_next = True
+    return redacted
 
 
 @dataclass

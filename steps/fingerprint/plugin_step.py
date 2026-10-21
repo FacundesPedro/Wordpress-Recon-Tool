@@ -9,11 +9,9 @@ Detects plugins linked in HTML source.
 # HOW: Regex for /wp-content/plugins/[name]/ patterns
 # WHY: Plugin vulnerabilities are common attack vectors
 
-import re
-
 from base.http_step import BaseHttpStep
 from core.finding import Finding
-from utils.slugs import is_valid_slug
+from utils.slugs import detect_plugins_from_html
 
 
 class PluginStep(BaseHttpStep):
@@ -39,8 +37,8 @@ class PluginStep(BaseHttpStep):
             if response.status_code == 200:
                 content = response.text
 
-                plugin_matches = re.findall(r"/wp-content/plugins/([^/]+)/", content)
-                plugins.update(m for m in plugin_matches if is_valid_slug(m))
+                plugin_matches = detect_plugins_from_html(content)
+                plugins.update(plugin_matches)
 
                 if plugins:
                     self._add_finding(

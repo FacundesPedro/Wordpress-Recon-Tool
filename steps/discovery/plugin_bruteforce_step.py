@@ -11,7 +11,7 @@ from base.dependencies import WordlistDependencyMixin, config_int
 from base.http_step import BaseHttpStep
 from core.finding import Finding
 from utils.limits import cap_lines, cap_list
-from utils.slugs import normalize_wp_slugs
+from utils.slugs import is_oracle_slug, normalize_wp_slugs
 from utils.soft404 import Soft404Detector
 
 
@@ -53,6 +53,9 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         # full paths (`wp-content/plugins/<slug>/`); reduce every entry to a
         # bare slug so the request path is not built twice.
         slugs = normalize_wp_slugs(slugs, "plugins")
+        # Reject single-character/fragment "slugs" that only a catch-all could
+        # ever serve (e.g. `c` from a broken HTML parse).
+        slugs = [s for s in slugs if is_oracle_slug(s)]
         if not slugs:
             return self.findings
 
@@ -105,7 +108,7 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                 break
             batch = slugs[offset : offset + batch_size]
             results = await asyncio.gather(*(probe(s) for s in batch))
-            for slug, (exists, version, status) in zip(batch, results):
+            for slug, (exists, version, status, confidence) in zip(batch, results):
                 processed += 1
                 if exists:
                     found.append(
@@ -113,11 +116,13 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
                             "slug": slug,
                             "version": version,
                             "status": status,
+                            "confidence": confidence,
                             "url": self.urljoin(f"wp-content/plugins/{slug}/"),
                         }
                     )
                     self.logger.debug(
-                        f"Found plugin: {slug} (v{version or 'unknown'})"
+                        f"Found plugin: {slug} (v{version or 'unknown'}, "
+                        f"confidence {confidence})"
                     )
             if processed % self.PROGRESS_EVERY == 0 or processed >= total:
                 elapsed = time.monotonic() - start
@@ -134,7 +139,7 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
         for p in sorted(found, key=lambda x: x["slug"]):
             v = f" v{p['version']}" if p["version"] else ""
             evidence_lines.append(
-                f"  {p['slug']}{v} [{p['status']}] {p['url']}"
+                f"  {p['slug']}{v} [{p['status']}, {p['confidence']}] {p['url']}"
             )
 
         list_cap = self._config_int("raw_list_cap", 200)
@@ -155,23 +160,56 @@ class PluginBruteforceStep(BaseHttpStep, WordlistDependencyMixin):
 
     async def _probe_plugin(
         self, slug: str, detector: Soft404Detector
-    ) -> tuple[bool, Optional[str], str]:
+    ) -> tuple[bool, Optional[str], str, str]:
         path = f"wp-content/plugins/{slug}/"
         try:
             response = await self.get(path)
             status = response.status_code
         except Exception:
-            return False, None, "error"
+            return False, None, "error", "low"
 
         if status in (200, 301, 302, 403):
             if detector.is_soft404(response):
                 self.logger.debug(
                     f"Plugin probe {slug}: catch-all/soft-404 shell - skipped"
                 )
-                return False, None, f"HTTP {status}"
+                return False, None, f"HTTP {status}", "low"
+
+            # Stage 2: a directory status alone is not existence. Confirm with
+            # the plugin's main file / index.php; a catch-all 200/30x at the
+            # scope otherwise yields false positives such as `pa`.
+            confidence = await self._confirm_plugin(slug)
+            if not confidence:
+                self.logger.debug(
+                    f"Plugin probe {slug}: HTTP {status} not confirmed by "
+                    "main file/index.php - skipped"
+                )
+                return False, None, f"HTTP {status}", "low"
+
             version = await self._try_extract_version(slug)
-            return True, version, f"HTTP {status}"
-        return False, None, f"HTTP {status}"
+            return True, version, f"HTTP {status}", confidence
+        return False, None, f"HTTP {status}", "low"
+
+    async def _confirm_plugin(self, slug: str) -> str:
+        """Stage-2 confirmation: return ``high``, ``low`` or ``""``.
+
+        ``<slug>.php``/``index.php`` answering 200/500 proves the directory is
+        real. A 403 on both is ambiguous (WAF) and kept as ``low`` confidence;
+        a plain 404 everywhere means the directory status was a catch-all.
+        """
+        saw_block = False
+        for candidate in (f"{slug}.php", "index.php"):
+            path = f"wp-content/plugins/{slug}/{candidate}"
+            try:
+                response = await self.get(path)
+            except Exception:
+                continue
+            status = response.status_code
+            if status in (200, 500):
+                return "high"
+            if status == 403:
+                saw_block = True
+        return "low" if saw_block else ""
 
     async def _try_extract_version(self, slug: str) -> Optional[str]:
         for readme in ("readme.txt", "readme.md"):

@@ -128,6 +128,43 @@ class TestPersist:
         assert "abc123secretvalue" not in content
         assert "REDACTED" in content
 
+    def test_redacts_api_token_flag_in_cmd_and_output(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        writer.persist(
+            step="wpscan",
+            tool="wpscan",
+            cmd=["wpscan", "--url", "https://x", "--api-token", "s3cr3t-token"],
+            result=result,
+        )
+        cmd = (writer.directory() / "wpscan.cmd").read_text()
+        output = (writer.directory() / "wpscan.output").read_text()
+        assert "s3cr3t-token" not in cmd
+        assert "s3cr3t-token" not in output
+        assert "<REDACTED>" in cmd
+        assert "<REDACTED>" in output
+
+    def test_raw_no_redact_keeps_api_token(self, tmp_path):
+        writer = make_writer(tmp_path, raw_no_redact=True)
+        result = ToolResult(stdout="", stderr="", returncode=0, success=True)
+        writer.persist(
+            step="wpscan",
+            tool="wpscan",
+            cmd=["wpscan", "--api-token", "s3cr3t-token"],
+            result=result,
+        )
+        assert "s3cr3t-token" in (writer.directory() / "wpscan.cmd").read_text()
+
+    def test_strips_ansi_escapes_from_streams(self, tmp_path):
+        writer = make_writer(tmp_path)
+        result = ToolResult(
+            stdout="\x1b[96mhello\x1b[0m\n", stderr="", returncode=0, success=True
+        )
+        writer.persist(step="tool", tool="tool", cmd=["tool"], result=result)
+        content = (writer.directory() / "tool.stdout").read_text()
+        assert "\x1b" not in content
+        assert "hello" in content
+
     def test_raw_no_redact(self, tmp_path):
         writer = make_writer(tmp_path, raw_no_redact=True)
         result = ToolResult(

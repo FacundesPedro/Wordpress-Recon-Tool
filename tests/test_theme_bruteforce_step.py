@@ -109,7 +109,7 @@ class TestThemeBruteforceStep:
         mock_http = make_http({
             "/wp-content/themes/astra/": MagicMock(status_code=200),
             "/wp-content/themes/astra/style.css": MagicMock(
-                status_code=200, text="Version: 4.0.0"
+                status_code=200, text="Theme Name: Astra\nVersion: 4.0.0"
             ),
         })
 
@@ -128,6 +128,7 @@ class TestThemeBruteforceStep:
     async def test_style_css_not_found_returns_no_version(self, mock_target, mock_config):
         mock_http = make_http({
             "/wp-content/themes/astra/": MagicMock(status_code=200),
+            "/wp-content/themes/astra/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
@@ -147,7 +148,7 @@ class TestThemeBruteforceStep:
             "/wp-content/themes/astra/": Exception("connection error"),
             "/wp-content/themes/kadence/": MagicMock(status_code=200),
             "/wp-content/themes/kadence/style.css": MagicMock(
-                status_code=200, text="Version: 1.0.0"
+                status_code=200, text="Theme Name: Kadence\nVersion: 1.0.0"
             ),
         })
 
@@ -172,7 +173,7 @@ class TestThemeBruteforceStep:
 
         with patch.object(
             ThemeBruteforceStep, "resolve_wordlist_or_fallback",
-            return_value=["a", "b", "c"],
+            return_value=["aa", "bb", "cc"],
         ):
             step = ThemeBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
             findings = await step.run()
@@ -180,9 +181,9 @@ class TestThemeBruteforceStep:
         assert findings == []
         probe_calls = [
             call for call in mock_http.request.call_args_list
-            if call.args[1].endswith("/a/")
-            or call.args[1].endswith("/b/")
-            or call.args[1].endswith("/c/")
+            if call.args[1].endswith("/aa/")
+            or call.args[1].endswith("/bb/")
+            or call.args[1].endswith("/cc/")
         ]
         assert len(probe_calls) == 2
 
@@ -191,6 +192,7 @@ class TestThemeBruteforceStep:
     ):
         mock_http = make_http({
             "/wp-content/themes/astra/": MagicMock(status_code=200),
+            "/wp-content/themes/astra/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
@@ -250,6 +252,12 @@ class TestThemeBruteforceStep:
             f"/wp-content/themes/{slug}/": MagicMock(status_code=200)
             for slug in slugs
         }
+        routes.update(
+            {
+                f"/wp-content/themes/{slug}/index.php": MagicMock(status_code=200)
+                for slug in slugs
+            }
+        )
         mock_http = make_http(routes)
 
         from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
@@ -273,7 +281,7 @@ class TestThemeBruteforceStep:
 
         with patch.object(
             ThemeBruteforceStep, "resolve_wordlist_or_fallback",
-            return_value=["a", "b", "c"],
+            return_value=["aa", "bb", "cc"],
         ):
             step = ThemeBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
             step.logger = MagicMock()
@@ -286,3 +294,46 @@ class TestThemeBruteforceStep:
         ]
         assert progress_messages
         assert "3/3" in progress_messages[-1]
+
+    async def test_catchall_directory_without_theme_files_is_rejected(
+        self, mock_target, mock_config
+    ):
+        mock_http = make_http({
+            "/wp-content/themes/pa/": MagicMock(status_code=301),
+        })
+
+        from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
+
+        with patch.object(
+            ThemeBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["pa"],
+        ):
+            step = ThemeBruteforceStep(
+                target=mock_target, config=mock_config, http=mock_http
+            )
+            findings = await step.run()
+
+        assert findings == []
+
+    async def test_403_only_confirmation_is_low_confidence(
+        self, mock_target, mock_config
+    ):
+        mock_http = make_http({
+            "/wp-content/themes/astra/": MagicMock(status_code=403),
+            "/wp-content/themes/astra/style.css": MagicMock(status_code=403),
+            "/wp-content/themes/astra/index.php": MagicMock(status_code=403),
+        })
+
+        from steps.discovery.theme_bruteforce_step import ThemeBruteforceStep
+
+        with patch.object(
+            ThemeBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["astra"],
+        ):
+            step = ThemeBruteforceStep(
+                target=mock_target, config=mock_config, http=mock_http
+            )
+            findings = await step.run()
+
+        assert len(findings) == 1
+        assert findings[0].raw["themes"][0]["confidence"] == "low"

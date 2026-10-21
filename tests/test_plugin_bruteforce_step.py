@@ -53,6 +53,7 @@ class TestPluginBruteforceStep:
             "/wp-content/plugins/akismet/readme.txt": MagicMock(
                 status_code=200, text="Stable tag: 1.0.0"
             ),
+            "/wp-content/plugins/akismet/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
@@ -74,6 +75,7 @@ class TestPluginBruteforceStep:
     async def test_found_plugin_without_version(self, mock_target, mock_config):
         mock_http = make_http({
             "/wp-content/plugins/akismet/": MagicMock(status_code=200),
+            "/wp-content/plugins/akismet/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
@@ -109,6 +111,7 @@ class TestPluginBruteforceStep:
             "/wp-content/plugins/akismet/readme.txt": MagicMock(
                 status_code=200, text="Stable tag: 1.0.0"
             ),
+            "/wp-content/plugins/akismet/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
@@ -128,6 +131,7 @@ class TestPluginBruteforceStep:
         mock_http = make_http({
             "/wp-content/plugins/akismet/": Exception("connection error"),
             "/wp-content/plugins/contact-form-7/": MagicMock(status_code=200),
+            "/wp-content/plugins/contact-form-7/index.php": MagicMock(status_code=200),
             "/wp-content/plugins/contact-form-7/readme.txt": MagicMock(
                 status_code=200, text="Version: 2.0.0"
             ),
@@ -152,6 +156,7 @@ class TestPluginBruteforceStep:
             "/wp-content/plugins/akismet/readme.txt": MagicMock(
                 status_code=200, text="Stable tag: 1.0.0"
             ),
+            "/wp-content/plugins/akismet/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
@@ -169,6 +174,7 @@ class TestPluginBruteforceStep:
     async def test_403_also_counts_as_found(self, mock_target, mock_config):
         mock_http = make_http({
             "/wp-content/plugins/akismet/": MagicMock(status_code=403),
+            "/wp-content/plugins/akismet/akismet.php": MagicMock(status_code=403),
             "/wp-content/plugins/akismet/readme.txt": MagicMock(
                 status_code=200, text="Stable tag: 3.0.0"
             ),
@@ -194,7 +200,7 @@ class TestPluginBruteforceStep:
 
         with patch.object(
             PluginBruteforceStep, "resolve_wordlist_or_fallback",
-            return_value=["a", "b", "c"],
+            return_value=["aa", "bb", "cc"],
         ):
             step = PluginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
             findings = await step.run()
@@ -202,9 +208,9 @@ class TestPluginBruteforceStep:
         assert findings == []
         probe_calls = [
             call for call in mock_http.request.call_args_list
-            if call.args[1].endswith("/a/")
-            or call.args[1].endswith("/b/")
-            or call.args[1].endswith("/c/")
+            if call.args[1].endswith("/aa/")
+            or call.args[1].endswith("/bb/")
+            or call.args[1].endswith("/cc/")
         ]
         assert len(probe_calls) == 2
 
@@ -213,6 +219,7 @@ class TestPluginBruteforceStep:
     ):
         mock_http = make_http({
             "/wp-content/plugins/akismet/": MagicMock(status_code=200),
+            "/wp-content/plugins/akismet/index.php": MagicMock(status_code=200),
         })
 
         from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
@@ -293,6 +300,12 @@ class TestPluginBruteforceStep:
             f"/wp-content/plugins/{slug}/": MagicMock(status_code=200)
             for slug in slugs
         }
+        routes.update(
+            {
+                f"/wp-content/plugins/{slug}/index.php": MagicMock(status_code=200)
+                for slug in slugs
+            }
+        )
         mock_http = make_http(routes)
 
         from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
@@ -316,7 +329,7 @@ class TestPluginBruteforceStep:
 
         with patch.object(
             PluginBruteforceStep, "resolve_wordlist_or_fallback",
-            return_value=["a", "b", "c"],
+            return_value=["aa", "bb", "cc"],
         ):
             step = PluginBruteforceStep(target=mock_target, config=mock_config, http=mock_http)
             step.logger = MagicMock()
@@ -329,6 +342,80 @@ class TestPluginBruteforceStep:
         ]
         assert progress_messages
         assert "3/3" in progress_messages[-1]
+
+    async def test_catchall_directory_without_main_file_is_rejected(
+        self, mock_target, mock_config
+    ):
+        """`pa/` answering 301 is a catch-all, not a plugin: the stage-2
+        confirmation (pa.php/index.php) must reject it (retest #6)."""
+        mock_http = make_http({
+            "/wp-content/plugins/pa/": MagicMock(status_code=301),
+        })
+
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["pa"],
+        ):
+            step = PluginBruteforceStep(
+                target=mock_target, config=mock_config, http=mock_http
+            )
+            findings = await step.run()
+
+        assert findings == []
+
+    async def test_main_file_500_confirms_plugin_high_confidence(
+        self, mock_target, mock_config
+    ):
+        mock_http = make_http({
+            "/wp-content/plugins/contact-form-7/": MagicMock(status_code=403),
+            "/wp-content/plugins/contact-form-7/contact-form-7.php": MagicMock(
+                status_code=500
+            ),
+        })
+
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["contact-form-7"],
+        ):
+            step = PluginBruteforceStep(
+                target=mock_target, config=mock_config, http=mock_http
+            )
+            findings = await step.run()
+
+        assert len(findings) == 1
+        assert "contact-form-7" in findings[0].evidence
+        assert findings[0].raw["plugins"][0]["confidence"] == "high"
+
+    async def test_403_only_confirmation_is_low_confidence(
+        self, mock_target, mock_config
+    ):
+        mock_http = make_http({
+            "/wp-content/plugins/custom-post-type-ui/": MagicMock(status_code=403),
+            "/wp-content/plugins/custom-post-type-ui/custom-post-type-ui.php": MagicMock(
+                status_code=403
+            ),
+            "/wp-content/plugins/custom-post-type-ui/index.php": MagicMock(
+                status_code=403
+            ),
+        })
+
+        from steps.discovery.plugin_bruteforce_step import PluginBruteforceStep
+
+        with patch.object(
+            PluginBruteforceStep, "resolve_wordlist_or_fallback",
+            return_value=["custom-post-type-ui"],
+        ):
+            step = PluginBruteforceStep(
+                target=mock_target, config=mock_config, http=mock_http
+            )
+            findings = await step.run()
+
+        assert len(findings) == 1
+        assert findings[0].raw["plugins"][0]["confidence"] == "low"
 
     async def test_blanket_403_catchall_not_reported(self, mock_target, mock_config):
         """A WAF/blanket 403 for every path must not count as a plugin oracle hit."""

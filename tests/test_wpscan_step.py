@@ -178,6 +178,75 @@ class TestParsePlugins:
         assert "Plugin Vulnerable: contact-form-7" in findings[0].title
         assert findings[0].severity == "critical"
 
+    def test_plugin_vuln_with_null_version_is_low(self, wpscan_step):
+        """A null version must never produce a confirmed high/medium CVE
+        (hml-kitsdidaticos retest #2: nine false highs)."""
+        data = {
+            "plugins": {
+                "duracelltomi-google-tag-manager": {
+                    "version": None,
+                    "vulnerabilities": [
+                        {
+                            "title": "Authenticated SQL Injection",
+                            "type": "SQLi",
+                            "fixed_in": "1.20",
+                        }
+                    ],
+                    "location": "wp-content/plugins/duracelltomi-google-tag-manager",
+                }
+            }
+        }
+        findings = wpscan_step._parse_plugins(data)
+        assert len(findings) == 1
+        assert findings[0].severity == "low"
+        assert findings[0].confidence == "low"
+        assert findings[0].raw["version_unknown"] is True
+        assert "version unknown" in findings[0].title
+
+    def test_plugin_vuln_patched_version_is_suppressed(self, wpscan_step):
+        data = {
+            "plugins": {
+                "wordfence": {
+                    "version": "9.0.1",
+                    "vulnerabilities": [
+                        {
+                            "title": "Authenticated SQL Injection",
+                            "type": "SQLi",
+                            "fixed_in": "8.4.0",
+                        }
+                    ],
+                    "location": "wp-content/plugins/wordfence",
+                    "confidence": "100",
+                }
+            }
+        }
+        findings = wpscan_step._parse_plugins(data)
+        assert len(findings) == 1
+        assert findings[0].severity == "info"
+        assert findings[0].raw["all_reported_vulns_patched"] is True
+
+    def test_plugin_vuln_affected_version_keeps_severity(self, wpscan_step):
+        data = {
+            "plugins": {
+                "cf7": {
+                    "version": "5.0",
+                    "vulnerabilities": [
+                        {
+                            "title": "Remote Code Execution",
+                            "type": "RCE",
+                            "fixed_in": "5.1",
+                        }
+                    ],
+                    "location": "wp-content/plugins/cf7",
+                    "confidence": "100",
+                }
+            }
+        }
+        findings = wpscan_step._parse_plugins(data)
+        assert findings[0].severity == "critical"
+        assert findings[0].confidence == "high"
+        assert findings[0].raw["version_unknown"] is False
+
 
 class TestParseThemes:
     def test_no_themes(self, wpscan_step):
