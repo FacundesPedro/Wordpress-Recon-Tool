@@ -252,9 +252,6 @@ class TestLoadCredentialsFromWordlist:
             Path(tmp_path).unlink(missing_ok=True)
 
     def test_handles_os_error(self, step):
-        path = MagicMock(spec=Path)
-        path.__enter__ = MagicMock(side_effect=OSError("permission denied"))
-        path.__exit__ = MagicMock()
         with patch("builtins.open", side_effect=OSError("denied")), \
              patch.object(step.logger, "error") as mock_err:
             creds = step.load_credentials_from_wordlist(Path("/denied.txt"))
