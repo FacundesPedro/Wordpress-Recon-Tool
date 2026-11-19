@@ -1,10 +1,35 @@
 # Session Notes & Changelog
 
-## Last Updated: 2026-10-21
+## Last Updated: 2026-11-19
 
 ---
 
 ## Recent Changes
+
+### S29 - Report skills: plain-language pass, screenshot-first evidence, secret hygiene, portable `.agents/` layout (2026-11-19)
+
+Skills are now versioned and portable across agent harnesses: they live in `.agents/skills` (an OpenCode project compatibility source) instead of the git-ignored `.opencode/skills`; the 11 internal path references were updated.
+
+| Item | Change |
+|------|--------|
+| Plain language | Sumário Executivo rewritten to the 5-question structure (contexto → manchete em uma frase → impacto de negócio → contagem → 3 ações priorizadas), capped at one page, numbers always with context. New jargon-ban checklist and pt-BR good/bad examples ("explain before naming"). |
+| Step by step | Findings keep the fixed blocks; **Recomendação** is now numbered and always ends with a **"como conferir"** verification step. Exact settings stay in the Análise. |
+| Screenshots | Evidence order is figure → caption → trimmed snippet (≤ ~8 decisive lines) → artifact paths. Captions state what the figure proves; figures are referenced by number in the Análise; capture/crop rules added (context in frame, crop in an editor, never in Word). |
+| Secrets | New non-negotiable ground rule **"never ingest secrets into your context"**: no `cat`/full read of config backups, `.env`, credential dumps or cookie jars; inspect field names only and mask before display; the report body shows `********`; screenshots are redacted with an opaque fill (never blur or a Word/PDF overlay); final search check on the delivered file. |
+| Validation | Both skills' final checklists now cover the executive summary, figure/caption quality, secret masking and the verification step. |
+
+### S28 - Report skills produce styled .docx (SOC palette, embedded evidence figures) (2026-10-28)
+
+Assessment and reassessment skills now emit a **.docx** in the house layout on top of the Markdown source of truth. Derived from the `hml-kitsdidaticos` assessment/reassessment documents (fonts, page setup, table shading, header/footer, cover logo).
+
+| Item | Change |
+|------|--------|
+| Generator | New `.agents/skills/utils/docx_report.py` (`python .agents/skills/utils/docx_report.py --input report.md --output report.docx`). Parses headings, paragraphs, lists, tables, code fences, quotes and images; renders Arial/Letter, 1 in margins, italic cover/boilerplate, H1 20 pt / H2 16 pt, finding blocks, code boxes (Consolas 9 pt on `#F2F2F2`), header rule + footer `RESTRITO` badge, `Página N`, explicit numbered lists (restart at 1), and context page breaks. The Índice gets **real page numbers** from a two-pass LibreOffice render (PDF bookmarks via `pypdf`), with a Word TOC field fallback. |
+| Palette | Single token per meaning: Crítica `#000000`, Alta `#A61C00`, Média `#F1C232`, Baixa `#38761D`, Informação `#666666`; rating scale `#E06666`/`#FFD966`/`#93C47D`; treatment `#38761D`/`#FFBF00`/`#C9211E`; headers `#2A6099` (findings), `#039BE5` (context), `#666666` (classification); labels `#CCCCCC`. |
+| Evidence | `![Figura N – <legenda>](path)` is embedded automatically (centred, max 6.0 in wide, height capped at 7.5 in) with the caption below. A missing file falls back to a `[ INSERIR CAPTURA DE TELA ]` box carrying the artifact path; `*Figura N – …*` keeps rendering a placeholder for legacy reports. |
+| Assets | SENAI CIMATEC cover logo saved to both skills (`assets/logo-senai-cimatec.png`, 6.5 in). |
+| Skills | `security-assessment-report` and `security-reassessment-report`: new `references/docx-standard.md`, `## Output` now requires MD + DOCX, workflow step updated. |
+| Tests/deps | `.agents/skills/utils/tests/test_docx_report.py` (6 tests: severity colours, logo+badge media, treatment colours, static TOC/footer fields, screenshot embedding, missing-file fallback); `python-docx>=1.2.0` + `pypdf>=6.0.0` in `requirements.txt` and the `docx` extra. Verified against the `ava.senaibahia.com.br` report (5 findings, 26 tables) and the `hml-kitsdidaticos` reassessment (before/after bar, treatment colours). |
 
 ### S27 - Field-report update `hml-kitsdidaticos`: secret redaction, WPScan/version accuracy, brute-force oracle, tool/report gaps (2026-10-21)
 
